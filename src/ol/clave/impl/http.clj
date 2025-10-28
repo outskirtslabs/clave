@@ -214,13 +214,11 @@
   {:client (.build (client-builder opts))
    :request (:request opts)})
 
-(def default-client
-  (delay (client default-client-opts)))
-
 (defn merge-opts [x y]
   (if (and (map? x) (map? y))
     (merge x y)
     y))
+
 (defn then [x f]
   (if (instance? CompletableFuture x)
     (.thenApply ^CompletableFuture x
@@ -310,12 +308,12 @@
 
   * `:uri` - the uri to request (required).
      May be a string or map of `:scheme` (required), `:host` (required), `:port`, `:path` and `:query`
+  * `:client` - (required) a client as produced by `client` or a clojure function. If not provided a default client will be used.
+                When providing :client with a a clojure function, it will be called with the Clojure representation of
+                the request which can be useful for testing.
   * `:headers` - a map of headers
   * `:method` - the request method: `:get`, `:post`, `:head`, `:delete`, `:patch` or `:put`
   * `:interceptors` - custom interceptor chain
-  * `:client` - a client as produced by `client` or a clojure function. If not provided a default client will be used.
-                When providing :client with a a clojure function, it will be called with the Clojure representation of
-                the request which can be useful for testing.
   * `:query-params` - a map of query params. The values can be a list to send multiple params with the same key.
   * `:form-params` - a map of form params to send in the request body.
   * `:body` - a file, inputstream or string to send as the request body.
@@ -326,8 +324,7 @@
   * `:throw` - throw on exceptional status codes, all other than `#{200 201 202 203 204 205 206 207 300 301 302 303 304 307}`
   * `:version` - the HTTP version: `:http1.1` or `:http2`."
   [{:keys [client raw] :as req}]
-  (let [client (or client @default-client)
-        request-defaults (:request client)
+  (let [request-defaults (:request client)
         client* (or (:client client) client)
         ^HttpClient client client*
         ring-client (when (ifn? client*)

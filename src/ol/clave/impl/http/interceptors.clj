@@ -23,6 +23,7 @@
 (ns ol.clave.impl.http.interceptors
   (:refer-clojure :exclude [get])
   (:require
+   [ol.clave.impl.json :as json]
    [clojure.java.io :as io]
    [clojure.string :as str])
   (:import
@@ -252,9 +253,26 @@
                    (throw (ex-info (str "Exceptional status code: " status) resp)))
                  resp))})
 
+(def parse-json-body
+  {:name     ::json
+   :description "A request with `:as :json` will automatically get the
+         \"application/json\" accept header and the response is decoded as JSON."
+   :request  (fn [request]
+               (if (= :json (:as request))
+                 (-> (assoc-in request [:headers :accept] "application/json")
+                    ;; Read body as :string
+                    ;; Mark request as amenable to json decoding
+                     (assoc :as :string ::json true))
+                 request))
+   :response (fn [response]
+               (if (get-in response [:request ::json])
+                 (update response :body #(json/read-str %))
+                 response))})
+
 (def default-interceptors
   "Default interceptor chain. Interceptors are called in order for request and in reverse order for response."
-  [throw-on-exceptional-status-code
+  [parse-json-body
+   throw-on-exceptional-status-code
    request-method
    construct-uri
    accept-header

@@ -1,372 +1,398 @@
-;; Copyright © 2022 - 2023 Michiel Borkent
-;; Permission is hereby granted, free of charge, to any person
-;; obtaining a copy of this software and associated documentation
-;; files (the "Software"), to deal in the Software without
-;; restriction, including without limitation the rights to use,
-;; copy, modify, merge, publish, distribute, sublicense, and/or sell
-;; copies of the Software, and to permit persons to whom the
-;; Software is furnished to do so, subject to the following
-;; conditions:
-;; The above copyright notice and this permission notice shall be
-;; included in all copies or substantial portions of the Software.
-;; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-;; EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-;; OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-;; NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-;; HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-;; WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-;; FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-;; OTHER DEALINGS IN THE SOFTWARE.
-;;
-;; This is a slimmed version of babashka's http-client library
-;; https://github.com/babashka/http-client/releases/tag/v0.4.23
 (ns ^:no-doc ol.clave.impl.http
-  (:refer-clojure :exclude [send get])
   (:require
+   [ol.clave.specs :as acme]
    [clojure.java.io :as io]
+   [ol.clave.impl.json :as json]
    [clojure.string :as str]
-   [ol.clave.impl.http.interceptors :as interceptors])
+   [ol.clave.impl.http.impl :as http])
   (:import
-   [java.net URI]
-   [java.net.http
-    HttpClient
-    HttpClient$Builder
-    HttpClient$Redirect
-    HttpClient$Version
-    HttpRequest
-    HttpRequest$BodyPublisher
-    HttpRequest$BodyPublishers
-    HttpRequest$Builder
-    HttpResponse
-    HttpResponse$BodyHandlers]
-   [java.security.cert X509Certificate]
-   [java.security KeyStore SecureRandom]
-   [javax.net.ssl KeyManagerFactory TrustManagerFactory SSLContext TrustManager]
-   [java.time Duration]
-   [java.util.concurrent CompletableFuture]
-   [java.util.function Function Supplier]
-   [java.util.function Supplier]))
+   [java.util.concurrent CompletableFuture TimeUnit TimeoutException CancellationException ExecutionException]
+   [java.time Duration Instant]
+   [java.util.concurrent CompletableFuture]))
 
 (set! *warn-on-reflection* true)
 
-(defn coerce-key
-  "Coerces a key to str"
-  [k]
-  (if (keyword? k)
-    (-> k str (subs 1))
-    (str k)))
+;; -----------------------------------------------------------------------------
+;; Constants
+;; -----------------------------------------------------------------------------
 
-(defn capitalize-header [hdr]
-  (str/join "-" (map str/capitalize (str/split hdr #"-"))))
+(def default-traffic-calming-ms 250)
+(def default-user-agent "ol.clave")
+(def default-max-attempts 3)
 
-(defn prefer-string-keys
-  "Dissoc-es keyword header if equivalent string header is available already."
-  [header-map]
-  (reduce (fn [m k]
-            (if (keyword? k)
-              (let [s (coerce-key k)]
-                (if (or (clojure.core/get header-map (capitalize-header s))
-                        (clojure.core/get header-map s))
-                  (dissoc m k)
-                  m))
-              m))
-          header-map
-          (keys header-map)))
+;; -----------------------------------------------------------------------------
+;; Utilities: user-agent, headers, media-type, link parsing
+;; -----------------------------------------------------------------------------
 
-(defn coerce-headers
-  [headers]
-  (mapcat
-   (fn [[k v]]
-     (if (sequential? v)
-       (interleave (repeat (coerce-key k)) v)
-       [(coerce-key k) v]))
-   headers))
+(defn find-header
+  "Looks up a header in a Ring response (or request) case insensitively,
+  returning the header map entry, or nil if not present."
+  [resp ^String header-name]
+  (->> (:headers resp)
+       (filter #(.equalsIgnoreCase header-name (key %)))
+       (first)))
 
-(defn- ->follow-redirect [redirect]
-  (case redirect
-    :always HttpClient$Redirect/ALWAYS
-    :never HttpClient$Redirect/NEVER
-    :normal HttpClient$Redirect/NORMAL))
+(defn get-header
+  "Looks up a header in a Ring response (or request) case insensitively,
+  returning the value of the header, or nil if not present."
+  [resp header-name]
+  (some-> resp (find-header header-name) val))
 
-(defn- version-keyword->version-enum [version]
-  (case version
-    :http1.1 HttpClient$Version/HTTP_1_1
-    :http2 HttpClient$Version/HTTP_2))
+(defn parse-media-type
+  "Return the media type portion of Content-Type (e.g. application/json)."
+  [resp]
+  (let [ct (some-> (get-header resp "content-type") str)]
+    (cond
+      (nil? ct) ""
+      :else     (-> ct (str/split #";" 2) first str/trim))))
+(def ^:private re-charset
+  #"(?x);(?:.*\s)?(?i:charset)=(?:
+      ([!\#$%&'*\-+.0-9A-Z\^_`a-z\|~]+)|  # token
+      \"((?:\\\"|[^\"])*)\"               # quoted
+    )\s*(?:;|$)")
 
-(defn- version-enum->version-keyword [^HttpClient$Version version]
-  (case (.name version)
-    "HTTP_1_1" :http1.1
-    "HTTP_2" :http2))
+(defn- find-charset-in-content-type [content-type]
+  (when-let [m (re-find re-charset content-type)]
+    (or (m 1) (m 2))))
 
-(defn ->timeout [t]
-  (if (integer? t)
-    (Duration/ofMillis t)
-    t))
+(defn- charset
+  "Infer charset from Content-Type; default to UTF-8."
+  [response]
+  (or
+   (some->> (:headers response)
+            (some #(when (.equalsIgnoreCase "content-type" (key %)) (val %)))
+            (find-charset-in-content-type)) "UTF-8"))
 
-(defn ->ProxySelector
-  [opts]
-  (if (instance? java.net.ProxySelector opts)
-    opts
-    (let [{:keys [host port]} opts]
-      (cond (and host port)
-            (java.net.ProxySelector/of (java.net.InetSocketAddress. ^String host ^long port))))))
+(def link-rel-re #"<\s*([^>]+)\s*>;\s*rel=\"([^\"]+)\"")
 
-(defn- load-keystore
-  ^KeyStore [store store-type store-pass]
-  (when store
-    (with-open [kss (io/input-stream store)]
-      (doto (KeyStore/getInstance store-type)
-        (.load kss (char-array store-pass))))))
+(defn extract-links
+  "Extract URLs with the given relation from Link headers. Can return multiple."
+  [resp rel]
+  (let [links (let [v (get-header resp "link")]
+                (if (coll? v) v (when v [v])))]
+    (->> links
+         (mapcat #(re-seq link-rel-re %))
+         (keep (fn [[_ url r]] (when (= r rel) url)))
+         vec)))
 
-(def has-extended? (resolve 'javax.net.ssl.X509ExtendedTrustManager))
+;; -----------------------------------------------------------------------------
+;; Retry-After parsing (seconds or HTTP-date)
+;; -----------------------------------------------------------------------------
 
-(defmacro if-has-extended [then else]
-  (if has-extended? then else))
+(defn parse-http-time
+  "Parse an HTTP-date (RFC 7231) string. Skeleton: implement with java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME."
+  [^String s]
+  ;; TODO: implement RFC 7231 parser
+  nil)
 
-(def insecure-tm
-  (delay
-    (if-has-extended
-     (proxy [javax.net.ssl.X509ExtendedTrustManager] []
-       (checkClientTrusted
-         ([_ _])
-         ([_ _ _]))
-       (checkServerTrusted
-         ([_ _])
-         ([_ _ _]))
-       (getAcceptedIssuers [] (into-array X509Certificate [])))
-     (reify javax.net.ssl.X509TrustManager
-       (checkClientTrusted [_ _ _])
-       (checkServerTrusted [_ _ _])
-       (getAcceptedIssuers [_] (into-array X509Certificate []))))))
+(defn retry-after-time
+  "Return java.time.Instant from Retry-After header or nil if absent/invalid."
+  ^Instant [resp]
+  (when-let [raw (get-header resp "retry-after")]
+    (try
+      (let [s (str/trim (str raw))]
+        (if (re-matches #"\d+" s)
+          (-> (Long/parseLong s)
+              (Duration/ofSeconds)
+              (.addTo (java.time.Instant/now)))
+          (parse-http-time s)))
+      (catch Exception _e
+        ;; invalid header => nil, caller uses fallback
+        nil))))
 
-(defn ->SSLContext
-  [v]
-  (if (instance? SSLContext v)
-    v
-    (let [{:keys [key-store key-store-type key-store-pass trust-store trust-store-type trust-store-pass insecure]} v
-          ;; compatibility with hato
-          key-store-type (or key-store-type (:keystore-type v) "pkcs12")
-          trust-store-type (or trust-store-type "pkcs12")
-          key-managers (when-let [ks (load-keystore key-store key-store-type key-store-pass)]
-                         (.getKeyManagers (doto (KeyManagerFactory/getInstance (KeyManagerFactory/getDefaultAlgorithm))
-                                            (.init ks (char-array key-store-pass)))))
+(defn retry-after
+  "Return a java.time.Duration until retry time; or fallback if header missing/invalid."
+  [resp ^Duration fallback]
+  (if-let [inst (retry-after-time resp)]
+    (let [now (java.time.Instant/now)]
+      (if (.isAfter inst now)
+        (Duration/between now inst)
+        Duration/ZERO))
+    fallback))
 
-          trust-managers (if insecure
-                           (into-array TrustManager [@insecure-tm])
-                           (when-let [ts (load-keystore trust-store trust-store-type trust-store-pass)]
-                             (.getTrustManagers (doto (TrustManagerFactory/getInstance (TrustManagerFactory/getDefaultAlgorithm))
-                                                  (.init ts)))))]
+;; -----------------------------------------------------------------------------
+;; Nonce management (LIFO stack)
+;; -----------------------------------------------------------------------------
 
-      (doto (SSLContext/getInstance "TLS")
-        (.init key-managers
-               trust-managers
-               (SecureRandom.))))))
+(def replay-nonce-header "replay-nonce")
 
-(defn client-builder
-  (^HttpClient$Builder []
-   (client-builder {}))
-  (^HttpClient$Builder [opts]
-   (let [{:keys [connect-timeout
-                 executor
-                 follow-redirects
-                 priority
-                 proxy
-                 ssl-context
-                 ssl-parameters
-                 version]} opts]
-     (cond-> (HttpClient/newBuilder)
-       connect-timeout  (.connectTimeout (->timeout connect-timeout))
-       executor         (.executor executor)
-       follow-redirects (.followRedirects (->follow-redirect follow-redirects))
-       priority         (.priority priority)
-       proxy            (.proxy (->ProxySelector proxy))
-       ssl-context      (.sslContext (->SSLContext ssl-context))
-       ssl-parameters   (.sslParameters ssl-parameters)
-       version          (.version (version-keyword->version-enum version))))))
+(def empty-nonces '())
 
-(def default-client-opts
-  {:follow-redirects :normal
-   :request {:headers {:accept "*/*"
-                       :accept-encoding ["gzip" "deflate"]
-                       :user-agent (str "ol.clave" "TODO version")}}})
+(defn push-nonce! [{::acme/keys [nonces_]} nonce]
+  (when (seq nonce)
+    (swap! nonces_ conj nonce)))
 
-(defn client
-  "Construct a custom client. To get the same behavior as the (implicit) default client, pass `default-client-opts`.
+(defn pop-nonce! [{::acme/keys [nonces_]}]
+  (let [n (first @nonces_)]
+    (swap! nonces_ rest)
+    n))
 
-  Options:
-  * `:follow-redirects` - `:never`, `:always` or `:normal`
-  * `:connect-timeout` - connection timeout in milliseconds.
-  * `:request` - default request options which will be used in requests made with this client.
-  * `:executor` - a `java.util.concurrent.Executor`
-  * `:ssl-context` - a `javax.net.ssl.SSLContext` (or a map of opts)
-  * `:ssl-parameters` - a `javax.net.ssl.SSLParameters`
-  * `:proxy` - a `java.net.ProxySelector` or a map of :host and :port
-  * `:version` - the HTTP version: `:http1.1` or `:http2`.
-  * `:priority` - priority for HTTP2 requests, integer between 1-256 inclusive.
+(defn remember-nonce-from-response!
+  "Push nonce from response headers, if present."
+  [client resp]
+  (when-let [nonce (get-header resp replay-nonce-header)]
+    (push-nonce! client nonce)))
 
-  Returns map with:
+;; -----------------------------------------------------------------------------
+;; Cancellation helpers
+;; -----------------------------------------------------------------------------
 
-  * `:client` - a `java.net.http.HttpClient`.
-
-  The map can be passed to `request` via the `:client` key.
-  "
-  [opts]
-  {:client (.build (client-builder opts))
-   :request (:request opts)})
-
-(defn merge-opts [x y]
-  (if (and (map? x) (map? y))
-    (merge x y)
-    y))
-
-(defn then [x f]
-  (if (instance? CompletableFuture x)
-    (.thenApply ^CompletableFuture x
-                ^Function (reify Function
-                            (apply [_ args]
-                              (f args))))
-    (f x)))
-
-(defn- apply-interceptors [init interceptors k]
-  (reduce (fn [acc i]
-            (if-let [f (clojure.core/get i k)]
-              (f acc)
-              acc))
-          init interceptors))
-
-(defn- input-stream-supplier [s]
-  (reify Supplier
-    (get [_this] s)))
-
-(defn- method-keyword->str [method]
-  (str/upper-case (name method)))
-
-(defn- ->body-publisher [body]
+(defn cancelled?
+  "Return true if the cancel-token indicates cancellation.
+   - If cancel-token is a CompletableFuture: return .isCancelled or .isDone with exceptional completion as needed
+   - If cancel-token is a 0-arity fn: call it
+   - If cancel-token is an atom/boolean: read truthiness
+   - Else, false."
+  [cancel-token]
   (cond
-    (nil? body)
-    (HttpRequest$BodyPublishers/noBody)
+    (instance? CompletableFuture cancel-token)
+    (let [^CompletableFuture cancel-token cancel-token]
+      (or (.isCancelled cancel-token)
+          (and (.isDone cancel-token)
+               (try
+                 (.join cancel-token) false
+                 (catch Throwable _true true)))))
 
-    (string? body)
-    (HttpRequest$BodyPublishers/ofString body)
+    (fn? cancel-token) (boolean (cancel-token))
+    (instance? clojure.lang.IDeref cancel-token) (boolean @cancel-token)
+    :else false))
 
-    (instance? java.io.InputStream body)
-    (HttpRequest$BodyPublishers/ofInputStream (input-stream-supplier body))
+(defn sleep-with-cancel
+  "Block for ms unless cancel-token (a CompletableFuture) completes/cancels earlier.
+   Returns :slept if the full delay elapsed, or throws on cancellation."
+  [^long ms ^CompletableFuture cancel-token]
+  (if (instance? CompletableFuture cancel-token)
+    (try
+      ;; Wait for cancel-token to complete for up to ms. If it times out, we slept fully.
+      (.get cancel-token ms TimeUnit/MILLISECONDS)
+      ;; If we get here, the token completed before timeout => treat as cancellation.
+      (throw (ex-info "Cancelled during sleep" {:stage :sleep}))
+      (catch TimeoutException _
+        :slept) ; the delay elapsed
+      (catch CancellationException _
+        (throw (ex-info "Cancelled during sleep" {:stage :sleep})))
+      (catch ExecutionException _
+        (throw (ex-info "Cancelled during sleep" {:stage :sleep}))))
+    (do (Thread/sleep ms) :slept)))
 
-    (bytes? body)
-    (HttpRequest$BodyPublishers/ofByteArray body)
+;; -----------------------------------------------------------------------------
+;; Problem+JSON handling (RFC 7807)
+;; -----------------------------------------------------------------------------
 
-    (instance? java.io.File body)
-    (let [^java.nio.file.Path path (.toPath (io/file body))]
-      (HttpRequest$BodyPublishers/ofFile path))
+(defn parse-problem-json
+  "Decode application/problem+json into a map with at least :type :detail :status."
+  [body-bytes]
+  (try
+    (let [m (json/read-str (slurp body-bytes :encoding "UTF-8"))]
+      (merge {:type nil :detail nil :status nil} m))
+    (catch Exception e
+      {:parse-error e :raw (slurp body-bytes :encoding "UTF-8")})))
 
-    (instance? java.nio.file.Path body)
-    (let [^java.nio.file.Path path body]
-      (HttpRequest$BodyPublishers/ofFile path))
+;; -----------------------------------------------------------------------------
+;; do-http-request: one attempt + drain + retry-safety decision
+;; -----------------------------------------------------------------------------
 
-    (instance? HttpRequest$BodyPublisher body)
-    body
+(defn do-http-request
+  "Perform a single request. Drain body into bytes. Decide if safe to retry.
+   Returns {:resp :headers :status :body-bytes :retry? :err}.
+   Cancellation: if cancel-token (a CompletableFuture) completes first, the request future is cancelled."
+  [client {:keys [headers] :as req} {:keys [cancel-token]}]
+  (let [req' (cond-> req
+               true                                     (assoc :async true) ;; run async so we can cancel mid-flight
+               (not (get-in req [headers :user-agent])) (update :headers assoc :user-agent default-user-agent))
+        ^CompletableFuture task (http/request (assoc req'
+                                                     :client (::acme/http client)
+                                                     :as :bytes))]
+    (try
+      (when (instance? java.util.concurrent.CompletableFuture cancel-token)
+        ;; Wait for whichever completes first: the HTTP task or the cancel token
+        (let [winner (java.util.concurrent.CompletableFuture/anyOf
+                      (into-array java.util.concurrent.CompletableFuture [task cancel-token]))]
+          (.join ^java.util.concurrent.CompletableFuture winner)
+          (when (and (.isDone ^java.util.concurrent.CompletableFuture cancel-token)
+                     (not (.isDone task)))
+            ;; cancellation won the race: cancel the HTTP task and report cancellation
+            (.cancel task true)
+            (throw (ex-info "Request cancelled" {:stage :in-flight})))))
+      ;; If we get here and not cancelled, the task should have completed (or will complete immediately)
+      (let [{:keys [status headers body] :as resp} @task]
+        (try
+          (remember-nonce-from-response! client headers)
+          {:resp resp
+           :headers headers
+           :status status
+           :body-bytes body
+           :retry? false
+           :err nil}
+          (catch Throwable e
+            ;; Body read failed: recommend retry only if status >= 400 AND original request had no body
+            (let [retry? (and (number? status)
+                              (>= (long status) 400)
+                              (nil? (:body req)))]
+              {:resp (assoc resp :body nil)
+               :headers headers
+               :status status
+               :body-bytes body
+               :retry? retry?
+               :err e}))))
+      (catch clojure.lang.ExceptionInfo e
+        ;; propagated cancellation (our own ex-info above)
+        {:resp nil :headers nil :status 0 :body-bytes nil :retry? false :err e})
+      (catch Throwable e
+        ;; Network/request execution failure -> recommend retry
+        {:resp nil :headers nil :status 0 :body-bytes nil :retry? true :err e}))))
 
-    :else
-    (throw (ex-info (str "Don't know how to convert " (type body) "to body")
-                    {:body body}))))
-(defn ->request-builder ^HttpRequest$Builder [opts]
-  (let [{:keys [expect-continue
-                headers
-                method
-                timeout
-                uri
-                version
-                body]} opts]
-    (cond-> (HttpRequest/newBuilder)
-      (some? expect-continue) (.expectContinue expect-continue)
+;; -----------------------------------------------------------------------------
+;; http-req: robust request w/ retries + problem+json handling
+;; -----------------------------------------------------------------------------
 
-      (seq headers) (.headers (into-array String (coerce-headers headers)))
-      method (.method (method-keyword->str method) (->body-publisher body))
-      timeout (.timeout (->timeout timeout))
-      uri (.uri ^URI uri)
-      version (.version (version-keyword->version-enum version)))))
+(defn http-req
+  "Robust HTTP request with limited retries and careful replay rules.
+   Args:
+   - client: AcmeHttpClient
+   - req: {:method :uri :headers :body ...}
+   - {:keys [max-attempts traffic-calming-ms cancel-token has-request-body?]}:
+     has-request-body? is important for replay-safety; set true for JWS posts.
 
-(defn ring->HttpRequest
-  (^HttpRequest [req-map]
-   (.build (->request-builder req-map))))
+   Returns {:resp resp :status :headers :body-bytes} or throws on failure."
+  [client req
+   {:keys [max-attempts traffic-calming-ms cancel-token has-request-body?]
+    :or   {max-attempts       default-max-attempts
+           traffic-calming-ms default-traffic-calming-ms}}]
+  (loop [i 0]
+    (when (> i 0)
+      (when-not (= :slept (sleep-with-cancel traffic-calming-ms cancel-token))
+        (throw (ex-info "Request cancelled" {:stage :before-attempt :attempt i}))))
+    (when (cancelled? cancel-token)
+      (throw (ex-info "Request cancelled" {:stage :before-attempt :attempt i})))
+    (let [as (:as req)
+          req (dissoc req :as)
+          {:keys [status headers body-bytes retry? err] :as res} (do-http-request client req {:cancel-token cancel-token})]
+      (cond
+        ;; low-level error with retry recommendation
+        (and err retry? (< (inc i) max-attempts))
+        (recur (inc i))
 
-(defn response->map [^HttpResponse resp]
-  {:status (.statusCode resp)
-   :body (.body resp)
-   :version (-> resp .version version-enum->version-keyword)
-   :headers (into {}
-                  (map (fn [[k v]] [k (if (= 1 (count v))
-                                        (first v)
-                                        (vec v))]))
-                  (.map (.headers resp)))
-   :uri (.uri resp)})
+        err
+        (throw (ex-info "HTTP request failed" {:attempt (inc i) :cause err} err))
 
-(defn request
-  "Perform request. Returns map with at least `:body`, `:status`
+        ;; HTTP status handling
+        (and (<= 200 status) (< status 300))
+        (let [cs (charset res)
+              body (case (or as :bytes)
+                     :json (json/read-str (slurp body-bytes :encoding cs))
+                     :string (slurp body-bytes :encoding cs)
+                     :bytes body-bytes
+                     nil)]
+          {:status status
+           :headers headers
+           :body-bytes body-bytes
+           :body body})
 
-  Options:
+        (and (<= 400 status) (< status 600))
+        (let [mt (parse-media-type headers)]
+          (if (= mt "application/problem+json")
+            (let [problem (parse-problem-json body-bytes)]
+              ;; Retry on 5xx if no request body (to avoid replaying JWS with nonce).
+              (if (and (<= 500 status) (< status 600) (not has-request-body?) (< (inc i) max-attempts))
+                (recur (inc i))
+                (throw (ex-info (str "HTTP " status " problem+json")
+                                {:status status :problem problem}))))
+            ;; Non-problem+json error
+            (throw (ex-info (str "HTTP " status " error")
+                            {:status status :body (slurp body-bytes :encoding "UTF-8")}))))
 
-  * `:uri` - the uri to request (required).
-     May be a string or map of `:scheme` (required), `:host` (required), `:port`, `:path` and `:query`
-  * `:client` - (required) a client as produced by `client` or a clojure function. If not provided a default client will be used.
-                When providing :client with a a clojure function, it will be called with the Clojure representation of
-                the request which can be useful for testing.
-  * `:headers` - a map of headers
-  * `:method` - the request method: `:get`, `:post`, `:head`, `:delete`, `:patch` or `:put`
-  * `:interceptors` - custom interceptor chain
-  * `:query-params` - a map of query params. The values can be a list to send multiple params with the same key.
-  * `:form-params` - a map of form params to send in the request body.
-  * `:body` - a file, inputstream or string to send as the request body.
-  * `:async` - perform request asynchronously. The response will be a `CompletableFuture` of the response map.
-  * `:async-then` - a function that is called on the async result if successful
-  * `:async-catch` - a function that is called on the async result if exceptional
-  * `:timeout` - request timeout in milliseconds
-  * `:throw` - throw on exceptional status codes, all other than `#{200 201 202 203 204 205 206 207 300 301 302 303 304 307}`
-  * `:version` - the HTTP version: `:http1.1` or `:http2`."
-  [{:keys [client raw] :as req}]
-  (let [request-defaults (:request client)
-        client* (or (:client client) client)
-        ^HttpClient client client*
-        ring-client (when (ifn? client*)
-                      client*)
-        req (merge-with merge-opts request-defaults req)
-        req (update req :headers prefer-string-keys)
-        request-interceptors (or (:interceptors req)
-                                 interceptors/default-interceptors)
-        req (apply-interceptors req request-interceptors :request)
-        req' (when-not ring-client (ring->HttpRequest req))
-        async (:async req)
-        resp (if ring-client
-               (ring-client req)
-               (if async
-                 (.sendAsync client req' (HttpResponse$BodyHandlers/ofInputStream))
-                 (.send client req' (HttpResponse$BodyHandlers/ofInputStream))))]
-    (if raw resp
-        (let [resp (if ring-client resp (then resp response->map))
-              resp (then resp (fn [resp]
-                                (assoc resp :request req)))
-              resp (reduce (fn [resp interceptor]
-                             (if-let [f (:response interceptor)]
-                               (then resp f)
-                               resp))
-                           resp (reverse (or (:interceptors req)
-                                             interceptors/default-interceptors)))]
-          (if async
-            (let [then-fn (:async-then req)
-                  catch-fn (:async-catch req)]
-              (cond-> ^CompletableFuture resp
-                then-fn (.thenApply
-                         (reify Function
-                           (apply [_ resp]
-                             (then-fn resp))))
-                catch-fn (.exceptionally
-                          (reify Function
-                            (apply [_ e]
-                              (let [^Throwable e e
-                                    cause (ex-cause e)]
-                                (catch-fn {:ex e
-                                           :ex-cause cause
-                                           :ex-data (ex-data (or cause e))
-                                           :ex-message (ex-message (or cause e))
-                                           :request req})))))))
-            resp)))))
+        ;; Unexpected status
+        :else
+        (throw (ex-info (str "Unexpected HTTP status " status) {:status status}))))))
+
+;; -----------------------------------------------------------------------------
+;; http-post-jws: JWS POST + nonce handling + robust retries + badNonce handling
+;; -----------------------------------------------------------------------------
+
+(defn jws-encode-json
+  "Skeleton: JWS-encode `input` JSON with `private-key`, `kid`, `nonce`, and `endpoint`.
+   Return bytes of application/jose+json."
+  [private-key kid nonce endpoint input]
+  ;; TODO implement JWS RFC 7515 signing and JSON serialization.
+  (throw (Exception. "Not yet implemented")))
+
+(defn get-nonce
+  "Pop a cached nonce or fetch a new one via HEAD to directory :newNonce."
+  [client {:keys [cancel-token]}]
+  (if-let [n (pop-nonce! client)]
+    n
+    (let [resp (http-req client
+                         {:method :head :uri (acme/new-nonce-url client)}
+                         {:cancel-token       cancel-token
+                          :max-attempts       3
+                          :traffic-calming-ms default-traffic-calming-ms
+                          :has-request-body?  false})]
+      (or (get-header resp replay-nonce-header)
+          (throw (ex-info "No Replay-Nonce in newNonce response" {}))))))
+
+(defn http-post-jws
+  "Perform ACME JWS POST robustly.
+   Retries:
+   - badNonce: retry with fresh nonce
+   - internal server 5xx: retry up to 3 within overall cap of 10
+   - traffic calming 250ms between attempts
+
+   Args:
+   - client: AcmeHttpClient
+   - private-key: signer
+   - kid: key ID (account URL) or nil
+   - endpoint: URL
+   - input: clj data; will be JSON-encoded and JWS-signed
+   - {:keys [cancel-token max-attempts max-5xx]} options
+
+   Returns {:resp :status :headers :body-bytes} or throws."
+  [client private-key kid endpoint input
+   {:keys [cancel-token max-attempts max-5xx]
+    :or   {max-attempts 10
+           max-5xx      3}}]
+  (loop [attempt 1
+         fivexx  0]
+    (when (> attempt 1)
+      (when-not (= :slept (sleep-with-cancel default-traffic-calming-ms cancel-token))
+        (throw (ex-info "Request cancelled" {:stage :before-attempt :attempt attempt}))))
+    (let [nonce   (get-nonce client {:cancel-token cancel-token})
+          payload (jws-encode-json private-key kid nonce endpoint input)
+          headers {:content-type "application/jose+json"}
+          req     {:method :post :uri endpoint :headers headers :body payload}
+      ;; has-request-body? => do not blindly retry 5xx unless logic says it's safe.
+          result  (try
+                    (http-req client req {:cancel-token      cancel-token
+                                          :max-attempts      3
+                                          :has-request-body? true})
+                    (catch clojure.lang.ExceptionInfo ex
+                  ;; Detect problem+json and badNonce type here
+                      (let [data    (ex-data ex)
+                            status  (:status data)
+                            problem (:problem data)
+                            ptype   (:type problem)]
+                        (cond
+                          (= ptype "urn:ietf:params:acme:error:badNonce")
+                          ::bad-nonce
+
+                          (and status (<= 500 status) (< status 600))
+                          (do ::server-5xx)
+
+                          :else (throw ex)))))]
+      (cond
+        (= result ::bad-nonce)
+        (if (< attempt max-attempts)
+          (recur (inc attempt) fivexx)
+          (throw (ex-info "Too many badNonce retries" {:attempts attempt})))
+
+        (= result ::server-5xx)
+        (if (and (< fivexx max-5xx) (< attempt max-attempts))
+          (recur (inc attempt) (inc fivexx))
+          (throw (ex-info "Too many 5xx retries" {:attempts attempt :5xx fivexx})))
+
+        :else
+    ;; success path
+        result))))
+
+(defn http-client [opts]
+  (http/client (merge http/default-client-opts opts)))

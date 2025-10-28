@@ -3,7 +3,8 @@
  :tasks {:requires         ([babashka.fs :as fs]
                             [clojure.string :as str]
                             [babashka.tasks :refer [shell]])
-         test              (apply clojure "-M:kaocha" *command-line-args*)
+         test {:doc  "Run tests"
+               :task (apply clojure "-M:dev:test:kaocha" *command-line-args*)}
          test.jvm          (clojure "-M:kaocha" "--focus" ":unit-jvm")
          deps-tree         (clojure "-X:deps tree :aliases '[:dev]'")
          dev               {:doc "Start a local development server" :task (apply clojure "-M:dev:repl/dev" *command-line-args*)}

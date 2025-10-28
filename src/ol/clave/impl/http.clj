@@ -39,6 +39,9 @@
     HttpRequest$Builder
     HttpResponse
     HttpResponse$BodyHandlers]
+   [java.security.cert X509Certificate]
+   [java.security KeyStore SecureRandom]
+   [javax.net.ssl KeyManagerFactory TrustManagerFactory SSLContext TrustManager]
    [java.time Duration]
    [java.util.concurrent CompletableFuture]
    [java.util.function Function Supplier]
@@ -108,6 +111,57 @@
       (cond (and host port)
             (java.net.ProxySelector/of (java.net.InetSocketAddress. ^String host ^long port))))))
 
+(defn- load-keystore
+  ^KeyStore [store store-type store-pass]
+  (when store
+    (with-open [kss (io/input-stream store)]
+      (doto (KeyStore/getInstance store-type)
+        (.load kss (char-array store-pass))))))
+
+(def has-extended? (resolve 'javax.net.ssl.X509ExtendedTrustManager))
+
+(defmacro if-has-extended [then else]
+  (if has-extended? then else))
+
+(def insecure-tm
+  (delay
+    (if-has-extended
+     (proxy [javax.net.ssl.X509ExtendedTrustManager] []
+       (checkClientTrusted
+         ([_ _])
+         ([_ _ _]))
+       (checkServerTrusted
+         ([_ _])
+         ([_ _ _]))
+       (getAcceptedIssuers [] (into-array X509Certificate [])))
+     (reify javax.net.ssl.X509TrustManager
+       (checkClientTrusted [_ _ _])
+       (checkServerTrusted [_ _ _])
+       (getAcceptedIssuers [_] (into-array X509Certificate []))))))
+
+(defn ->SSLContext
+  [v]
+  (if (instance? SSLContext v)
+    v
+    (let [{:keys [key-store key-store-type key-store-pass trust-store trust-store-type trust-store-pass insecure]} v
+          ;; compatibility with hato
+          key-store-type (or key-store-type (:keystore-type v) "pkcs12")
+          trust-store-type (or trust-store-type "pkcs12")
+          key-managers (when-let [ks (load-keystore key-store key-store-type key-store-pass)]
+                         (.getKeyManagers (doto (KeyManagerFactory/getInstance (KeyManagerFactory/getDefaultAlgorithm))
+                                            (.init ks (char-array key-store-pass)))))
+
+          trust-managers (if insecure
+                           (into-array TrustManager [@insecure-tm])
+                           (when-let [ts (load-keystore trust-store trust-store-type trust-store-pass)]
+                             (.getTrustManagers (doto (TrustManagerFactory/getInstance (TrustManagerFactory/getDefaultAlgorithm))
+                                                  (.init ts)))))]
+
+      (doto (SSLContext/getInstance "TLS")
+        (.init key-managers
+               trust-managers
+               (SecureRandom.))))))
+
 (defn client-builder
   (^HttpClient$Builder []
    (client-builder {}))
@@ -126,7 +180,7 @@
        follow-redirects (.followRedirects (->follow-redirect follow-redirects))
        priority         (.priority priority)
        proxy            (.proxy (->ProxySelector proxy))
-       ssl-context      (.sslContext ssl-context)
+       ssl-context      (.sslContext (->SSLContext ssl-context))
        ssl-parameters   (.sslParameters ssl-parameters)
        version          (.version (version-keyword->version-enum version))))))
 
@@ -144,7 +198,7 @@
   * `:connect-timeout` - connection timeout in milliseconds.
   * `:request` - default request options which will be used in requests made with this client.
   * `:executor` - a `java.util.concurrent.Executor`
-  * `:ssl-context` - a `javax.net.ssl.SSLContext`
+  * `:ssl-context` - a `javax.net.ssl.SSLContext` (or a map of opts)
   * `:ssl-parameters` - a `javax.net.ssl.SSLParameters`
   * `:proxy` - a `java.net.ProxySelector` or a map of :host and :port
   * `:version` - the HTTP version: `:http1.1` or `:http2`.

@@ -258,8 +258,6 @@
    request-method
    construct-uri
    accept-header
-   basic-auth
-   oauth-token
    query-params
    form-params
    decode-body

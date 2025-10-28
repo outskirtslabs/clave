@@ -1,0 +1,11 @@
+.cpcache/
+**/.claude/settings.local.json
+.clj-kondo/
+.lsp/
+.nrepl-port
+archive/
+target/
+.clojure-mcp
+extra/
+.direnv
+example-project

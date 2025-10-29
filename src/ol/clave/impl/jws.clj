@@ -13,12 +13,12 @@
 (def ^:private ^Class byte-array-class
   (Class/forName "[B"))
 
-(def ^:private hex-digits
-  (char-array "0123456789abcdef"))
+(def ^:private ^String hex-str "0123456789abcdef")
 
 (defn- append-hex-digit!
   [^StringBuilder sb ^long value ^long shift]
-  (.append sb (aget hex-digits (bit-and (bit-shift-right value shift) 0x0F))))
+  (let [i (bit-and (bit-shift-right value shift) 0x0F)]
+    (.append sb (.charAt hex-str i))))
 
 (defn- append-unicode-escape!
   [^StringBuilder sb ^long code-point]
@@ -104,7 +104,7 @@
 
 (defn protected-header-json
   "Construct the protected header JSON string with deterministic field order."
-  [alg kid nonce url jwk-json]
+  ^String [alg kid nonce url jwk-json]
   (ensure-string alg :alg)
   (ensure-string url :url)
   (let [has-kid (some? kid)
@@ -207,16 +207,16 @@
           (throw (errors/ex errors/ecdsa-signature-format "Expected INTEGER for R"
                             {:tag (aget der-sig idx-after-seq)})))
         (let [[r-length idx-after-r-tag] (read-der-length der-sig (inc idx-after-seq))
-              r-start idx-after-r-tag
-              r-end (+ r-start r-length)]
+              r-start (int idx-after-r-tag)
+              r-end (int (+ r-start r-length))]
           (when (> r-end total)
             (throw (errors/ex errors/ecdsa-signature-format "Truncated R value" {:length r-length})))
           (when (not= 0x02 (bit-and 0xFF (aget der-sig r-end)))
             (throw (errors/ex errors/ecdsa-signature-format "Expected INTEGER for S"
                               {:tag (aget der-sig r-end)})))
           (let [[s-length idx-after-s-tag] (read-der-length der-sig (inc r-end))
-                s-start idx-after-s-tag
-                s-end (+ s-start s-length)]
+                s-start (int idx-after-s-tag)
+                s-end (int (+ s-start s-length))]
             (when (> s-end total)
               (throw (errors/ex errors/ecdsa-signature-format "Truncated S value" {:length s-length})))
             (let [r-bytes (Arrays/copyOfRange der-sig r-start r-end)
@@ -322,15 +322,15 @@
 (defn jws-encode-json
   "Build a JSON-serialized JWS object for ES256 or Ed25519.
    keypair: AsymmetricKeyPair (e.g., KeyPairAlgo record)."
-  [payload-json keypair kid nonce url]
-  (let [private-key (crypto/private keypair)
-        public-key (crypto/public keypair)
-        alg (select-jws-alg private-key)
-        jwk-json (when (nil? kid)
-                   (let [jwk-map (crypto/public-jwk public-key)]
-                     (jwk->canonical-json jwk-map)))
+  ^String [payload-json keypair kid nonce url]
+  (let [private-key                               (crypto/private keypair)
+        public-key                                (crypto/public keypair)
+        alg                                       (select-jws-alg private-key)
+        jwk-json                                  (when (nil? kid)
+                                                    (let [jwk-map (crypto/public-jwk public-key)]
+                                                      (jwk->canonical-json jwk-map)))
         {:keys [protected payload signing-bytes]} (encode-payload-and-protected alg kid nonce url jwk-json payload-json)
-        signature-b64 (encode-signature-b64 alg private-key signing-bytes)]
+        signature-b64                             (encode-signature-b64 alg private-key signing-bytes)]
     (final-jws-json protected payload signature-b64)))
 
 (defn jws-encode-eab

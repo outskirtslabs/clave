@@ -14,7 +14,7 @@
           [session _directory] (commands/create-session "https://localhost:14000/dir"
                                                         {:http-client util/http-client-opts
                                                          :account-key account-key})
-          [updated-session account-resp] (commands/new-account session account)]
+          [updated-session normalized-account] (commands/new-account session account)]
       (expect {:ol.clave.specs/account-key account-key
                :ol.clave.specs/directory {:ol.clave.specs/keyChange "https://localhost:14000/rollover-account-key",
                                           :ol.clave.specs/meta {:ol.clave.specs/externalAccountRequired false,
@@ -29,11 +29,8 @@
                :ol.clave.specs/poll-timeout nil}
               (in updated-session))
       (is (string? (-> updated-session :ol.clave.specs/account-kid)))
-      (expect {:contact ["mailto:test@example.com"],
-               :key {:crv "P-256",
-                     :kty "EC",
-                     :x "8lPj8G58Y-8Ouy0EcB-RyXp-_jAs9tpOjHGfnDcx9KI",
-                     :y "shnSDBqUGSS-NHvuNHFADXulsY-jMhVok37m-e59tpA"},
-               :status "valid"}
-              (in account-resp))
-      (is (string? (:orders account-resp))))))
+      (is (= ["mailto:test@example.com"] (-> normalized-account :ol.clave.specs/contact)))
+      (is (true? (-> normalized-account :ol.clave.specs/termsOfServiceAgreed)))
+      (is (string? (-> normalized-account :ol.clave.specs/account-kid)))
+      (is (= (-> updated-session :ol.clave.specs/account-kid)
+             (-> normalized-account :ol.clave.specs/account-kid))))))

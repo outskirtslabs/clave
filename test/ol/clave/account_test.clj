@@ -118,3 +118,26 @@
       (is (= :ol.clave.algo/es256 (proto/algo expected-keypair)))
       (is (instance? java.security.PrivateKey (proto/private expected-keypair)))
       (is (instance? java.security.PublicKey (proto/public expected-keypair))))))
+
+(deftest serialize-preserves-account-kid
+  (testing "account-kid is included in serialized artifact when present"
+    (let [account-with-kid (assoc sample-account ::acme/account-kid "https://acme.example.com/acct/123")
+          kp (crypto/generate-keypair :ol.clave.algo/es256)
+          serialized (account/serialize account-with-kid kp)
+          [deserialized-account _] (account/deserialize serialized)]
+      (is (= "https://acme.example.com/acct/123" (::acme/account-kid deserialized-account)))))
+  (testing "account-kid is omitted when not present"
+    (let [kp (crypto/generate-keypair :ol.clave.algo/es256)
+          serialized (account/serialize sample-account kp)
+          [deserialized-account _] (account/deserialize serialized)]
+      (is (nil? (::acme/account-kid deserialized-account))))))
+
+(deftest account-kid-validation
+  (testing "account-kid rejects non-HTTPS URLs"
+    (is (thrown? Exception
+                 (account/validate-account
+                  (assoc sample-account ::acme/account-kid "http://insecure.example.com/acct/123")))))
+  (testing "account-kid rejects blank strings"
+    (is (thrown? Exception
+                 (account/validate-account
+                  (assoc sample-account ::acme/account-kid ""))))))

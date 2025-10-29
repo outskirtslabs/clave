@@ -54,9 +54,16 @@
 
 (s/def ::termsOfServiceAgreed boolean?)
 
+(s/def ::account-key (s/nilable map?))
+(s/def ::account-kid
+  (s/nilable (s/and string?
+                    #(re-matches #"https://.*" %)
+                    #(not (clojure.string/blank? %)))))
+
 (s/def ::account
   (s/keys :req [::contact
-                ::termsOfServiceAgreed]))
+                ::termsOfServiceAgreed]
+          :opt [::account-kid]))
 
 (defn new-nonce-url [session]
   (get-in session [::directory ::newNonce]))
@@ -70,15 +77,14 @@
          (s/coll-of string? :kind list?)))
 (s/def ::http map?)
 
-(s/def ::account-key (s/nilable map?))
-(s/def ::account-kid (s/nilable string?))
-
 (s/def ::poll-interval int?)
 (s/def ::poll-timeout int?)
 
 (s/def ::session (s/keys :req [::directory-url ::nonces ::http ::poll-interval ::poll-timeout]))
 
-(s/def ::registration (s/keys :req [::contact ::termsOfServiceAgreed]))
+(s/def ::registration
+  (s/keys :req [::contact ::termsOfServiceAgreed]
+          :opt [::account-kid]))
 (s/def ::private-key-pem string?)
 (s/def ::public-key-pem string?)
 

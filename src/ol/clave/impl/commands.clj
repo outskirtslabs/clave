@@ -63,7 +63,7 @@
 (defn new-account
   "Register a new ACME account with the server (RFC 8555 Section 7.3).
 
-  Returns [updated-session account-response]."
+  Returns [updated-session normalized-account]."
   [session account]
   (let [account-key (::acme/account-key session)
         endpoint (acme/new-account-url session)
@@ -82,7 +82,8 @@
                                 "No Location header in account creation response"
                                 {})))
           account-resp (json/read-str (slurp body-bytes :encoding "UTF-8"))
+          normalized-account (assoc account ::acme/account-kid account-url)
           session' (-> session
                        (assoc ::acme/account-kid account-url)
                        (http/push-nonce nonce))]
-      [session' account-resp])))
+      [session' normalized-account])))

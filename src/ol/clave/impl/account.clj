@@ -93,7 +93,7 @@
         private-key (proto/private keypair)
         public-key (proto/public keypair)
         _ (crypto/verify-keypair private-key public-key)
-        registration (select-keys normalized [::acme/contact ::acme/termsOfServiceAgreed])
+        registration (select-keys normalized [::acme/contact ::acme/termsOfServiceAgreed ::acme/account-kid])
         keypair-data (proto/serialize keypair)
         artifact (merge keypair-data {::acme/registration registration})]
     (with-out-str

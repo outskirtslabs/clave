@@ -1,10 +1,12 @@
 (ns ol.clave.impl.http.impl-test
   (:require
-   [ol.clave.impl.test-util :refer [http-client-opts]]
+   [clojure.test :refer [deftest is use-fixtures]]
    [ol.clave.impl.http.impl :as http]
-   [clojure.test :refer [deftest is]]))
+   [ol.clave.impl.test-util :refer [http-client-opts] :as util]))
 
 ((requiring-resolve 'hashp.install/install!))
+
+(use-fixtures :once util/pebble-fixture)
 
 (def http-client (http/client http-client-opts))
 

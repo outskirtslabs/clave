@@ -1,6 +1,6 @@
 (ns user
   (:require
-   [ol.clave.impl.account :as account]))
+   [ol.clave.account :as account]))
 ((requiring-resolve 'hashp.install/install!))
 
 (comment
@@ -18,8 +18,8 @@
   (clojure.repl.deps/sync-deps)
   ;;
 
-  (require '[ol.clave.impl.account :as account])
-  (require '[ol.clave.impl.client :as client])
+  (require '[ol.clave.account :as account])
+  (require '[ol.clave.impl.commands :as commands])
   (require '[ol.clave.impl.crypto :as crypto])
   (account/generate-keypair)
 

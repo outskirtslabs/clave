@@ -2,8 +2,7 @@
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [expectations.clojure.test :refer [expect in]]
-   [ol.clave.impl.account :as account]
-   [ol.clave.impl.client :as client]
+   [ol.clave.account :as account]
    [ol.clave.impl.commands :as commands]
    [ol.clave.impl.test-util :as util]))
 
@@ -12,10 +11,10 @@
 (deftest new-account-returns-session-and-response
   (testing "new-account successfully registers with pebble test server"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-          session (client/new-session "https://localhost:14000/dir"
-                                      {:http-client util/http-client-opts
-                                       :account-key account-key})
-          session (client/provision-directory session)
+          session (commands/new-session "https://localhost:14000/dir"
+                                        {:http-client util/http-client-opts
+                                         :account-key account-key})
+          session (commands/load-directory session)
           [updated-session account-resp] (commands/new-account session account)]
       (expect {:ol.clave.specs/account-key account-key
                :ol.clave.specs/directory {:ol.clave.specs/keyChange "https://localhost:14000/rollover-account-key",

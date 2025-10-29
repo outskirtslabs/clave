@@ -25,6 +25,7 @@
           packages = [
             clojure
             jdk
+            pkgs.cfssl
             pkgs.pebble
             pkgs.clojure-lsp
             pkgs.clj-kondo

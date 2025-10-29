@@ -2,7 +2,8 @@
   (:require
    [clojure.string :as str]
    [ol.clave.errors :as errors]
-   [ol.clave.impl.json :as json])
+   [ol.clave.impl.json :as json]
+   [ol.clave.protocols :as proto])
   (:import
    [java.math BigInteger]
    [java.nio.charset StandardCharsets]
@@ -32,34 +33,6 @@
    [javax.crypto.spec SecretKeySpec]))
 
 (set! *warn-on-reflection* true)
-
-(defprotocol AsymmetricKeyPair
-  (keypair [this] "Return a java.security.KeyPair")
-  (private [this]
-    "Return the java.security.PrivateKey half of the key pair.")
-  (public [this]
-    "Return the java.security.PublicKey half of the key pair.")
-  (algo [this] "Return the key type as a keytoword :ol.clave.algo/rsa")
-  (describe [this] "Returns a map describing various key attributes"))
-
-(defrecord KeyPairAlgo [^java.security.PublicKey public-key
-                        ^java.security.PrivateKey private-key
-                        algorithm
-                        attributes]
-  AsymmetricKeyPair
-  (keypair [_]
-    (KeyPair. public-key private-key))
-  (private [_]
-    private-key)
-  (public [_]
-    public-key)
-  (algo [_]
-    algorithm)
-  (describe [_]
-    (merge {:algo algorithm
-            :public-key-class (class public-key)
-            :private-key-class (class private-key)}
-           attributes)))
 
 (def ^:private ^Base64$Encoder url-encoder
   (.withoutPadding (Base64/getUrlEncoder)))
@@ -224,6 +197,22 @@
      (throw (ex-info "Unsupported public key algorithm"
                      {:type ::unsupported-key})))))
 
+(defn encode-public-key-pem
+  "Encode a supported public key as SubjectPublicKeyInfo PEM."
+  [^java.security.PublicKey k]
+  (assert-supported-key k)
+  (pem-encode "PUBLIC KEY" (.getEncoded k)))
+
+(defn decode-public-key-pem
+  "Decode a PEM encoded public key (SubjectPublicKeyInfo)."
+  [^String pem]
+  (let [{:keys [type bytes]} (parse-pem pem)]
+    (if (= type "PUBLIC KEY")
+      (decode-spki bytes)
+      (throw (ex-info "Unsupported public key encoding"
+                      {:type ::unsupported-key
+                       :pem-type type})))))
+
 (defn encode-private-key-pem
   "Encode a supported private key as PKCS#8 PEM."
   [^java.security.PrivateKey k]
@@ -240,21 +229,27 @@
                       {:type ::unsupported-key
                        :pem-type type})))))
 
-(defn encode-public-key-pem
-  "Encode a supported public key as SubjectPublicKeyInfo PEM."
-  [^java.security.PublicKey k]
-  (assert-supported-key k)
-  (pem-encode "PUBLIC KEY" (.getEncoded k)))
-
-(defn decode-public-key-pem
-  "Decode a PEM encoded public key (SubjectPublicKeyInfo)."
-  [^String pem]
-  (let [{:keys [type bytes]} (parse-pem pem)]
-    (if (= type "PUBLIC KEY")
-      (decode-spki bytes)
-      (throw (ex-info "Unsupported public key encoding"
-                      {:type ::unsupported-key
-                       :pem-type type})))))
+(defrecord KeyPairAlgo [^java.security.PublicKey public-key
+                        ^java.security.PrivateKey private-key
+                        algorithm
+                        attributes]
+  proto/AsymmetricKeyPair
+  (keypair [_]
+    (KeyPair. public-key private-key))
+  (private [_]
+    private-key)
+  (public [_]
+    public-key)
+  (algo [_]
+    algorithm)
+  (describe [_]
+    (merge {:algo algorithm
+            :public-key-class (class public-key)
+            :private-key-class (class private-key)}
+           attributes))
+  (serialize [_]
+    {:ol.clave.specs/private-key-pem (encode-private-key-pem private-key)
+     :ol.clave.specs/public-key-pem (encode-public-key-pem public-key)}))
 
 (defn generate-keypair
   "Generate a keypair for :ol.clave.algo/es256 or :ol.clave.algo/ed25519."
@@ -310,19 +305,11 @@
     (.update digest (.getBytes json-str ^java.nio.charset.Charset StandardCharsets/UTF_8))
     (.encodeToString url-encoder (.digest digest))))
 
-(defn generate-public-jwk
-  "Convenience wrapper returning {:public key :jwk map :thumbprint string}."
-  [^java.security.PublicKey key]
-  (let [jwk (public-jwk key)]
-    {:public key
-     :jwk jwk
-     :thumbprint (jwk-thumbprint jwk)}))
-
 (defn- sign-verify [algo ^java.security.PrivateKey private ^java.security.PublicKey public ^bytes message]
   (let [^Signature signature (Signature/getInstance algo)]
     (.initSign signature private)
     (.update signature message)
-    (let [sig-bytes (.sign signature)
+    (let [sig-bytes           (.sign signature)
           ^Signature verifier (Signature/getInstance algo)]
       (.initVerify verifier public)
       (.update verifier message)

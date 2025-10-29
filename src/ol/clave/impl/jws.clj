@@ -2,7 +2,8 @@
   (:require
    [clojure.string :as str]
    [ol.clave.errors :as errors]
-   [ol.clave.impl.crypto :as crypto])
+   [ol.clave.impl.crypto :as crypto]
+   [ol.clave.protocols :as proto])
   (:import
    [java.nio.charset StandardCharsets]
    [java.security PrivateKey Signature]
@@ -312,8 +313,8 @@
     (instance? java.security.PublicKey key-or-keypair)
     key-or-keypair
 
-    (satisfies? crypto/AsymmetricKeyPair key-or-keypair)
-    (crypto/public key-or-keypair)
+    (satisfies? proto/AsymmetricKeyPair key-or-keypair)
+    (proto/public key-or-keypair)
 
     :else
     (invalid-header! "Expected PublicKey or AsymmetricKeyPair"
@@ -323,14 +324,14 @@
   "Build a JSON-serialized JWS object for ES256 or Ed25519.
    keypair: AsymmetricKeyPair (e.g., KeyPairAlgo record)."
   ^String [payload-json keypair kid nonce url]
-  (let [private-key                               (crypto/private keypair)
-        public-key                                (crypto/public keypair)
-        alg                                       (select-jws-alg private-key)
-        jwk-json                                  (when (nil? kid)
-                                                    (let [jwk-map (crypto/public-jwk public-key)]
-                                                      (jwk->canonical-json jwk-map)))
+  (let [private-key (proto/private keypair)
+        public-key (proto/public keypair)
+        alg (select-jws-alg private-key)
+        jwk-json (when (nil? kid)
+                   (let [jwk-map (crypto/public-jwk public-key)]
+                     (jwk->canonical-json jwk-map)))
         {:keys [protected payload signing-bytes]} (encode-payload-and-protected alg kid nonce url jwk-json payload-json)
-        signature-b64                             (encode-signature-b64 alg private-key signing-bytes)]
+        signature-b64 (encode-signature-b64 alg private-key signing-bytes)]
     (final-jws-json protected payload signature-b64)))
 
 (defn jws-encode-eab

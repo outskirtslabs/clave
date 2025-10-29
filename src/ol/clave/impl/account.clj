@@ -6,6 +6,7 @@
    [clojure.string :as str]
    [ol.clave.errors :as errors]
    [ol.clave.impl.crypto :as crypto]
+   [ol.clave.protocols :as proto]
    [ol.clave.specs :as acme]))
 
 (set! *warn-on-reflection* true)
@@ -91,16 +92,15 @@
 
 (defn serialize
   "Serialize an account map and keypair into a pretty-printed EDN artifact.
-   keypair: crypto/AsymmetricKeyPair (e.g., KeyPairAlgo record)."
+   keypair: proto/AsymmetricKeyPair (e.g., KeyPairAlgo record)."
   [account keypair]
   (let [normalized (validate-account account)
-        private-key (crypto/private keypair)
-        public-key (crypto/public keypair)
+        private-key (proto/private keypair)
+        public-key (proto/public keypair)
         _ (crypto/verify-keypair private-key public-key)
         registration (select-keys normalized [::acme/contact ::acme/termsOfServiceAgreed])
-        artifact {::acme/registration registration
-                  ::acme/private-key-pem (crypto/encode-private-key-pem private-key)
-                  ::acme/public-key-pem (crypto/encode-public-key-pem public-key)}]
+        keypair-data (proto/serialize keypair)
+        artifact (merge keypair-data {::acme/registration registration})]
     (with-out-str
       (pprint/pprint artifact))))
 

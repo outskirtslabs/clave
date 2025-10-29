@@ -2,7 +2,8 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [ol.clave.errors :as errors]
-   [ol.clave.impl.crypto :as crypto])
+   [ol.clave.impl.crypto :as crypto]
+   [ol.clave.protocols :as proto])
   (:import
    [java.nio.charset StandardCharsets]
    [java.security.interfaces ECPrivateKey ECPublicKey]
@@ -52,9 +53,9 @@
 (deftest generate-es256-roundtrip
   (testing "ES256 keypair can roundtrip through PEM"
     (let [keypair-algo (crypto/generate-keypair :ol.clave.algo/es256)
-          private (crypto/private keypair-algo)
-          public (crypto/public keypair-algo)
-          algo (crypto/algo keypair-algo)
+          private (proto/private keypair-algo)
+          public (proto/public keypair-algo)
+          algo (proto/algo keypair-algo)
           private-pem (crypto/encode-private-key-pem private)
           public-pem (crypto/encode-public-key-pem public)
           decoded-private (crypto/decode-private-key-pem private-pem)
@@ -70,9 +71,9 @@
 (deftest generate-ed25519-roundtrip
   (testing "Ed25519 keypair can roundtrip through PEM"
     (let [keypair-algo (crypto/generate-keypair :ol.clave.algo/ed25519)
-          private (crypto/private keypair-algo)
-          public (crypto/public keypair-algo)
-          algo (crypto/algo keypair-algo)
+          private (proto/private keypair-algo)
+          public (proto/public keypair-algo)
+          algo (proto/algo keypair-algo)
           private-pem (crypto/encode-private-key-pem private)
           public-pem (crypto/encode-public-key-pem public)]
       (is (= :ol.clave.algo/ed25519 algo))
@@ -95,7 +96,7 @@
 (deftest public-jwk-structure
   (testing "public-jwk returns expected fields"
     (let [keypair-algo (crypto/generate-keypair :ol.clave.algo/es256)
-          public (crypto/public keypair-algo)
+          public (proto/public keypair-algo)
           jwk (crypto/public-jwk public)
           decoder (Base64/getUrlDecoder)]
       (is (= "EC" (:kty jwk)))
@@ -104,7 +105,7 @@
       (is (= 32 (alength (.decode decoder (:y jwk)))))))
   (testing "Ed25519 public JWK encoding"
     (let [keypair-algo (crypto/generate-keypair :ol.clave.algo/ed25519)
-          public (crypto/public keypair-algo)
+          public (proto/public keypair-algo)
           jwk (crypto/public-jwk public)
           decoder (Base64/getUrlDecoder)]
       (is (= "OKP" (:kty jwk)))

@@ -5,6 +5,7 @@
    [clojure.test :refer [deftest is testing]]
    [ol.clave.impl.account :as account]
    [ol.clave.impl.crypto :as crypto]
+   [ol.clave.protocols :as proto]
    [ol.clave.specs :as acme]))
 
 (def ^:private sample-account
@@ -16,10 +17,10 @@
         serialized (account/serialize sample-account kp)
         [account keypair] (account/deserialize serialized)]
     (is (= (account/validate-account sample-account) account))
-    (is (= algo (crypto/algo keypair)))
-    (is (= algo (crypto/key-algorithm (crypto/private keypair))))
-    (is (= algo (crypto/key-algorithm (crypto/public keypair))))
-    (is (= algo (:algo (crypto/verify-keypair (crypto/private keypair) (crypto/public keypair)))))
+    (is (= algo (proto/algo keypair)))
+    (is (= algo (crypto/key-algorithm (proto/private keypair))))
+    (is (= algo (crypto/key-algorithm (proto/public keypair))))
+    (is (= algo (:algo (crypto/verify-keypair (proto/private keypair) (proto/public keypair)))))
     (is (map? (edn/read-string serialized)))
     [account keypair]))
 
@@ -45,7 +46,7 @@
           serialized (account/serialize sample-account kp)
           parsed (edn/read-string serialized)
           tampered-keypair (crypto/generate-keypair :ol.clave.algo/es256)
-          tampered-public (crypto/public tampered-keypair)
+          tampered-public (proto/public tampered-keypair)
           tampered-edn (with-out-str
                          (pprint/pprint
                           (assoc parsed ::acme/public-key-pem (crypto/encode-public-key-pem tampered-public))))]
@@ -104,9 +105,9 @@
 (deftest generate-keypair-produces-keypair
   (testing "keypair generation returns private and public keys"
     (let [keypair (account/generate-keypair)]
-      (is (instance? java.security.PrivateKey (crypto/private keypair)))
-      (is (instance? java.security.PublicKey (crypto/public keypair)))
-      (is (#{:ol.clave.algo/es256 :ol.clave.algo/ed25519} (crypto/algo keypair))))))
+      (is (instance? java.security.PrivateKey (proto/private keypair)))
+      (is (instance? java.security.PublicKey (proto/public keypair)))
+      (is (#{:ol.clave.algo/es256 :ol.clave.algo/ed25519} (proto/algo keypair))))))
 
 (deftest deserialize-test-fixture
   (testing "deserialize test account fixture"
@@ -114,6 +115,6 @@
       (is (= {::acme/contact ["mailto:test@example.com"]
               ::acme/termsOfServiceAgreed true}
              expected-account))
-      (is (= :ol.clave.algo/es256 (crypto/algo expected-keypair)))
-      (is (instance? java.security.PrivateKey (crypto/private expected-keypair)))
-      (is (instance? java.security.PublicKey (crypto/public expected-keypair))))))
+      (is (= :ol.clave.algo/es256 (proto/algo expected-keypair)))
+      (is (instance? java.security.PrivateKey (proto/private expected-keypair)))
+      (is (instance? java.security.PublicKey (proto/public expected-keypair))))))

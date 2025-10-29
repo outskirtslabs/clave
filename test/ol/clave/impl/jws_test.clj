@@ -3,7 +3,8 @@
    [clojure.test :refer [deftest is testing]]
    [ol.clave.impl.crypto :as crypto]
    [ol.clave.impl.json :as json]
-   [ol.clave.impl.jws :as jws])
+   [ol.clave.impl.jws :as jws]
+   [ol.clave.protocols :as proto])
   (:import
    [java.nio.charset StandardCharsets]))
 
@@ -76,9 +77,9 @@
 
 (deftest select-jws-alg-test
   (testing "ES256 key selects ES256"
-    (is (= "ES256" (jws/select-jws-alg (crypto/private sample-es256-keypair)))))
+    (is (= "ES256" (jws/select-jws-alg (proto/private sample-es256-keypair)))))
   (testing "Ed25519 key selects EdDSA"
-    (is (= "EdDSA" (jws/select-jws-alg (crypto/private sample-ed25519-keypair))))))
+    (is (= "EdDSA" (jws/select-jws-alg (proto/private sample-ed25519-keypair))))))
 
 (deftest protected-dot-payload-bytes-test
   (testing "creates ASCII concatenation"
@@ -138,27 +139,27 @@
 
 (deftest sign-es256-test
   (testing "produces 64-byte signature"
-    (let [private (crypto/private sample-es256-keypair)
+    (let [private (proto/private sample-es256-keypair)
           message (.getBytes "test message" StandardCharsets/UTF_8)
           sig (jws/sign-es256 private message)]
       (is (= 64 (alength sig))))))
 
 (deftest sign-eddsa-test
   (testing "produces 64-byte signature"
-    (let [private (crypto/private sample-ed25519-keypair)
+    (let [private (proto/private sample-ed25519-keypair)
           message (.getBytes "test message" StandardCharsets/UTF_8)
           sig (jws/sign-eddsa private message)]
       (is (= 64 (alength sig))))))
 
 (deftest encode-signature-b64-test
   (testing "ES256 signature encoding"
-    (let [private (crypto/private sample-es256-keypair)
+    (let [private (proto/private sample-es256-keypair)
           message (.getBytes "test" StandardCharsets/UTF_8)
           b64 (jws/encode-signature-b64 "ES256" private message)]
       (is (string? b64))
       (is (not (.contains b64 "=")))))
   (testing "EdDSA signature encoding"
-    (let [private (crypto/private sample-ed25519-keypair)
+    (let [private (proto/private sample-ed25519-keypair)
           message (.getBytes "test" StandardCharsets/UTF_8)
           b64 (jws/encode-signature-b64 "EdDSA" private message)]
       (is (string? b64))
@@ -224,7 +225,7 @@
         (is (.contains decoded-payload "\"kty\":\"EC\"")))))
   (testing "EAB with public key directly"
     (let [mac-key (.getBytes "secret" StandardCharsets/UTF_8)
-          public-key (crypto/public sample-ed25519-keypair)
+          public-key (proto/public sample-ed25519-keypair)
           eab-json (jws/jws-encode-eab public-key mac-key "kid" "https://example.com")
           parsed (json/read-str eab-json)
           decoded-payload (String. (crypto/base64url-decode (:payload parsed)) StandardCharsets/UTF_8)]

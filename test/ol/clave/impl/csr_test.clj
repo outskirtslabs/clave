@@ -9,9 +9,14 @@
   (:import
    [java.security KeyPairGenerator]
    [java.security.spec ECGenParameterSpec]
-   [java.util Base64]))
+   [java.util Base64]
+   [org.bouncycastle.asn1.pkcs PKCSObjectIdentifiers]
+   [org.bouncycastle.asn1.x509 Extension Extensions GeneralName GeneralNames]
+   [org.bouncycastle.pkcs PKCS10CertificationRequest]))
 
-;; ==================== Test Helpers ====================
+;; -------------------------
+;; Test Helpers
+;; -------------------------
 
 (defn generate-keypair
   "Generate a keypair for testing."
@@ -42,7 +47,9 @@
   (-> (Base64/getUrlDecoder)
       (.decode s)))
 
-;; ==================== CFSSL Verification Helpers ====================
+;; -------------------------
+;; CFSSL Verification Helpers
+;; -------------------------
 
 (defn cfssl-available?
   "Check if cfssl is available in PATH."
@@ -55,7 +62,7 @@
 
 (defn cfssl-verify-csr
   "Verify CSR using cfssl and return parsed JSON.
-  
+
   Returns nil if cfssl is not available or verification fails."
   [csr-pem]
   (when (cfssl-available?)
@@ -84,7 +91,7 @@
 
 (defn cfssl-signature-algorithm
   "Extract signature algorithm ID from CFSSL output.
-  
+
   Returns:
   - 4 for SHA256-RSA (1.2.840.113549.1.1.11)
   - 10 for ECDSA-SHA256 (1.2.840.10045.4.3.2)
@@ -93,7 +100,64 @@
   [cfssl-json]
   (:SignatureAlgorithm cfssl-json))
 
-;; ==================== DER Encoding Primitives Tests ====================
+;; -------------------------
+;; BouncyCastle Helpers
+;; -------------------------
+
+(defn bc-parse-csr
+  "Parse CSR DER bytes using BouncyCastle.
+
+  Returns PKCS10CertificationRequest object."
+  [csr-der]
+  (PKCS10CertificationRequest. csr-der))
+
+(defn bc-get-sans
+  "Extract all SANs from a BouncyCastle PKCS10CertificationRequest.
+
+  Returns vector of {:type :dns/:ip :value string} maps."
+  [^PKCS10CertificationRequest csr]
+  (try
+    (let [attrs (.getAttributes csr PKCSObjectIdentifiers/pkcs_9_at_extensionRequest)]
+      (when (pos? (alength attrs))
+        (let [attr-values (.getAttrValues (aget attrs 0))
+              ;; attr-values is an ASN1Set, get first element
+              exts (Extensions/getInstance (.getObjectAt attr-values 0))
+              san-ext (.getExtension exts Extension/subjectAlternativeName)]
+          (when san-ext
+            (let [general-names (GeneralNames/getInstance (.getParsedValue san-ext))
+                  names (.getNames general-names)]
+              (vec (for [^GeneralName gn names
+                         :let [tag (.getTagNo gn)
+                               name-obj (.getName gn)]]
+                     (cond
+                       (= tag GeneralName/dNSName)
+                       {:type :dns
+                        :value (str name-obj)}
+
+                       (= tag GeneralName/iPAddress)
+                       {:type :ip
+                        :value (str name-obj)}
+
+                       :else
+                       {:type :other
+                        :value (str name-obj)}))))))))
+    (catch Exception e
+      (println "BC SAN extraction failed:" (.getMessage e))
+      nil)))
+
+(defn bc-get-signature-algorithm-oid
+  "Extract signature algorithm OID from BouncyCastle PKCS10CertificationRequest.
+
+  Returns OID as string, e.g., '1.2.840.113549.1.1.11' for SHA256withRSA."
+  [^PKCS10CertificationRequest csr]
+  (-> csr
+      (.getSignatureAlgorithm)
+      (.getAlgorithm)
+      (.getId)))
+
+;; -------------------------
+;; DER Encoding Primitives Tests
+;; -------------------------
 
 (deftest test-der-sequence
   (testing "Empty sequence"
@@ -148,9 +212,46 @@
     (let [data (byte-array [0x01 0x02 0x03])
           result (csr/der-bit-string data)]
       (is (= 0x03 (aget result 0))) ; BIT STRING tag
-      (is (= 0x00 (aget result 2)))))) ; unused bits
+      (is (= 0x00 (aget result 2))))))
 
-;; ==================== Algorithm Selection Tests ====================
+(deftest test-der-set-sorting
+  (testing "DER SET sorts elements lexicographically"
+    ;; Create three different elements with different first bytes
+    ;; After sorting: 0x02 (INTEGER) < 0x05 (NULL) < 0x0C (UTF8String)
+    (let [int-elem (csr/der-integer 1) ; starts with 0x02
+          null-elem (csr/der-null) ; starts with 0x05
+          str-elem (csr/der-utf8-string "a") ; starts with 0x0C
+
+          ;; Pass in reverse order to verify sorting
+          result (csr/der-set str-elem null-elem int-elem)]
+
+      (is (= 0x31 (aget result 0)) "Should be SET tag")
+
+      ;; After tag and length, content should be sorted:
+      ;; INTEGER (0x02), NULL (0x05), UTF8String (0x0C)
+      (let [content-start 2 ; skip tag and length byte
+            first-elem-tag (aget result content-start)
+            second-elem-offset (+ content-start (alength int-elem))
+            second-elem-tag (aget result second-elem-offset)
+            third-elem-offset (+ second-elem-offset (alength null-elem))
+            third-elem-tag (aget result third-elem-offset)]
+
+        (is (= 0x02 first-elem-tag) "First should be INTEGER")
+        (is (= 0x05 second-elem-tag) "Second should be NULL")
+        (is (= 0x0C third-elem-tag) "Third should be UTF8String"))))
+
+  (testing "Single element SET (no sorting needed)"
+    (let [result (csr/der-set (csr/der-integer 42))]
+      (is (= 0x31 (aget result 0)))
+      (is (= 0x02 (aget result 2))))) ; INTEGER tag after SET header
+
+  (testing "Empty SET"
+    (let [result (csr/der-set)]
+      (is (= [0x31 0x00] (vec result)))))) ; unused bits
+
+;; -------------------------
+;; Algorithm Selection Tests
+;; -------------------------
 
 (deftest test-algorithm-selection
   (testing "RSA 2048"
@@ -184,7 +285,9 @@
             result (csr/create-csr kp ["test.com"])]
         (is (= :ed25519 (:algorithm result)))))))
 
-;; ==================== Subject DN Tests ====================
+;; -------------------------
+;; Subject DN Tests
+;; -------------------------
 
 (deftest test-subject-dn
   (testing "Empty subject when use-cn? is false"
@@ -201,9 +304,31 @@
   (testing "CN from first SAN even if wildcard"
     (let [kp (generate-keypair :rsa 2048)
           result (csr/create-csr kp ["*.example.com" "example.com"] {:use-cn? true})]
-      (is (some? (:csr-pem result))))))
+      (is (some? (:csr-pem result)))))
 
-;; ==================== SAN Validation Tests ====================
+  (testing "CN skips IP SANs and uses first DNS SAN when use-cn? is true"
+    (let [kp (generate-keypair :rsa 2048)
+          result (csr/create-csr kp ["192.0.2.1" "example.com" "www.example.com"] {:use-cn? true})]
+      (is (some? (:csr-pem result)))
+      ;; Verify with cfssl if available
+      (when (cfssl-available?)
+        (let [cfssl-json (cfssl-verify-csr (:csr-pem result))
+              cn (cfssl-subject-cn cfssl-json)]
+          (is (= "example.com" cn) "CN should be first DNS SAN, not IP")))))
+
+  (testing "Empty CN when only IP SANs and use-cn? is true"
+    (let [kp (generate-keypair :rsa 2048)
+          result (csr/create-csr kp ["192.0.2.1" "2001:db8::1"] {:use-cn? true})]
+      (is (some? (:csr-pem result)))
+      ;; Verify with cfssl if available
+      (when (cfssl-available?)
+        (let [cfssl-json (cfssl-verify-csr (:csr-pem result))
+              cn (cfssl-subject-cn cfssl-json)]
+          (is (or (nil? cn) (str/blank? cn)) "CN should be empty when no DNS SANs"))))))
+
+;; -------------------------
+;; SAN Validation Tests
+;; -------------------------
 
 (deftest test-san-validation
   (testing "Valid DNS SANs"
@@ -266,7 +391,9 @@
          #"Multiple wildcards"
          (csr/create-csr (generate-keypair :rsa 2048) ["*.*.*.*"])))))
 
-;; ==================== IDNA/Punycode Tests ====================
+;; -------------------------
+;; IDNA/Punycode Tests
+;; -------------------------
 
 (deftest test-idna-conversion
   (testing "Unicode to Punycode in CSR"
@@ -290,7 +417,9 @@
           result (csr/create-csr kp ["münchen.example.com"])]
       (is (some? (:csr-pem result))))))
 
-;; ==================== IP Address SAN Tests ====================
+;; -------------------------
+;; IP Address SAN Tests
+;; -------------------------
 
 (deftest test-ip-sans
   (testing "IPv4 addresses (auto-detected)"
@@ -317,7 +446,9 @@
         (is (= :ip (:type (second sans))))
         (is (= :ip (:type (nth sans 2))))))))
 
-;; ==================== Base64URL Output Tests ====================
+;; -------------------------
+;; Base64URL Output Tests
+;; -------------------------
 
 (deftest test-base64url-output
   (testing "Base64URL has no padding"
@@ -345,7 +476,9 @@
       (is (string? (:csr payload)))
       (is (not (str/includes? (:csr payload) "BEGIN CERTIFICATE"))))))
 
-;; ==================== PEM Output Tests ====================
+;; -------------------------
+;; PEM Output Tests
+;; -------------------------
 
 (deftest test-pem-output
   (testing "PEM format"
@@ -359,7 +492,9 @@
           result (csr/create-csr kp ["test.com"])]
       (is (str/includes? (:csr-pem result) "\n")))))
 
-;; ==================== Return Value Structure Tests ====================
+;; -------------------------
+;; Return Value Structure Tests
+;; -------------------------
 
 (deftest test-return-value
   (testing "All required keys present"
@@ -380,7 +515,9 @@
       (is (keyword? (:algorithm result)))
       (is (map? (:details result))))))
 
-;; ==================== End-to-End Tests ====================
+;; -------------------------
+;; End-to-End Tests
+;; -------------------------
 
 (deftest test-e2e-csr-generation
   (testing "Complete CSR generation - RSA"
@@ -388,39 +525,60 @@
           result (csr/create-csr kp
                                  ["example.com"
                                   "www.example.com"
-                                  "*.api.example.com"])]
+                                  "*.api.example.com"])
+          bc-csr (bc-parse-csr (:csr-der result))]
       (is (string? (:csr-pem result)))
       (is (bytes? (:csr-der result)))
       (is (string? (:csr-b64url result)))
-      (is (= :rsa-2048 (:algorithm result)))))
+      (is (= :rsa-2048 (:algorithm result)))
+      (is (some? bc-csr) "BC should parse CSR")
+      (is (= "1.2.840.113549.1.1.11" (bc-get-signature-algorithm-oid bc-csr)))))
 
   (testing "Complete CSR generation - ECDSA P-256"
     (let [kp (generate-keypair :ec "secp256r1")
-          result (csr/create-csr kp ["example.com" "www.example.com"])]
-      (is (= :ec-p256 (:algorithm result)))))
+          result (csr/create-csr kp ["example.com" "www.example.com"])
+          bc-csr (bc-parse-csr (:csr-der result))]
+      (is (= :ec-p256 (:algorithm result)))
+      (is (some? bc-csr) "BC should parse CSR")
+      (is (= "1.2.840.10045.4.3.2" (bc-get-signature-algorithm-oid bc-csr)))))
 
   (testing "Complete CSR generation - ECDSA P-384"
     (let [kp (generate-keypair :ec "secp384r1")
-          result (csr/create-csr kp ["example.com"])]
-      (is (= :ec-p384 (:algorithm result)))))
+          result (csr/create-csr kp ["example.com"])
+          bc-csr (bc-parse-csr (:csr-der result))]
+      (is (= :ec-p384 (:algorithm result)))
+      (is (some? bc-csr) "BC should parse CSR")
+      (is (= "1.2.840.10045.4.3.3" (bc-get-signature-algorithm-oid bc-csr)))))
 
   (testing "Complete CSR generation - Ed25519"
     (when (ed25519-available?)
       (let [kp (generate-keypair :ed25519)
-            result (csr/create-csr kp ["example.com"])]
-        (is (= :ed25519 (:algorithm result))))))
+            result (csr/create-csr kp ["example.com"])
+            bc-csr (bc-parse-csr (:csr-der result))]
+        (is (= :ed25519 (:algorithm result)))
+        (is (some? bc-csr) "BC should parse CSR")
+        (is (= "1.3.101.112" (bc-get-signature-algorithm-oid bc-csr))))))
 
   (testing "Mixed DNS and IP SANs"
     (let [kp (generate-keypair :rsa 2048)
-          result (csr/create-csr kp ["example.com" "192.0.2.1" "2001:db8::1"])]
-      (is (= 3 (count (get-in result [:details :sans]))))))
+          result (csr/create-csr kp ["example.com" "192.0.2.1" "2001:db8::1"])
+          bc-csr (bc-parse-csr (:csr-der result))
+          bc-sans (bc-get-sans bc-csr)]
+      (is (= 3 (count (get-in result [:details :sans]))))
+      (is (= 3 (count bc-sans)) "BC should extract all 3 SANs")))
 
   (testing "Unicode domains"
     (let [kp (generate-keypair :rsa 2048)
-          result (csr/create-csr kp ["münchen.example" "café.example"])]
-      (is (some? (:csr-pem result))))))
+          result (csr/create-csr kp ["münchen.example" "café.example"])
+          bc-csr (bc-parse-csr (:csr-der result))
+          bc-sans (bc-get-sans bc-csr)]
+      (is (some? (:csr-pem result)))
+      (is (= 2 (count bc-sans)) "BC should extract punycode SANs")
+      (is (every? #(= :dns (:type %)) bc-sans)))))
 
-;; ==================== Error Handling Tests ====================
+;; -------------------------
+;; Error Handling Tests
+;; -------------------------
 
 (deftest test-error-handling
   (testing "Empty SAN list"
@@ -435,7 +593,9 @@
          #"Multiple wildcards"
          (csr/create-csr (generate-keypair :rsa 2048) ["*.*.*.*"])))))
 
-;; ==================== Signature Verification Tests ====================
+;; -------------------------
+;; Signature Verification Tests
+;; -------------------------
 
 (deftest test-signature-self-verification
   (testing "RSA signature can be verified"
@@ -455,7 +615,9 @@
             result (csr/create-csr kp ["test.com"])]
         (is (some? (:csr-der result)))))))
 
-;; ==================== CFSSL Verification Tests ====================
+;; -------------------------
+;; CFSSL Verification Tests
+;; -------------------------
 
 (deftest test-cfssl-verification-rsa
   (if-not (cfssl-available?)
@@ -573,3 +735,85 @@
           (is (some? cfssl-json))
           (is (cfssl-has-san? cfssl-json :dns "*.example.com"))
           (is (cfssl-has-san? cfssl-json :dns "example.com")))))))
+
+;; -------------------------
+;; BouncyCastle Verification Tests
+;; -------------------------
+
+(deftest test-bc-san-deduplication
+  (testing "SAN deduplication in actual DER encoding"
+    (testing "Duplicate DNS SANs are removed"
+      (let [kp (generate-keypair :rsa 2048)
+            result (csr/create-csr kp ["example.com" "EXAMPLE.COM" "Example.Com" "www.example.com"])
+            bc-csr (bc-parse-csr (:csr-der result))
+            bc-sans (bc-get-sans bc-csr)
+            details-sans (:sans (:details result))]
+
+        (is (= 2 (count details-sans)) "Details should show 2 unique SANs")
+        (is (= 2 (count bc-sans)) "Actual CSR should have 2 SANs (deduped)")
+        (is (some #(and (= :dns (:type %)) (= "example.com" (:value %))) bc-sans))
+        (is (some #(and (= :dns (:type %)) (= "www.example.com" (:value %))) bc-sans))))
+
+    (testing "Mixed case and trailing dots normalize and deduplicate"
+      (let [kp (generate-keypair :rsa 2048)
+            result (csr/create-csr kp ["example.com" "example.com." "EXAMPLE.COM."])
+            bc-csr (bc-parse-csr (:csr-der result))
+            bc-sans (bc-get-sans bc-csr)]
+
+        (is (= 1 (count (:sans (:details result)))))
+        (is (= 1 (count bc-sans)) "Should deduplicate to 1 SAN")))
+
+    (testing "IP addresses are deduplicated"
+      (let [kp (generate-keypair :rsa 2048)
+            result (csr/create-csr kp ["192.0.2.1" "example.com"])
+            bc-csr (bc-parse-csr (:csr-der result))
+            bc-sans (bc-get-sans bc-csr)]
+
+        (is (= 2 (count (:sans (:details result)))))
+        (is (= 2 (count bc-sans)) "Should have 2 unique SANs")))
+
+    (testing "Unicode domains deduplicate after IDNA encoding"
+      (let [kp (generate-keypair :rsa 2048)
+            result (csr/create-csr kp ["münchen.example" "MÜNCHEN.EXAMPLE"])
+            bc-csr (bc-parse-csr (:csr-der result))
+            bc-sans (bc-get-sans bc-csr)]
+
+        (is (= 1 (count (:sans (:details result)))))
+        (is (= 1 (count bc-sans)) "Should deduplicate to 1 punycode SAN")
+        (is (= "xn--mnchen-3ya.example" (:value (first bc-sans))))))))
+
+(deftest test-bc-algorithm-oids
+  (testing "Algorithm OID verification in actual DER encoding"
+    (testing "RSA uses SHA256withRSA OID 1.2.840.113549.1.1.11"
+      (doseq [key-size [2048 3072 4096]]
+        (let [kp (generate-keypair :rsa key-size)
+              result (csr/create-csr kp ["test.example.com"])
+              bc-csr (bc-parse-csr (:csr-der result))
+              oid (bc-get-signature-algorithm-oid bc-csr)]
+          (is (= "1.2.840.113549.1.1.11" oid)
+              (str "RSA " key-size " should use SHA256withRSA OID")))))
+
+    (testing "ECDSA P-256 uses ecdsa-with-SHA256 OID 1.2.840.10045.4.3.2"
+      (let [kp (generate-keypair :ec "secp256r1")
+            result (csr/create-csr kp ["test.example.com"])
+            bc-csr (bc-parse-csr (:csr-der result))
+            oid (bc-get-signature-algorithm-oid bc-csr)]
+        (is (= "1.2.840.10045.4.3.2" oid)
+            "ECDSA P-256 should use ecdsa-with-SHA256 OID")))
+
+    (testing "ECDSA P-384 uses ecdsa-with-SHA384 OID 1.2.840.10045.4.3.3"
+      (let [kp (generate-keypair :ec "secp384r1")
+            result (csr/create-csr kp ["test.example.com"])
+            bc-csr (bc-parse-csr (:csr-der result))
+            oid (bc-get-signature-algorithm-oid bc-csr)]
+        (is (= "1.2.840.10045.4.3.3" oid)
+            "ECDSA P-384 should use ecdsa-with-SHA384 OID")))
+
+    (testing "Ed25519 uses correct OID 1.3.101.112"
+      (when (ed25519-available?)
+        (let [kp (generate-keypair :ed25519)
+              result (csr/create-csr kp ["test.example.com"])
+              bc-csr (bc-parse-csr (:csr-der result))
+              oid (bc-get-signature-algorithm-oid bc-csr)]
+          (is (= "1.3.101.112" oid)
+              "Ed25519 should use OID 1.3.101.112"))))))

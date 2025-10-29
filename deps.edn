@@ -1,23 +1,24 @@
 {:paths   ["src"]
  :deps    {com.taoensso/trove {:mvn/version "1.1.0"}
-           org.babashka/json {:mvn/version "0.1.6"}}
+           org.babashka/json  {:mvn/version "0.1.6"}}
  :aliases {:kaocha {:extra-paths ["test"]
                     :extra-deps  {lambdaisland/kaocha {:mvn/version "1.91.1392"}
                                   cheshire/cheshire   {:mvn/version "6.1.0"}
                                   mvxcvi/alphabase    {:mvn/version "3.0.185"}}
                     :main-opts   ["-m" "kaocha.runner"]}
            :dev    {:extra-paths ["dev"]
-                    :extra-deps        {dev.weavejester/hashp                    {:mvn/version "0.5.1"}
-                                        org.babashka/http-client                 {:mvn/version "0.4.23"}
-                                        com.cnuernber/charred                    {:mvn/version "1.037"}
-                                        io.github.tonsky/clj-reload              {:mvn/version "1.0.0"}
-                                        babashka/process                         {:mvn/version "0.6.23"}
-                                        com.clojure-goes-fast/clj-async-profiler {:mvn/version "1.6.2"}}}
-           :build {:deps       {io.github.clojure/tools.build {:git/tag "v0.10.11"
-                                                               :git/sha "c6c670a"}
-                                slipset/deps-deploy           {:mvn/version "0.2.2"}}
-                   :ns-default build}
-           :neil  {:project {:name        com.outskirtslabs/clave
-                             :license     {:id "EUPL-1.2"}
-                             :description ""
-                             :version     "0.0.0"}}}}
+                    :extra-deps  {dev.weavejester/hashp                    {:mvn/version "0.5.1"}
+                                  org.babashka/http-client                 {:mvn/version "0.4.23"}
+                                  com.cnuernber/charred                    {:mvn/version "1.037"}
+                                  io.github.tonsky/clj-reload              {:mvn/version "1.0.0"}
+                                  babashka/process                         {:mvn/version "0.6.23"}
+                                  org.bouncycastle/bcpkix-jdk18on          {:mvn/version "1.82"}
+                                  com.clojure-goes-fast/clj-async-profiler {:mvn/version "1.6.2"}}}
+           :build  {:deps       {io.github.clojure/tools.build {:git/tag "v0.10.11"
+                                                                :git/sha "c6c670a"}
+                                 slipset/deps-deploy           {:mvn/version "0.2.2"}}
+                    :ns-default build}
+           :neil   {:project {:name        com.outskirtslabs/clave
+                              :license     {:id "EUPL-1.2"}
+                              :description ""
+                              :version     "0.0.0"}}}}

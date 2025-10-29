@@ -13,7 +13,6 @@
             [ol.clave.impl.parse-ip :as parse-ip])
   (:import [java.math BigInteger]
            [java.net IDN InetAddress]
-           [java.nio ByteBuffer]
            [java.nio.charset StandardCharsets]
            [java.security Signature]
            [java.security.interfaces ECPublicKey RSAPublicKey]
@@ -41,46 +40,74 @@
       result)))
 
 (defn- concat-bytes
-  "Concatenate multiple byte arrays."
-  [& arrays]
+  "Concatenate multiple byte arrays into a new byte array."
+  ^bytes [& arrays]
   (let [total-len (reduce + (map alength arrays))
-        buf (ByteBuffer/allocate total-len)]
-    (doseq [arr arrays]
-      (.put buf ^bytes arr))
-    (.array buf)))
+        result (byte-array total-len)]
+    (loop [arrays arrays
+           offset 0]
+      (when-let [arr (first arrays)]
+        (System/arraycopy arr 0 result offset (alength arr))
+        (recur (rest arrays) (+ offset (alength arr)))))
+    result))
 
 (defn- der-primitive
-  "Encode DER primitive with given tag and content."
-  [tag content]
+  "Encode DER primitive with given tag and content.
+
+  Returns a new byte array."
+  ^bytes [tag content]
   (let [len-bytes (encode-length (alength content))
-        buf (ByteBuffer/allocate (+ 1 (alength len-bytes) (alength content)))]
-    (doto buf
-      (.put (unchecked-byte tag))
-      (.put len-bytes)
-      (.put content))
-    (.array buf)))
+        total-len (+ 1 (alength len-bytes) (alength content))
+        result (byte-array total-len)]
+    (aset-byte result 0 (unchecked-byte tag))
+    (System/arraycopy len-bytes 0 result 1 (alength len-bytes))
+    (System/arraycopy content 0 result (+ 1 (alength len-bytes)) (alength content))
+    result))
 
 (defn- der-constructed
-  "Encode DER constructed with given tag and content."
-  [tag content]
+  "Encode DER constructed with given tag and content.
+
+  Returns a new byte array."
+  ^bytes [tag content]
   (let [len-bytes (encode-length (alength content))
-        buf (ByteBuffer/allocate (+ 1 (alength len-bytes) (alength content)))]
-    (doto buf
-      (.put (unchecked-byte tag))
-      (.put len-bytes)
-      (.put content))
-    (.array buf)))
+        total-len (+ 1 (alength len-bytes) (alength content))
+        result (byte-array total-len)]
+    (aset-byte result 0 (unchecked-byte tag))
+    (System/arraycopy len-bytes 0 result 1 (alength len-bytes))
+    (System/arraycopy content 0 result (+ 1 (alength len-bytes)) (alength content))
+    result))
 
 (defn der-sequence
-  "Encode DER SEQUENCE from parts."
-  [& parts]
+  "Encode DER SEQUENCE from parts.
+
+  Returns a new byte array."
+  ^bytes [& parts]
   (let [content (apply concat-bytes parts)]
     (der-constructed 0x30 content)))
 
 (defn der-set
-  "Encode DER SET from parts."
-  [& parts]
-  (let [content (apply concat-bytes parts)]
+  "Encode DER SET from parts.
+
+  DER requires SET elements to be sorted in lexicographic order by their
+  encoded bytes. This implementation sorts all parts before encoding.
+
+  Returns a new byte array."
+  ^bytes [& parts]
+  (let [;; Lexicographic comparator for byte arrays (unsigned byte comparison)
+        byte-compare (fn [a b]
+                       (let [len-a (alength a)
+                             len-b (alength b)
+                             min-len (min len-a len-b)]
+                         (loop [i 0]
+                           (if (< i min-len)
+                             (let [byte-a (bit-and (aget a i) 0xFF)
+                                   byte-b (bit-and (aget b i) 0xFF)]
+                               (if (= byte-a byte-b)
+                                 (recur (inc i))
+                                 (compare byte-a byte-b)))
+                             (compare len-a len-b)))))
+        sorted-parts (sort byte-compare parts)
+        content (apply concat-bytes sorted-parts)]
     (der-constructed 0x31 content)))
 
 (defn der-integer
@@ -188,7 +215,7 @@
 
 (defn- encode-name
   "Encode X.500 Name (DN) as DER SEQUENCE OF RDN.
-  
+
   Input: vector of [key value] pairs, e.g., [[:CN \"example.com\"] [:O \"Acme\"]]
   Output: DER-encoded Name"
   [dn-vec]
@@ -208,7 +235,7 @@
 
 (defn- idna-encode
   "Convert Unicode domain to ASCII (Punycode) using IDNA.
-  
+
   Normalizes to lowercase first, then applies IDNA conversion."
   [domain]
   (try
@@ -224,7 +251,7 @@
 
 (defn- validate-dns-label
   "Validate DNS label syntax per RFC 1035.
-  
+
   NOTE: Expects label to already be lowercased and IDNA-encoded."
   [label]
   (cond
@@ -263,7 +290,7 @@
 
 (defn- validate-wildcard
   "Validate wildcard DNS name per RFC 6125.
-  
+
   Rejects wildcards in IP addresses."
   [value is-ip?]
   (when (str/includes? value "*")
@@ -298,7 +325,7 @@
 
 (defn- normalize-dns-san
   "Normalize and validate DNS SAN value.
-  
+
   - Convert to lowercase
   - Remove trailing dot (unless it's the root '.')
   - Validate wildcard usage BEFORE IDNA (wildcards contain *)
@@ -340,11 +367,11 @@
 
 (defn- parse-san
   "Parse a SAN string to determine if it's DNS or IP.
-  
+
   Uses ol.clave.impl.parse-ip/ip-string->bytes for auto-detection:
   - If parse succeeds → IP SAN (IPv4 or IPv6)
   - If parse fails → DNS SAN (domain name)
-  
+
   Note: ip-string->bytes returns [bytes scope-id] or nil"
   [san-str]
   (if-let [ip-result (parse-ip/ip-string->bytes san-str)]
@@ -357,7 +384,7 @@
 
 (defn- normalize-sans
   "Normalize and deduplicate SANs.
-  
+
   - DNS: lowercase, IDNA encode, validate wildcards
   - IP: parse and normalize (IPv6 canonical form)
   - Deduplicate: exact match after normalization"
@@ -387,27 +414,26 @@
 
 (defn- build-attributes
   "Build attributes [0] IMPLICIT SET OF Attribute.
-  
-  Includes extensionRequest with subjectAltName extension."
+
+  Includes extensionRequest with subjectAltName extension.
+
+  Note: sans cannot be empty (enforced by create-csr)."
   [sans san-critical]
-  (if (empty? sans)
-    ;; Empty IMPLICIT [0]
-    (byte-array [(unchecked-byte 0xA0) 0x00])
-    (let [general-names (encode-general-names sans)
-          san-ext-value (der-octet-string general-names)
-          ext-fields (if san-critical
-                       [(der-oid "2.5.29.17")
-                        (der-boolean true)
-                        san-ext-value]
-                       [(der-oid "2.5.29.17")
-                        san-ext-value])
-          san-extension (apply der-sequence ext-fields)
-          extensions (der-sequence san-extension)
-          attribute (der-sequence
-                     (der-oid "1.2.840.113549.1.9.14")
-                     (der-set extensions))
-          content (apply concat-bytes [attribute])]
-      (der-context-specific-constructed-implicit 0 content))))
+  (let [general-names (encode-general-names sans)
+        san-ext-value (der-octet-string general-names)
+        ext-fields (if san-critical
+                     [(der-oid "2.5.29.17")
+                      (der-boolean true)
+                      san-ext-value]
+                     [(der-oid "2.5.29.17")
+                      san-ext-value])
+        san-extension (apply der-sequence ext-fields)
+        extensions (der-sequence san-extension)
+        attribute (der-sequence
+                   (der-oid "1.2.840.113549.1.9.14")
+                   (der-set extensions))
+        content (apply concat-bytes [attribute])]
+    (der-context-specific-constructed-implicit 0 content)))
 
 ;; -------------------------
 ;; Algorithm Selection
@@ -433,7 +459,7 @@
 
 (defn- pick-signature-algorithm
   "Select signature algorithm and OID based on public key type.
-  
+
   Returns {:jca-name String :algorithm-identifier bytes}"
   [pub-key]
   (let [algo (.getAlgorithm pub-key)]
@@ -464,7 +490,7 @@
 
 (defn- detect-algorithm
   "Detect algorithm details from keypair.
-  
+
   Returns keyword: :rsa-2048, :rsa-3072, :rsa-4096, :ec-p256, :ec-p384, :ed25519"
   [keypair]
   (let [pub (.getPublic keypair)
@@ -495,7 +521,7 @@
 
 (defn- base64url-encode
   "Encode bytes as Base64URL without padding (RFC 4648 §5).
-  
+
   Used for ACME finalize endpoint."
   [data]
   (-> (Base64/getUrlEncoder)
@@ -521,7 +547,8 @@
                 Examples: [\"example.com\" \"*.example.com\" \"192.0.2.1\" \"2001:db8::1\"]
 
     opts      - Map of options. Optional, defaults to {}.
-                :use-cn? - Boolean. If true, set Subject CN to the first SAN. Default false.
+                :use-cn? - Boolean. If true, set Subject CN to the first DNS SAN.
+                           Default false. IPs are skipped when searching for CN value.
                            When false, Subject is empty and all identifiers are in SANs only
                            (one of three valid options per RFC 8555 Section 7.4).
 
@@ -537,7 +564,7 @@
     (create-csr kp [\"example.com\" \"*.example.com\"])
     (create-csr kp [\"example.com\" \"www.example.com\"] {})
 
-    ;; Legacy: CN = first SAN
+    ;; Legacy: CN = first DNS SAN (IPs are skipped)
     (create-csr kp [\"example.com\" \"www.example.com\"] {:use-cn? true})
 
     ;; Mixed DNS and IP SANs (auto-detected)
@@ -554,10 +581,12 @@
         use-cn? (get opts :use-cn? false)
         normalized-sans (normalize-sans sans)
 
-        ;; Build subject DN (empty or CN from first SAN)
+        ;; Build subject DN (empty or CN from first DNS SAN, skipping IPs)
         subject (if use-cn?
-                  (let [first-san (first normalized-sans)]
-                    (encode-name [[:CN (:value first-san)]]))
+                  (if-let [first-dns-san (first (filter #(= :dns (:type %)) normalized-sans))]
+                    (encode-name [[:CN (:value first-dns-san)]])
+                    ;; No DNS SANs found, use empty subject
+                    (encode-name []))
                   (encode-name []))
 
         ;; Get public key info

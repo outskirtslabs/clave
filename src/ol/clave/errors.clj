@@ -19,6 +19,9 @@
 
 (def invalid-directory ::invalid-directory)
 
+(def account-creation-failed ::account-creation-failed)
+(def missing-location-header ::missing-location-header)
+
 ;; CSR-related errors (spec 003)
 (def invalid-san ::invalid-san)
 (def invalid-idna ::invalid-idna)
@@ -28,5 +31,7 @@
 (defn ex
   "Convenience wrapper for ex-info that associates the shared :type key.
   Usage: (errors/ex errors/invalid-header \"message\" {:field :kid :reason \"missing\"})"
-  [type message data]
-  (ex-info message (assoc data :type type)))
+  ([type message data]
+   (ex-info message (assoc data :type type)))
+  ([type message data cause]
+   (ex-info message (assoc data :type type) cause)))

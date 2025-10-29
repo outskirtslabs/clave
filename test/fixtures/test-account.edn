@@ -1,0 +1,7 @@
+#:ol.clave.specs{:registration
+                 #:ol.clave.specs{:contact ["mailto:test@example.com"],
+                                  :termsOfServiceAgreed true},
+                 :private-key-pem
+                 "-----BEGIN PRIVATE KEY-----\nMEECAQAwEwYHKoZIzj0CAQYIKoZIzj0DAQcEJzAlAgEBBCD4A/W/P9vqRq/2kn1x\nof8h9TUO0Dvl+xyZQU28vW+KlA==\n-----END PRIVATE KEY-----\n",
+                 :public-key-pem
+                 "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8lPj8G58Y+8Ouy0EcB+RyXp+/jAs\n9tpOjHGfnDcx9KKyGdIMGpQZJL40e+40cUANe6Wxj6MyFWiTfub57n22kA==\n-----END PUBLIC KEY-----\n"}

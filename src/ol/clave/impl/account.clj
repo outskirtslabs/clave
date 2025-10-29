@@ -4,6 +4,7 @@
    [clojure.pprint :as pprint]
    [clojure.spec.alpha :as s]
    [clojure.string :as str]
+   [ol.clave.errors :as errors]
    [ol.clave.impl.crypto :as crypto]
    [ol.clave.specs :as acme]))
 
@@ -11,31 +12,31 @@
 
 (defn- ensure-map [value]
   (when-not (map? value)
-    (throw (ex-info "Account must be a map"
-                    {:type ::invalid-account
-                     :value value})))
+    (throw (errors/ex errors/invalid-account
+                      "Account must be a map"
+                      {:value value})))
   value)
 
 (defn- normalize-contacts [contacts]
   (cond
     (vector? contacts) contacts
     (sequential? contacts) (vec contacts)
-    :else (throw (ex-info "Account contacts must be a vector"
-                          {:type ::invalid-contact
-                           :value contacts}))))
+    :else (throw (errors/ex errors/invalid-contact
+                            "Account contacts must be a vector"
+                            {:value contacts}))))
 
 (defn- validate-contacts [contacts]
   (doseq [[idx uri] (map-indexed vector contacts)]
     (when-not (string? uri)
-      (throw (ex-info "Contact entries must be strings"
-                      {:type ::invalid-contact-entry
-                       :index idx
-                       :value uri})))
+      (throw (errors/ex errors/invalid-contact-entry
+                        "Contact entries must be strings"
+                        {:index idx
+                         :value uri})))
     (when-not (str/starts-with? uri "mailto:")
-      (throw (ex-info "ACME contact URIs must use the mailto: scheme"
-                      {:type ::invalid-contact-uri
-                       :index idx
-                       :value uri}))))
+      (throw (errors/ex errors/invalid-contact-uri
+                        "ACME contact URIs must use the mailto: scheme"
+                        {:index idx
+                         :value uri}))))
   contacts)
 
 (defn validate-account
@@ -45,21 +46,21 @@
   (let [contacts (-> account ::acme/contact normalize-contacts validate-contacts)
         tos (get account ::acme/termsOfServiceAgreed ::missing)]
     (when (= ::missing tos)
-      (throw (ex-info "Account missing ::termsOfServiceAgreed flag"
-                      {:type ::invalid-tos
-                       :value nil})))
+      (throw (errors/ex errors/invalid-tos
+                        "Account missing ::termsOfServiceAgreed flag"
+                        {:value nil})))
     (when-not (instance? Boolean tos)
-      (throw (ex-info "Account termsOfServiceAgreed must be boolean"
-                      {:type ::invalid-tos
-                       :value tos})))
+      (throw (errors/ex errors/invalid-tos
+                        "Account termsOfServiceAgreed must be boolean"
+                        {:value tos})))
     (let [normalized (-> account
                          (assoc ::acme/contact contacts)
                          (assoc ::acme/termsOfServiceAgreed tos))]
       (if (s/valid? ::acme/account normalized)
         normalized
-        (throw (ex-info "Account does not conform to ::acme/account"
-                        {:type ::invalid-account
-                         :explain-data (s/explain-data ::acme/account normalized)}))))))
+        (throw (errors/ex errors/invalid-account
+                          "Account does not conform to ::acme/account"
+                          {:explain-data (s/explain-data ::acme/account normalized)}))))))
 
 (defn get-primary-contact
   "Return the primary contact email (without scheme) or nil."
@@ -76,18 +77,19 @@
     (catch clojure.lang.ExceptionInfo ex
       (throw ex))
     (catch Exception ex
-      (throw (ex-info "Invalid account EDN"
-                      {:type ::invalid-account-edn}
-                      ex)))))
+      (throw (errors/ex errors/invalid-account-edn
+                        "Invalid account EDN"
+                        nil
+                        ex)))))
 
 (defn- ensure-deserialized-map [value]
   (when-not (map? value)
-    (throw (ex-info "Account artifact must decode to a map"
-                    {:type ::invalid-account-edn
-                     :value value})))
+    (throw (errors/ex errors/invalid-account-edn
+                      "Account artifact must decode to a map"
+                      {:value value})))
   value)
 
-(defn serialize-account
+(defn serialize
   "Serialize an account map and keypair into a pretty-printed EDN artifact.
    keypair: crypto/AsymmetricKeyPair (e.g., KeyPairAlgo record)."
   [account keypair]
@@ -96,36 +98,70 @@
         public-key (crypto/public keypair)
         _ (crypto/verify-keypair private-key public-key)
         registration (select-keys normalized [::acme/contact ::acme/termsOfServiceAgreed])
-        artifact {:registration registration
-                  :private-key-pem (crypto/encode-private-key-pem private-key)
-                  :public-key-pem (crypto/encode-public-key-pem public-key)}]
+        artifact {::acme/registration registration
+                  ::acme/private-key-pem (crypto/encode-private-key-pem private-key)
+                  ::acme/public-key-pem (crypto/encode-public-key-pem public-key)}]
     (with-out-str
       (pprint/pprint artifact))))
 
-(defn deserialize-account
-  "Deserialize an EDN artifact into {:account :private-key :public-key}."
+(defn deserialize
+  "Deserialize an EDN artifact into [account keypair] where keypair is a crypto/AsymmetricKeyPair."
   [account-edn]
   (let [artifact (try
                    (-> account-edn edn/read-string ensure-deserialized-map)
                    (catch Exception ex
-                     (throw (ex-info "Invalid account EDN"
-                                     {:type ::invalid-account-edn}
-                                     ex))))
-        {:keys [registration private-key-pem public-key-pem]} artifact]
-    (when-not (map? registration)
-      (throw (ex-info "Account registration must be a map"
-                      {:type ::invalid-account-edn
-                       :value registration})))
-    (when-not (string? private-key-pem)
-      (throw (ex-info "Private key PEM must be a string"
-                      {:type ::invalid-account-edn})))
-    (when-not (string? public-key-pem)
-      (throw (ex-info "Public key PEM must be a string"
-                      {:type ::invalid-account-edn})))
-    (let [account (validate-account registration)
-          private-key (crypto/decode-private-key-pem private-key-pem)
-          public-key (crypto/decode-public-key-pem public-key-pem)]
-      (crypto/verify-keypair private-key public-key)
-      {:account account
-       :private-key private-key
-       :public-key public-key})))
+                     (throw (errors/ex errors/invalid-account-edn
+                                       "Invalid account EDN"
+                                       nil
+                                       ex))))
+        {::acme/keys [registration private-key-pem public-key-pem]} artifact]
+    (if (s/valid? ::acme/account-artifact artifact)
+      (let [account (validate-account registration)
+            keypair (crypto/keypair-from-pems private-key-pem public-key-pem)]
+        [account keypair])
+      (throw (errors/ex errors/invalid-account-edn
+                        "Account artifact does not conform to spec"
+                        {:explain-data (s/explain-data ::acme/account-artifact artifact)})))))
+
+(defn generate-keypair
+  "Generate a new ACME account keypair.
+
+  Options map:
+  * `:algo` – choose `:ol.clave.algo/es256` (default) or `:ol.clave.algo/ed25519`.
+
+  Returns a crypto/AsymmetricKeyPair."
+  ([] (generate-keypair {:algo :ol.clave.algo/es256}))
+  ([{:keys [algo]
+     :or {algo :ol.clave.algo/es256}}]
+   (crypto/generate-keypair algo)))
+
+(defn create
+  "Construct an ACME account map suitable for directory interactions.
+
+  `contact` may be a single string or any sequential collection of strings; all
+  values must be `mailto:` URLs per RFC 8555 Section 7.3."
+  ([contact tos-agreed]
+   (create contact tos-agreed nil))
+  ([contact tos-agreed _]
+   (let [contacts
+         (cond
+           (string? contact) [contact]
+           (vector? contact) contact
+           (sequential? contact) (vec contact)
+           :else (throw (errors/ex errors/invalid-contact
+                                   "Contact must be a string or sequence of strings"
+                                   {:contact contact})))]
+     (doseq [uri contacts]
+       (when-not (string? uri)
+         (throw (errors/ex errors/invalid-contact-entry
+                           "Contact entries must be strings"
+                           {:contact uri})))
+       (when-not (str/starts-with? uri "mailto:")
+         (throw (errors/ex errors/invalid-contact-uri
+                           "ACME contact URIs must use the mailto scheme"
+                           {:contact uri}))))
+     (validate-account
+      {::acme/contact contacts
+       ::acme/termsOfServiceAgreed tos-agreed}))))
+
+;; Moved to ol.clave.impl.commands/new-account

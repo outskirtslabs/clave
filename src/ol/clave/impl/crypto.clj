@@ -98,7 +98,7 @@
 
 (defn sha256-bytes
   "Compute SHA-256 digest of the given bytes."
-  [^bytes bs]
+  ^bytes [^bytes bs]
   (let [^MessageDigest digest (MessageDigest/getInstance "SHA-256")]
     (.update digest bs)
     (.digest digest)))
@@ -345,3 +345,12 @@
         (throw (ex-info "Keypair verification failed"
                         {:type ::key-mismatch}))))
     {:private private :public public :algo algo}))
+
+(defn keypair-from-pems
+  "Reconstruct a KeyPairAlgo from PEM-encoded private and public keys.
+   Verifies the keypair and returns an AsymmetricKeyPair implementation."
+  [private-key-pem public-key-pem]
+  (let [private-key (decode-private-key-pem private-key-pem)
+        public-key (decode-public-key-pem public-key-pem)
+        {:keys [algo]} (verify-keypair private-key public-key)]
+    (->KeyPairAlgo public-key private-key algo {})))

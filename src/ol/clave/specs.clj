@@ -61,6 +61,9 @@
 (defn new-nonce-url [client]
   (get-in client [::directory ::newNonce]))
 
+(defn new-account-url [client]
+  (get-in client [::directory ::newAccount]))
+
 (s/def ::directory-url string?)
 (s/def ::nonces (s/coll-of string?))
 (s/def ::nonces_
@@ -71,7 +74,17 @@
          ::nonces))
 (s/def ::http map?)
 
+(s/def ::account-key (s/nilable map?))
+(s/def ::account-kid (s/nilable string?))
+
 (s/def ::poll-interval int?)
 (s/def ::poll-timeout int?)
 
 (s/def ::client (s/keys :req [::directory-url ::nonces_ ::http ::poll-interval ::poll-timeout]))
+
+(s/def ::registration (s/keys :req [::contact ::termsOfServiceAgreed]))
+(s/def ::private-key-pem string?)
+(s/def ::public-key-pem string?)
+
+(s/def ::account-artifact
+  (s/keys :req [::registration ::private-key-pem ::public-key-pem]))

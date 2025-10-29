@@ -8,6 +8,7 @@
                     :main-opts   ["-m" "kaocha.runner"]}
            :dev    {:extra-paths ["dev"]
                     :extra-deps  {dev.weavejester/hashp                    {:mvn/version "0.5.1"}
+                                  com.github.seancorfield/expectations     {:mvn/version "2.2.214"}
                                   org.babashka/http-client                 {:mvn/version "0.4.23"}
                                   com.cnuernber/charred                    {:mvn/version "1.037"}
                                   io.github.tonsky/clj-reload              {:mvn/version "1.0.0"}

@@ -1,13 +1,18 @@
 (ns ^:no-doc ol.clave.impl.http
   (:require
-   [ol.clave.specs :as acme]
-   [clojure.java.io :as io]
-   [ol.clave.impl.json :as json]
    [clojure.string :as str]
-   [ol.clave.impl.http.impl :as http])
+   [ol.clave.impl.http.impl :as http]
+   [ol.clave.impl.json :as json]
+   [ol.clave.impl.jws :as jws]
+   [ol.clave.specs :as acme])
   (:import
-   [java.util.concurrent CompletableFuture TimeUnit TimeoutException CancellationException ExecutionException]
    [java.time Duration Instant]
+   [java.util.concurrent
+    CancellationException
+    CompletableFuture
+    ExecutionException
+    TimeUnit
+    TimeoutException]
    [java.util.concurrent CompletableFuture]))
 
 (set! *warn-on-reflection* true)
@@ -44,7 +49,7 @@
   (let [ct (some-> (get-header resp "content-type") str)]
     (cond
       (nil? ct) ""
-      :else     (-> ct (str/split #";" 2) first str/trim))))
+      :else (-> ct (str/split #";" 2) first str/trim))))
 
 (def ^:private re-charset
   #"(?x);(?:.*\s)?(?i:charset)=(?:
@@ -203,6 +208,7 @@
                (not (get-in req [headers :user-agent])) (update :headers assoc :user-agent default-user-agent))
         ^CompletableFuture task (http/request (assoc req'
                                                      :client (::acme/http client)
+                                                     :throw false
                                                      :as :bytes))]
     (try
       (when (instance? java.util.concurrent.CompletableFuture cancel-token)
@@ -291,7 +297,7 @@
            :body body})
 
         (and (<= 400 status) (< status 600))
-        (let [mt (parse-media-type headers)]
+        (let [mt (parse-media-type res)]
           (if (= mt "application/problem+json")
             (let [problem (parse-problem-json body-bytes)]
               ;; Retry on 5xx if no request body (to avoid replaying JWS with nonce).
@@ -300,8 +306,9 @@
                 (throw (ex-info (str "HTTP " status " problem+json")
                                 {:status status :problem problem}))))
             ;; Non-problem+json error
-            (throw (ex-info (str "HTTP " status " error")
-                            {:status status :body (slurp body-bytes :encoding "UTF-8")}))))
+            (let [b (slurp body-bytes :encoding "UTF-8")
+                  error-body (if (= mt "application/json") (json/read-str b) b)] (throw (ex-info (str "HTTP " status " error")
+                                                                                                 {:status status :body error-body})))))
 
         ;; Unexpected status
         :else
@@ -312,11 +319,12 @@
 ;; -----------------------------------------------------------------------------
 
 (defn jws-encode-json
-  "Skeleton: JWS-encode `input` JSON with `keypair`, `kid`, `nonce`, and `endpoint`.
+  "JWS-encode `input` JSON with `keypair`, `kid`, `nonce`, and `endpoint`.
    Return bytes of application/jose+json."
   [keypair kid nonce endpoint input]
-  ;; TODO implement JWS RFC 7515 signing and JSON serialization.
-  (throw (Exception. "Not yet implemented")))
+  (let [payload-json (json/write-str input)]
+    (.getBytes (jws/jws-encode-json payload-json keypair kid nonce endpoint)
+               java.nio.charset.StandardCharsets/UTF_8)))
 
 (defn get-nonce
   "Pop a cached nonce or fetch a new one via HEAD to directory :newNonce."
@@ -344,11 +352,11 @@
    - private-key: signer
    - kid: key ID (account URL) or nil
    - endpoint: URL
-   - input: clj data; will be JSON-encoded and JWS-signed
+   - payload: clj data; will be JSON-encoded and JWS-signed
    - {:keys [cancel-token max-attempts max-5xx]} options
 
    Returns {:resp :status :headers :body-bytes} or throws."
-  [client private-key kid endpoint input
+  [client private-key kid endpoint payload
    {:keys [cancel-token max-attempts max-5xx]
     :or {max-attempts 10
          max-5xx 3}}]
@@ -358,7 +366,7 @@
       (when-not (= :slept (sleep-with-cancel default-traffic-calming-ms cancel-token))
         (throw (ex-info "Request cancelled" {:stage :before-attempt :attempt attempt}))))
     (let [nonce (get-nonce client {:cancel-token cancel-token})
-          payload (jws-encode-json private-key kid nonce endpoint input)
+          payload (jws-encode-json private-key kid nonce endpoint payload)
           headers {:content-type "application/jose+json"}
           req {:method :post :uri endpoint :headers headers :body payload}
       ;; has-request-body? => do not blindly retry 5xx unless logic says it's safe.

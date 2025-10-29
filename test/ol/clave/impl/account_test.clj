@@ -8,19 +8,20 @@
    [ol.clave.specs :as acme]))
 
 (def ^:private sample-account
-  {::acme/contact              ["mailto:admin@example.com" "mailto:ops@example.com"]
+  {::acme/contact ["mailto:admin@example.com" "mailto:ops@example.com"]
    ::acme/termsOfServiceAgreed true})
 
 (defn- roundtrip [algo]
-  (let [kp         (crypto/generate-keypair algo)
-        serialized (account/serialize-account sample-account kp)
-        decoded    (account/deserialize-account serialized)]
-    (is (= (account/validate-account sample-account) (:account decoded)))
-    (is (= algo (crypto/key-algorithm (:private-key decoded))))
-    (is (= algo (crypto/key-algorithm (:public-key decoded))))
-    (is (= algo (:algo (crypto/verify-keypair (:private-key decoded) (:public-key decoded)))))
+  (let [kp (crypto/generate-keypair algo)
+        serialized (account/serialize sample-account kp)
+        [account keypair] (account/deserialize serialized)]
+    (is (= (account/validate-account sample-account) account))
+    (is (= algo (crypto/algo keypair)))
+    (is (= algo (crypto/key-algorithm (crypto/private keypair))))
+    (is (= algo (crypto/key-algorithm (crypto/public keypair))))
+    (is (= algo (:algo (crypto/verify-keypair (crypto/private keypair) (crypto/public keypair)))))
     (is (map? (edn/read-string serialized)))
-    decoded))
+    [account keypair]))
 
 (deftest serialize-deserialize-es256
   (testing "ES256 roundtrip retains account and keys"
@@ -33,34 +34,34 @@
 (deftest deserialize-rejects-invalid-edn
   (testing "non-EDN input"
     (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Invalid account EDN"
-                          (account/deserialize-account "not-edn"))))
+                          (account/deserialize "not-edn"))))
   (testing "missing required keys"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Account registration"
-                          (account/deserialize-account "{:foo 1}")))))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Account artifact does not conform to spec"
+                          (account/deserialize "{:foo 1}")))))
 
 (deftest deserialize-detects-key-mismatch
   (testing "mismatched keypair triggers key-mismatch"
-    (let [kp               (crypto/generate-keypair :ol.clave.algo/es256)
-          serialized       (account/serialize-account sample-account kp)
-          parsed           (edn/read-string serialized)
+    (let [kp (crypto/generate-keypair :ol.clave.algo/es256)
+          serialized (account/serialize sample-account kp)
+          parsed (edn/read-string serialized)
           tampered-keypair (crypto/generate-keypair :ol.clave.algo/es256)
-          tampered-public  (crypto/public tampered-keypair)
-          tampered-edn     (with-out-str
-                             (pprint/pprint
-                              (assoc parsed :public-key-pem (crypto/encode-public-key-pem tampered-public))))]
+          tampered-public (crypto/public tampered-keypair)
+          tampered-edn (with-out-str
+                         (pprint/pprint
+                          (assoc parsed ::acme/public-key-pem (crypto/encode-public-key-pem tampered-public))))]
       (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Keypair verification failed"
-                            (account/deserialize-account tampered-edn))))))
+                            (account/deserialize tampered-edn))))))
 
 (deftest account-validation-errors
   (testing "invalid contact scheme"
     (is (thrown-with-msg? clojure.lang.ExceptionInfo #"mailto"
                           (account/validate-account
-                           {::acme/contact              ["https://example.com"]
+                           {::acme/contact ["https://example.com"]
                             ::acme/termsOfServiceAgreed true}))))
   (testing "invalid tos flag"
     (is (thrown-with-msg? clojure.lang.ExceptionInfo #"termsOfServiceAgreed"
                           (account/validate-account
-                           {::acme/contact              ["mailto:admin@example.com"]
+                           {::acme/contact ["mailto:admin@example.com"]
                             ::acme/termsOfServiceAgreed :no})))))
 
 (deftest account-from-edn-parses
@@ -75,3 +76,44 @@
   (testing "returns nil when contact missing"
     (is (nil? (account/get-primary-contact
                {::acme/contact [] ::acme/termsOfServiceAgreed true})))))
+
+(deftest create-normalizes-contact
+  (testing "single string contact is wrapped and accepted"
+    (let [account (account/create "mailto:admin@example.com" true)]
+      (is (= ["mailto:admin@example.com"] (::acme/contact account)))
+      (is (= true (::acme/termsOfServiceAgreed account)))))
+  (testing "vector contact is preserved"
+    (let [contacts ["mailto:ops@example.com" "mailto:security@example.com"]
+          account (account/create contacts false)]
+      (is (= contacts (::acme/contact account)))
+      (is (false? (::acme/termsOfServiceAgreed account))))))
+
+(deftest create-rejects-invalid-contact
+  (testing "non-string entries"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Contact entries must be strings"
+                          (account/create [42] true))))
+  (testing "non mailto scheme"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"mailto"
+                          (account/create "https://example.com" true)))))
+
+(deftest create-validates-account-spec
+  (testing "invalid account data triggers spec validation"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"termsOfServiceAgreed"
+                          (account/create "mailto:admin@example.com" :not-a-boolean)))))
+
+(deftest generate-keypair-produces-keypair
+  (testing "keypair generation returns private and public keys"
+    (let [keypair (account/generate-keypair)]
+      (is (instance? java.security.PrivateKey (crypto/private keypair)))
+      (is (instance? java.security.PublicKey (crypto/public keypair)))
+      (is (#{:ol.clave.algo/es256 :ol.clave.algo/ed25519} (crypto/algo keypair))))))
+
+(deftest deserialize-test-fixture
+  (testing "deserialize test account fixture"
+    (let [[expected-account expected-keypair] (account/deserialize (slurp "test/fixtures/test-account.edn"))]
+      (is (= {::acme/contact ["mailto:test@example.com"]
+              ::acme/termsOfServiceAgreed true}
+             expected-account))
+      (is (= :ol.clave.algo/es256 (crypto/algo expected-keypair)))
+      (is (instance? java.security.PrivateKey (crypto/private expected-keypair)))
+      (is (instance? java.security.PublicKey (crypto/public expected-keypair))))))

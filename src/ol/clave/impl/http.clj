@@ -45,6 +45,7 @@
     (cond
       (nil? ct) ""
       :else     (-> ct (str/split #";" 2) first str/trim))))
+
 (def ^:private re-charset
   #"(?x);(?:.*\s)?(?i:charset)=(?:
       ([!\#$%&'*\-+.0-9A-Z\^_`a-z\|~]+)|  # token
@@ -198,7 +199,7 @@
    Cancellation: if cancel-token (a CompletableFuture) completes first, the request future is cancelled."
   [client {:keys [headers] :as req} {:keys [cancel-token]}]
   (let [req' (cond-> req
-               true                                     (assoc :async true) ;; run async so we can cancel mid-flight
+               true (assoc :async true) ;; run async so we can cancel mid-flight
                (not (get-in req [headers :user-agent])) (update :headers assoc :user-agent default-user-agent))
         ^CompletableFuture task (http/request (assoc req'
                                                      :client (::acme/http client)
@@ -257,8 +258,8 @@
    Returns {:resp resp :status :headers :body-bytes} or throws on failure."
   [client req
    {:keys [max-attempts traffic-calming-ms cancel-token has-request-body?]
-    :or   {max-attempts       default-max-attempts
-           traffic-calming-ms default-traffic-calming-ms}}]
+    :or {max-attempts default-max-attempts
+         traffic-calming-ms default-traffic-calming-ms}}]
   (loop [i 0]
     (when (> i 0)
       (when-not (= :slept (sleep-with-cancel traffic-calming-ms cancel-token))
@@ -311,9 +312,9 @@
 ;; -----------------------------------------------------------------------------
 
 (defn jws-encode-json
-  "Skeleton: JWS-encode `input` JSON with `private-key`, `kid`, `nonce`, and `endpoint`.
+  "Skeleton: JWS-encode `input` JSON with `keypair`, `kid`, `nonce`, and `endpoint`.
    Return bytes of application/jose+json."
-  [private-key kid nonce endpoint input]
+  [keypair kid nonce endpoint input]
   ;; TODO implement JWS RFC 7515 signing and JSON serialization.
   (throw (Exception. "Not yet implemented")))
 
@@ -324,10 +325,10 @@
     n
     (let [resp (http-req client
                          {:method :head :uri (acme/new-nonce-url client)}
-                         {:cancel-token       cancel-token
-                          :max-attempts       3
+                         {:cancel-token cancel-token
+                          :max-attempts 3
                           :traffic-calming-ms default-traffic-calming-ms
-                          :has-request-body?  false})]
+                          :has-request-body? false})]
       (or (get-header resp replay-nonce-header)
           (throw (ex-info "No Replay-Nonce in newNonce response" {}))))))
 
@@ -349,36 +350,36 @@
    Returns {:resp :status :headers :body-bytes} or throws."
   [client private-key kid endpoint input
    {:keys [cancel-token max-attempts max-5xx]
-    :or   {max-attempts 10
-           max-5xx      3}}]
+    :or {max-attempts 10
+         max-5xx 3}}]
   (loop [attempt 1
-         fivexx  0]
+         fivexx 0]
     (when (> attempt 1)
       (when-not (= :slept (sleep-with-cancel default-traffic-calming-ms cancel-token))
         (throw (ex-info "Request cancelled" {:stage :before-attempt :attempt attempt}))))
-    (let [nonce   (get-nonce client {:cancel-token cancel-token})
+    (let [nonce (get-nonce client {:cancel-token cancel-token})
           payload (jws-encode-json private-key kid nonce endpoint input)
           headers {:content-type "application/jose+json"}
-          req     {:method :post :uri endpoint :headers headers :body payload}
+          req {:method :post :uri endpoint :headers headers :body payload}
       ;; has-request-body? => do not blindly retry 5xx unless logic says it's safe.
-          result  (try
-                    (http-req client req {:cancel-token      cancel-token
-                                          :max-attempts      3
-                                          :has-request-body? true})
-                    (catch clojure.lang.ExceptionInfo ex
+          result (try
+                   (http-req client req {:cancel-token cancel-token
+                                         :max-attempts 3
+                                         :has-request-body? true})
+                   (catch clojure.lang.ExceptionInfo ex
                   ;; Detect problem+json and badNonce type here
-                      (let [data    (ex-data ex)
-                            status  (:status data)
-                            problem (:problem data)
-                            ptype   (:type problem)]
-                        (cond
-                          (= ptype "urn:ietf:params:acme:error:badNonce")
-                          ::bad-nonce
+                     (let [data (ex-data ex)
+                           status (:status data)
+                           problem (:problem data)
+                           ptype (:type problem)]
+                       (cond
+                         (= ptype "urn:ietf:params:acme:error:badNonce")
+                         ::bad-nonce
 
-                          (and status (<= 500 status) (< status 600))
-                          (do ::server-5xx)
+                         (and status (<= 500 status) (< status 600))
+                         (do ::server-5xx)
 
-                          :else (throw ex)))))]
+                         :else (throw ex)))))]
       (cond
         (= result ::bad-nonce)
         (if (< attempt max-attempts)

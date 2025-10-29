@@ -23,7 +23,6 @@
 (def invalid-san ::invalid-san)
 (def invalid-idna ::invalid-idna)
 (def invalid-ip ::invalid-ip)
-(def unsupported-key ::unsupported-key)
 (def encoding-failed ::encoding-failed)
 
 (defn ex

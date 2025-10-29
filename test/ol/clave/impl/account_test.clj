@@ -8,13 +8,13 @@
    [ol.clave.specs :as acme]))
 
 (def ^:private sample-account
-  {::acme/contact ["mailto:admin@example.com" "mailto:ops@example.com"]
+  {::acme/contact              ["mailto:admin@example.com" "mailto:ops@example.com"]
    ::acme/termsOfServiceAgreed true})
 
 (defn- roundtrip [algo]
-  (let [{:keys [private public]} (crypto/generate-keypair algo)
-        serialized (account/serialize-account sample-account private public)
-        decoded (account/deserialize-account serialized)]
+  (let [kp         (crypto/generate-keypair algo)
+        serialized (account/serialize-account sample-account kp)
+        decoded    (account/deserialize-account serialized)]
     (is (= (account/validate-account sample-account) (:account decoded)))
     (is (= algo (crypto/key-algorithm (:private-key decoded))))
     (is (= algo (crypto/key-algorithm (:public-key decoded))))
@@ -24,11 +24,11 @@
 
 (deftest serialize-deserialize-es256
   (testing "ES256 roundtrip retains account and keys"
-    (roundtrip :es256)))
+    (roundtrip :ol.clave.algo/es256)))
 
 (deftest serialize-deserialize-ed25519
   (testing "Ed25519 roundtrip retains account and keys"
-    (roundtrip :ed25519)))
+    (roundtrip :ol.clave.algo/ed25519)))
 
 (deftest deserialize-rejects-invalid-edn
   (testing "non-EDN input"
@@ -40,13 +40,14 @@
 
 (deftest deserialize-detects-key-mismatch
   (testing "mismatched keypair triggers key-mismatch"
-    (let [{:keys [private public]} (crypto/generate-keypair :es256)
-          serialized (account/serialize-account sample-account private public)
-          parsed (edn/read-string serialized)
-          tampered-public (:public (crypto/generate-keypair :es256))
-          tampered-edn (with-out-str
-                         (pprint/pprint
-                          (assoc parsed :public-key-pem (crypto/encode-public-key-pem tampered-public))))]
+    (let [kp               (crypto/generate-keypair :ol.clave.algo/es256)
+          serialized       (account/serialize-account sample-account kp)
+          parsed           (edn/read-string serialized)
+          tampered-keypair (crypto/generate-keypair :ol.clave.algo/es256)
+          tampered-public  (crypto/public tampered-keypair)
+          tampered-edn     (with-out-str
+                             (pprint/pprint
+                              (assoc parsed :public-key-pem (crypto/encode-public-key-pem tampered-public))))]
       (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Keypair verification failed"
                             (account/deserialize-account tampered-edn))))))
 
@@ -54,12 +55,12 @@
   (testing "invalid contact scheme"
     (is (thrown-with-msg? clojure.lang.ExceptionInfo #"mailto"
                           (account/validate-account
-                           {::acme/contact ["https://example.com"]
+                           {::acme/contact              ["https://example.com"]
                             ::acme/termsOfServiceAgreed true}))))
   (testing "invalid tos flag"
     (is (thrown-with-msg? clojure.lang.ExceptionInfo #"termsOfServiceAgreed"
                           (account/validate-account
-                           {::acme/contact ["mailto:admin@example.com"]
+                           {::acme/contact              ["mailto:admin@example.com"]
                             ::acme/termsOfServiceAgreed :no})))))
 
 (deftest account-from-edn-parses

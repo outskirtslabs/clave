@@ -88,9 +88,12 @@
   value)
 
 (defn serialize-account
-  "Serialize an account map and keypair into a pretty-printed EDN artifact."
-  [account ^java.security.PrivateKey private-key ^java.security.PublicKey public-key]
+  "Serialize an account map and keypair into a pretty-printed EDN artifact.
+   keypair: crypto/AsymmetricKeyPair (e.g., KeyPairAlgo record)."
+  [account keypair]
   (let [normalized (validate-account account)
+        private-key (crypto/private keypair)
+        public-key (crypto/public keypair)
         _ (crypto/verify-keypair private-key public-key)
         registration (select-keys normalized [::acme/contact ::acme/termsOfServiceAgreed])
         artifact {:registration registration

@@ -1,6 +1,7 @@
 (ns ol.clave.impl.crypto
   (:require
    [clojure.string :as str]
+   [ol.clave.errors :as errors]
    [ol.clave.impl.json :as json])
   (:import
    [java.math BigInteger]
@@ -26,18 +27,94 @@
     Arrays
     Base64
     Base64$Decoder
-    Base64$Encoder]))
+    Base64$Encoder]
+   [javax.crypto Mac]
+   [javax.crypto.spec SecretKeySpec]))
 
 (set! *warn-on-reflection* true)
 
+(defprotocol AsymmetricKeyPair
+  (keypair [this] "Return a java.security.KeyPair")
+  (private [this]
+    "Return the java.security.PrivateKey half of the key pair.")
+  (public [this]
+    "Return the java.security.PublicKey half of the key pair.")
+  (algo [this] "Return the key type as a keytoword :ol.clave.algo/rsa")
+  (describe [this] "Returns a map describing various key attributes"))
+
+(defrecord KeyPairAlgo [^java.security.PublicKey public-key
+                        ^java.security.PrivateKey private-key
+                        algorithm
+                        attributes]
+  AsymmetricKeyPair
+  (keypair [_]
+    (KeyPair. public-key private-key))
+  (private [_]
+    private-key)
+  (public [_]
+    public-key)
+  (algo [_]
+    algorithm)
+  (describe [_]
+    (merge {:algo algorithm
+            :public-key-class (class public-key)
+            :private-key-class (class private-key)}
+           attributes)))
+
 (def ^:private ^Base64$Encoder url-encoder
   (.withoutPadding (Base64/getUrlEncoder)))
+
+(def ^:private ^Base64$Decoder url-decoder
+  (Base64/getUrlDecoder))
 
 (def ^:private ^Base64$Encoder mime-encoder
   (Base64/getMimeEncoder 64 (.getBytes "\n" StandardCharsets/UTF_8)))
 
 (def ^:private ^Base64$Decoder mime-decoder
   (Base64/getMimeDecoder))
+
+(defn base64url-encode
+  "Return URL-safe base64 (unpadded) encoding of the given bytes.
+   Throws ex-info {:type errors/base64} on failure."
+  [^bytes bs]
+  (try
+    (.encodeToString url-encoder bs)
+    (catch Exception ex
+      (throw (ex-info "Base64url encoding failed"
+                      {:type errors/base64}
+                      ex)))))
+
+(defn base64url-decode
+  "Decode a URL-safe base64 (unpadded) string into bytes.
+   Throws ex-info {:type errors/base64} on failure."
+  [^String s]
+  (try
+    (.decode url-decoder s)
+    (catch IllegalArgumentException ex
+      (throw (ex-info "Base64url decoding failed"
+                      {:type errors/base64
+                       :value s}
+                      ex)))))
+
+(defn sha256-bytes
+  "Compute SHA-256 digest of the given bytes."
+  [^bytes bs]
+  (let [^MessageDigest digest (MessageDigest/getInstance "SHA-256")]
+    (.update digest bs)
+    (.digest digest)))
+
+(defn hmac-sha256
+  "Compute HMAC-SHA256 of data with the given key."
+  [^bytes key ^bytes data]
+  (try
+    (let [^Mac mac (Mac/getInstance "HmacSHA256")
+          ^SecretKeySpec key-spec (SecretKeySpec. key "HmacSHA256")]
+      (.init mac key-spec)
+      (.doFinal mac data))
+    (catch Exception ex
+      (throw (ex-info "Failed to compute HMAC-SHA256"
+                      {:type errors/signing-failed}
+                      ex)))))
 
 (def ^:private p256-prime
   (BigInteger. "FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF" 16))
@@ -77,13 +154,13 @@
                      (= (.getP ^ECFieldFp field) p256-prime))
         (throw (ex-info "Only P-256 EC keys are supported"
                         {:type ::unsupported-key}))))
-    :es256))
+    :ol.clave.algo/es256))
 
 (defn key-algorithm
-  "Return :es256 or :ed25519 for supported keys."
+  "Return :ol.clave.algo/es256 or :ol.clave.algo/ed25519 for supported keys."
   [key]
   (cond
-    (instance? EdECKey key) :ed25519
+    (instance? EdECKey key) :ol.clave.algo/ed25519
     (instance? ECKey key) (ensure-es256-params ^ECKey key)
     :else (throw (ex-info "Unsupported key type"
                           {:type ::unsupported-key
@@ -179,47 +256,36 @@
                       {:type ::unsupported-key
                        :pem-type type})))))
 
-(defn- keypair-map [^KeyPair pair algo]
-  {:private (.getPrivate pair)
-   :public (.getPublic pair)
-   :algo algo})
-
 (defn generate-keypair
-  "Generate a keypair for :es256 or :ed25519."
-  ([] (generate-keypair :es256))
+  "Generate a keypair for :ol.clave.algo/es256 or :ol.clave.algo/ed25519."
+  ([] (generate-keypair :ol.clave.algo/es256))
   ([algo]
    (case algo
-     :es256
+     :ol.clave.algo/es256
      (let [^KeyPairGenerator generator (KeyPairGenerator/getInstance "EC")
            _ (.initialize generator (ECGenParameterSpec. "secp256r1") (SecureRandom.))
            key-pair (.generateKeyPair generator)]
-       (keypair-map key-pair :es256))
-     :ed25519
+       (->KeyPairAlgo (.getPublic key-pair) (.getPrivate key-pair) :ol.clave.algo/es256 {:curve "P-256"}))
+     :ol.clave.algo/ed25519
      (let [^KeyPairGenerator generator (KeyPairGenerator/getInstance "Ed25519")
            key-pair (.generateKeyPair generator)]
-       (keypair-map key-pair :ed25519))
+       (->KeyPairAlgo (.getPublic key-pair) (.getPrivate key-pair) :ol.clave.algo/ed25519 {:curve "Ed25519"}))
      (throw (ex-info "Unsupported key algorithm"
                      {:type ::unsupported-key
                       :algo algo})))))
-
-(defn generate-private-key
-  "Generate a new private key for the given algorithm (:es256 default)."
-  ([] (:private (generate-keypair :es256)))
-  ([algo]
-   (:private (generate-keypair algo))))
 
 (defn public-jwk
   "Return a public JWK map for the given public key."
   [^java.security.PublicKey key]
   (case (key-algorithm key)
-    :es256
+    :ol.clave.algo/es256
     (let [^ECPublicKey ec-key key
           point (.getW ec-key)]
       {:kty "EC"
        :crv "P-256"
        :x (encode-fixed (.getAffineX point) 32)
        :y (encode-fixed (.getAffineY point) 32)})
-    :ed25519
+    :ol.clave.algo/ed25519
     (let [^EdECPublicKey ed-key key
           encoded (.getEncoded ed-key)
           total (alength encoded)
@@ -273,8 +339,8 @@
                        :public (key-algorithm public)})))
     (let [message (.getBytes "ol.clave.keypair.check" StandardCharsets/UTF_8)
           signature-algo (case algo
-                           :es256 "SHA256withECDSA"
-                           :ed25519 "Ed25519")]
+                           :ol.clave.algo/es256 "SHA256withECDSA"
+                           :ol.clave.algo/ed25519 "Ed25519")]
       (when-not (sign-verify signature-algo private public message)
         (throw (ex-info "Keypair verification failed"
                         {:type ::key-mismatch}))))

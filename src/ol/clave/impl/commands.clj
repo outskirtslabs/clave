@@ -1,5 +1,9 @@
 (ns ol.clave.impl.commands
-  "ACME protocol commands that perform side effects (HTTP requests, etc)."
+  "ACME protocol commands that perform side effects (HTTP requests, etc).
+
+  Every command takes an immutable ACME session map as its first argument and
+  returns a tuple where the first element is the updated session (with refreshed
+  nonces, account metadata, etc.). This keeps side effects explicit for callers."
   (:require
    [clojure.spec.alpha :as s]
    [ol.clave.errors :as errors]
@@ -10,75 +14,62 @@
 (set! *warn-on-reflection* true)
 
 (defn new-session
-  "Builds new session map. Does not contact the server.
+  "Builds a new ACME session map without contacting the server.
 
-  All the options are optional
-  :http-client  a map of options passed to initialize the http-client (see ol.clave.impl.http.impl/request)
-  :account-key The ACME account key (keypair map with :private, :public, :algo)
-  :account-kid The ACME account key id, a url"
+  Returns [session nil] so callers follow the tuple convention."
   [directory-url {:keys [http-client
                          account-key
                          account-kid]}]
-  {::acme/directory-url directory-url
-   ::acme/nonces_ (atom http/empty-nonces)
-   ::acme/http (http/http-client http-client)
-   ::acme/directory nil
-   ::acme/account-key account-key
-   ::acme/account-kid account-kid
-   ::acme/poll-interval nil
-   ::acme/poll-timeout nil})
+  (let [session {::acme/directory-url directory-url
+                 ::acme/nonces http/empty-nonces
+                 ::acme/http (http/http-client http-client)
+                 ::acme/directory nil
+                 ::acme/account-key account-key
+                 ::acme/account-kid account-kid
+                 ::acme/poll-interval nil
+                 ::acme/poll-timeout nil}]
+    [session nil]))
 
 (defn load-directory
-  "Loads the ACME directory and attaches it to the session."
-  [{::acme/keys [directory-url http] :as session}]
-  (let [resp (http/http-req session {:uri directory-url :client http :as :json} {})
-        response (:body resp)
-        qualified (s/conform ::acme/directory response)]
+  "Loads the ACME directory and attaches it to the session.
+
+  Returns [updated-session directory]."
+  [{::acme/keys [directory-url] :as session}]
+  (let [{:keys [body nonce]}
+        (http/http-req session {:method :get
+                                :uri directory-url
+                                :as :json}
+                       {:cancel-token nil})
+        qualified (s/conform ::acme/directory body)]
     (if (= qualified ::s/invalid)
       (throw (ex-info "Invalid directory response"
                       {:type ::invalid-directory
-                       :explain-data (s/explain-data ::acme/directory response)
-                       :response response}))
-      ;; TODO get nonce here
-      (assoc session ::acme/directory qualified))))
+                       :explain-data (s/explain-data ::acme/directory body)
+                       :response body}))
+      (let [session' (-> session
+                         (assoc ::acme/directory qualified)
+                         (http/push-nonce nonce))]
+        [session' qualified]))))
 
 (defn create-session
-  "Creates a new session for the given ACME server at `directory-url`"
+  "Creates a new session for the given ACME server at `directory-url`.
+
+  Returns [session directory]."
   [directory-url opts]
-  (-> (new-session directory-url opts)
-      (load-directory)))
+  (let [[session _] (new-session directory-url opts)
+        [session directory] (load-directory session)]
+    [session directory]))
 
 (defn new-account
   "Register a new ACME account with the server (RFC 8555 Section 7.3).
 
-  Takes a session (from `commands/new-session`) and an account map (typically from
-  `ol.clave.account/create`). The session must have the directory attached via
-  `commands/load-directory` or by constructing it with `commands/create-session`.
-
-  Returns a tuple of [updated-session account-response] where:
-  - updated-session: session with account-kid set
-  - account-response: the account object returned by the server including status,
-    contact, orders URL, etc.
-
-  The account-response will include a Location header that contains the account
-  URL (kid) which is stored in the session for subsequent requests.
-
-  Example:
-  ```clojure
-  (let [session (-> (commands/new-session \"https://localhost:14000/dir\" opts)
-                    (commands/load-directory))
-        account (account/create \"mailto:admin@example.com\" true)
-        [session account-resp] (new-account session account)]
-    ;; session now has account-kid set
-    ;; account-resp contains the account details
-    )
-  ```"
+  Returns [updated-session account-response]."
   [session account]
   (let [account-key (::acme/account-key session)
         endpoint (acme/new-account-url session)
         payload {:contact (::acme/contact account)
                  :termsOfServiceAgreed (::acme/termsOfServiceAgreed account)}
-        {:keys [status body-bytes] :as resp}
+        [session {:keys [status body-bytes nonce] :as resp}]
         (http/http-post-jws session account-key nil endpoint payload {:cancel-token nil})]
     (when-not (= 201 status)
       (throw (errors/ex errors/account-creation-failed
@@ -91,5 +82,7 @@
                                 "No Location header in account creation response"
                                 {})))
           account-resp (json/read-str (slurp body-bytes :encoding "UTF-8"))
-          updated-session (assoc session ::acme/account-kid account-url)]
-      [updated-session account-resp])))
+          session' (-> session
+                       (assoc ::acme/account-kid account-url)
+                       (http/push-nonce nonce))]
+      [session' account-resp])))

@@ -10,6 +10,7 @@
 (use-fixtures :once util/pebble-fixture)
 
 (deftest get-nonce-test
-  (let [session (commands/load-directory (commands/new-session "https://localhost:14000/dir" {:http-client http-client-opts}))]
-    (is (string? (http/get-nonce session
-                                 {:cancel-token nil})))))
+  (let [[session _] (commands/new-session "https://localhost:14000/dir" {:http-client http-client-opts})
+        [session _] (commands/load-directory session)
+        [_ nonce] (http/get-nonce session {:cancel-token nil})]
+    (is (string? nonce))))

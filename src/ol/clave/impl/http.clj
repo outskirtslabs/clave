@@ -29,19 +29,33 @@
 ;; Utilities: user-agent, headers, media-type, link parsing
 ;; -----------------------------------------------------------------------------
 
-(defn find-header
-  "Looks up a header in a Ring response (or request) case insensitively,
-  returning the header map entry, or nil if not present."
-  [resp ^String header-name]
-  (->> (:headers resp)
-       (filter #(.equalsIgnoreCase header-name (key %)))
-       (first)))
+(defn- canonical-header-name [k]
+  (-> (cond
+        (keyword? k) (name k)
+        (string? k) k
+        :else (str k))
+      (str/lower-case)))
+
+(defn- normalize-headers
+  "Coerce any header collection (map or seq of [k v]) into a map keyed by
+  lower-cased header names, preserving values; returns an empty map when input
+  is nil or unrecognised."
+  [headers]
+  (cond
+    (nil? headers) {}
+    (map? headers) (into {} (map (fn [[k v]] [(canonical-header-name k) v])) headers)
+    (sequential? headers) (into {} (map (fn [[k v]] [(canonical-header-name k) v])) headers)
+    :else {}))
 
 (defn get-header
   "Looks up a header in a Ring response (or request) case insensitively,
   returning the value of the header, or nil if not present."
   [resp header-name]
-  (some-> resp (find-header header-name) val))
+  (let [headers (cond
+                  (and (map? resp) (contains? resp :headers)) (:headers resp)
+                  (map? resp) resp
+                  :else {})]
+    (get headers (canonical-header-name header-name))))
 
 (defn parse-media-type
   "Return the media type portion of Content-Type (e.g. application/json)."
@@ -124,20 +138,23 @@
 
 (def empty-nonces '())
 
-(defn push-nonce! [{::acme/keys [nonces_]} nonce]
-  (when (seq nonce)
-    (swap! nonces_ conj nonce)))
+(defn ensure-nonces [session]
+  (or (::acme/nonces session) empty-nonces))
 
-(defn pop-nonce! [{::acme/keys [nonces_]}]
-  (let [n (first @nonces_)]
-    (swap! nonces_ rest)
-    n))
+(defn pop-nonce
+  "Return [nonce updated-session] without mutating state."
+  [session]
+  (let [nonces (ensure-nonces session)
+        nonce (first nonces)
+        remaining (if (seq nonces) (rest nonces) empty-nonces)]
+    [nonce (assoc session ::acme/nonces (if (seq remaining) remaining empty-nonces))]))
 
-(defn remember-nonce-from-response!
-  "Push nonce from response headers, if present."
-  [client resp]
-  (when-let [nonce (get-header resp replay-nonce-header)]
-    (push-nonce! client nonce)))
+(defn push-nonce
+  "Return session with nonce added to the front of the nonce list, if present."
+  [session nonce]
+  (if (and nonce (seq (str/trim (str nonce))))
+    (update session ::acme/nonces (fnil conj empty-nonces) nonce)
+    session))
 
 ;; -----------------------------------------------------------------------------
 ;; Cancellation helpers
@@ -200,14 +217,14 @@
 
 (defn do-http-request
   "Perform a single request. Drain body into bytes. Decide if safe to retry.
-   Returns {:resp :headers :status :body-bytes :retry? :err}.
+   Returns {:resp :headers :status :body-bytes :nonce :retry? :err}.
    Cancellation: if cancel-token (a CompletableFuture) completes first, the request future is cancelled."
-  [client {:keys [headers] :as req} {:keys [cancel-token]}]
+  [session {:keys [headers] :as req} {:keys [cancel-token]}]
   (let [req' (cond-> req
                true (assoc :async true) ;; run async so we can cancel mid-flight
-               (not (get-in req [headers :user-agent])) (update :headers assoc :user-agent default-user-agent))
+               (not (get-in req [:headers :user-agent])) (update :headers assoc :user-agent default-user-agent))
         ^CompletableFuture task (http/request (assoc req'
-                                                     :client (::acme/http client)
+                                                     :client (::acme/http session)
                                                      :throw false
                                                      :as :bytes))]
     (try
@@ -222,13 +239,17 @@
             (.cancel task true)
             (throw (ex-info "Request cancelled" {:stage :in-flight})))))
       ;; If we get here and not cancelled, the task should have completed (or will complete immediately)
-      (let [{:keys [status headers body] :as resp} @task]
+      (let [raw-resp @task
+            headers (normalize-headers (:headers raw-resp))
+            resp (assoc raw-resp :headers headers)
+            {:keys [status body]} resp
+            nonce (get-header resp replay-nonce-header)]
         (try
-          (remember-nonce-from-response! client headers)
           {:resp resp
            :headers headers
            :status status
            :body-bytes body
+           :nonce nonce
            :retry? false
            :err nil}
           (catch Throwable e
@@ -240,14 +261,15 @@
                :headers headers
                :status status
                :body-bytes body
+               :nonce nonce
                :retry? retry?
                :err e}))))
       (catch clojure.lang.ExceptionInfo e
         ;; propagated cancellation (our own ex-info above)
-        {:resp nil :headers nil :status 0 :body-bytes nil :retry? false :err e})
+        {:resp nil :headers nil :status 0 :body-bytes nil :nonce nil :retry? false :err e})
       (catch Throwable e
         ;; Network/request execution failure -> recommend retry
-        {:resp nil :headers nil :status 0 :body-bytes nil :retry? true :err e}))))
+        {:resp nil :headers nil :status 0 :body-bytes nil :nonce nil :retry? true :err e}))))
 
 ;; -----------------------------------------------------------------------------
 ;; http-req: robust request w/ retries + problem+json handling
@@ -256,13 +278,13 @@
 (defn http-req
   "Robust HTTP request with limited retries and careful replay rules.
    Args:
-   - client: AcmeHttpClient
+   - session: ACME session map
    - req: {:method :uri :headers :body ...}
    - {:keys [max-attempts traffic-calming-ms cancel-token has-request-body?]}:
      has-request-body? is important for replay-safety; set true for JWS posts.
 
-   Returns {:resp resp :status :headers :body-bytes} or throws on failure."
-  [client req
+   Returns {:status :headers :body-bytes :body :nonce} or throws on failure."
+  [session req
    {:keys [max-attempts traffic-calming-ms cancel-token has-request-body?]
     :or {max-attempts default-max-attempts
          traffic-calming-ms default-traffic-calming-ms}}]
@@ -274,7 +296,8 @@
       (throw (ex-info "Request cancelled" {:stage :before-attempt :attempt i})))
     (let [as (:as req)
           req (dissoc req :as)
-          {:keys [status headers body-bytes retry? err] :as res} (do-http-request client req {:cancel-token cancel-token})]
+          {:keys [status headers body-bytes retry? err nonce] :as res}
+          (do-http-request session req {:cancel-token cancel-token})]
       (cond
         ;; low-level error with retry recommendation
         (and err retry? (< (inc i) max-attempts))
@@ -294,7 +317,8 @@
           {:status status
            :headers headers
            :body-bytes body-bytes
-           :body body})
+           :body body
+           :nonce nonce})
 
         (and (<= 400 status) (< status 600))
         (let [mt (parse-media-type res)]
@@ -307,8 +331,9 @@
                                 {:status status :problem problem}))))
             ;; Non-problem+json error
             (let [b (slurp body-bytes :encoding "UTF-8")
-                  error-body (if (= mt "application/json") (json/read-str b) b)] (throw (ex-info (str "HTTP " status " error")
-                                                                                                 {:status status :body error-body})))))
+                  error-body (if (= mt "application/json") (json/read-str b) b)]
+              (throw (ex-info (str "HTTP " status " error")
+                              {:status status :body error-body})))))
 
         ;; Unexpected status
         :else
@@ -327,18 +352,21 @@
                java.nio.charset.StandardCharsets/UTF_8)))
 
 (defn get-nonce
-  "Pop a cached nonce or fetch a new one via HEAD to directory :newNonce."
-  [client {:keys [cancel-token]}]
-  (if-let [n (pop-nonce! client)]
-    n
-    (let [resp (http-req client
-                         {:method :head :uri (acme/new-nonce-url client)}
-                         {:cancel-token cancel-token
-                          :max-attempts 3
-                          :traffic-calming-ms default-traffic-calming-ms
-                          :has-request-body? false})]
-      (or (get-header resp replay-nonce-header)
-          (throw (ex-info "No Replay-Nonce in newNonce response" {}))))))
+  "Pop a cached nonce or fetch a new one via HEAD to directory :newNonce.
+  Returns [updated-session nonce]."
+  [session {:keys [cancel-token]}]
+  (let [[nonce session*] (pop-nonce session)]
+    (if nonce
+      [session* nonce]
+      (let [resp (http-req session {:method :head :uri (acme/new-nonce-url session)}
+                           {:cancel-token cancel-token
+                            :max-attempts 3
+                            :traffic-calming-ms default-traffic-calming-ms
+                            :has-request-body? false})
+            fresh-nonce (:nonce resp)]
+        (if fresh-nonce
+          [session* fresh-nonce]
+          (throw (ex-info "No Replay-Nonce in newNonce response" {})))))))
 
 (defn http-post-jws
   "Perform ACME JWS POST robustly.
@@ -348,60 +376,54 @@
    - traffic calming 250ms between attempts
 
    Args:
-   - client: AcmeHttpClient
+   - session: ACME session map
    - private-key: signer
    - kid: key ID (account URL) or nil
    - endpoint: URL
    - payload: clj data; will be JSON-encoded and JWS-signed
    - {:keys [cancel-token max-attempts max-5xx]} options
 
-   Returns {:resp :status :headers :body-bytes} or throws."
-  [client private-key kid endpoint payload
+   Returns [updated-session {:status ... :nonce ...}] or throws."
+  [session private-key kid endpoint payload
    {:keys [cancel-token max-attempts max-5xx]
     :or {max-attempts 10
          max-5xx 3}}]
-  (loop [attempt 1
+  (loop [session session
+         attempt 1
          fivexx 0]
     (when (> attempt 1)
       (when-not (= :slept (sleep-with-cancel default-traffic-calming-ms cancel-token))
         (throw (ex-info "Request cancelled" {:stage :before-attempt :attempt attempt}))))
-    (let [nonce (get-nonce client {:cancel-token cancel-token})
-          payload (jws-encode-json private-key kid nonce endpoint payload)
+    (let [[session nonce] (get-nonce session {:cancel-token cancel-token})
+          payload-bytes (jws-encode-json private-key kid nonce endpoint payload)
           headers {:content-type "application/jose+json"}
-          req {:method :post :uri endpoint :headers headers :body payload}
-      ;; has-request-body? => do not blindly retry 5xx unless logic says it's safe.
+          req {:method :post :uri endpoint :headers headers :body payload-bytes}
           result (try
-                   (http-req client req {:cancel-token cancel-token
-                                         :max-attempts 3
-                                         :has-request-body? true})
+                   (http-req session req {:cancel-token cancel-token
+                                          :max-attempts 3
+                                          :has-request-body? true})
                    (catch clojure.lang.ExceptionInfo ex
-                  ;; Detect problem+json and badNonce type here
                      (let [data (ex-data ex)
                            status (:status data)
                            problem (:problem data)
                            ptype (:type problem)]
                        (cond
-                         (= ptype "urn:ietf:params:acme:error:badNonce")
-                         ::bad-nonce
-
-                         (and status (<= 500 status) (< status 600))
-                         (do ::server-5xx)
-
+                         (= ptype "urn:ietf:params:acme:error:badNonce") ::bad-nonce
+                         (and status (<= 500 status) (< status 600)) ::server-5xx
                          :else (throw ex)))))]
       (cond
         (= result ::bad-nonce)
         (if (< attempt max-attempts)
-          (recur (inc attempt) fivexx)
+          (recur session (inc attempt) fivexx)
           (throw (ex-info "Too many badNonce retries" {:attempts attempt})))
 
         (= result ::server-5xx)
         (if (and (< fivexx max-5xx) (< attempt max-attempts))
-          (recur (inc attempt) (inc fivexx))
+          (recur session (inc attempt) (inc fivexx))
           (throw (ex-info "Too many 5xx retries" {:attempts attempt :5xx fivexx})))
 
         :else
-    ;; success path
-        result))))
+        [session result]))))
 
 (defn http-client [opts]
   (http/client (merge http/default-client-opts opts)))

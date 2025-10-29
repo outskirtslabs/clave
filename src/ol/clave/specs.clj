@@ -65,13 +65,9 @@
   (get-in session [::directory ::newAccount]))
 
 (s/def ::directory-url string?)
-(s/def ::nonces (s/coll-of string?))
-(s/def ::nonces_
-  (s/and (s/conformer
-          #(if (instance? clojure.lang.Atom %)
-             @%
-             ::s/invalid))
-         ::nonces))
+(s/def ::nonces
+  (s/and list?
+         (s/coll-of string? :kind list?)))
 (s/def ::http map?)
 
 (s/def ::account-key (s/nilable map?))
@@ -80,7 +76,7 @@
 (s/def ::poll-interval int?)
 (s/def ::poll-timeout int?)
 
-(s/def ::session (s/keys :req [::directory-url ::nonces_ ::http ::poll-interval ::poll-timeout]))
+(s/def ::session (s/keys :req [::directory-url ::nonces ::http ::poll-interval ::poll-timeout]))
 
 (s/def ::registration (s/keys :req [::contact ::termsOfServiceAgreed]))
 (s/def ::private-key-pem string?)

@@ -14,14 +14,14 @@
   (Class/forName "[B"))
 
 (def ^:private hex-digits
-  (char-array "0123456789ABCDEF"))
+  (char-array "0123456789abcdef"))
 
 (defn- append-hex-digit!
-  [^StringBuilder sb ^int value ^int shift]
+  [^StringBuilder sb ^long value ^long shift]
   (.append sb (aget hex-digits (bit-and (bit-shift-right value shift) 0x0F))))
 
 (defn- append-unicode-escape!
-  [^StringBuilder sb ^int code-point]
+  [^StringBuilder sb ^long code-point]
   (.append sb "\\u")
   (append-hex-digit! sb code-point 12)
   (append-hex-digit! sb code-point 8)
@@ -46,6 +46,16 @@
                           (recur (inc idx)))
             (= ch \\) (do (.append sb "\\\\")
                           (recur (inc idx)))
+            (= ch \newline) (do (.append sb "\\n")
+                                (recur (inc idx)))
+            (= ch \return) (do (.append sb "\\r")
+                               (recur (inc idx)))
+            (= ch \tab) (do (.append sb "\\t")
+                            (recur (inc idx)))
+            (= ch \formfeed) (do (.append sb "\\f")
+                                 (recur (inc idx)))
+            (= ch \backspace) (do (.append sb "\\b")
+                                  (recur (inc idx)))
             (<= code 0x1F) (do (append-unicode-escape! sb code)
                                (recur (inc idx)))
             (Character/isHighSurrogate ch)
@@ -129,8 +139,8 @@
   "Return the JOSE alg string for a given private key."
   [^PrivateKey private-key]
   (case (crypto/key-algorithm private-key)
-    :es256 "ES256"
-    :ed25519 "EdDSA"
+    :ol.clave.algo/es256 "ES256"
+    :ol.clave.algo/ed25519 "EdDSA"
     (throw (errors/ex errors/unsupported-key "Unsupported key algorithm for JWS" {:key-class (class private-key)}))))
 
 (defn protected-dot-payload-bytes

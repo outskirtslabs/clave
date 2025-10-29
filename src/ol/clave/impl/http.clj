@@ -6,13 +6,16 @@
    [ol.clave.impl.jws :as jws]
    [ol.clave.specs :as acme])
   (:import
-   [java.time Duration Instant]
+   [java.time Duration Instant ZoneOffset ZonedDateTime]
+   [java.time.format DateTimeFormatter DateTimeFormatterBuilder DateTimeParseException]
+   [java.time.temporal ChronoField]
    [java.util.concurrent
     CancellationException
     CompletableFuture
     ExecutionException
     TimeUnit
     TimeoutException]
+   [java.util Locale]
    [java.util.concurrent CompletableFuture]))
 
 (set! *warn-on-reflection* true)
@@ -99,34 +102,98 @@
 ;; Retry-After parsing (seconds or HTTP-date)
 ;; -----------------------------------------------------------------------------
 
+(def ^:private ^Locale http-date-locale Locale/US)
+
+(def ^:private ^DateTimeFormatter imf-fixdate-formatter
+  (-> (DateTimeFormatterBuilder.)
+      (.parseCaseInsensitive)
+      (.appendPattern "EEE, dd MMM yyyy HH:mm:ss 'GMT'")
+      (.toFormatter http-date-locale)
+      (.withZone ZoneOffset/UTC)))
+
+(def ^:private ^DateTimeFormatter rfc-850-formatter
+  (-> (DateTimeFormatterBuilder.)
+      (.parseCaseInsensitive)
+      (.appendPattern "EEEE, dd-MMM-")
+      (.appendValue ChronoField/YEAR 2)
+      (.appendPattern " HH:mm:ss 'GMT'")
+      (.toFormatter http-date-locale)
+      (.withZone ZoneOffset/UTC)))
+
+(def ^:private ^DateTimeFormatter asctime-formatter
+  (-> (DateTimeFormatterBuilder.)
+      (.parseCaseInsensitive)
+      (.appendPattern "EEE MMM")
+      (.appendLiteral \space)
+      (.optionalStart)
+      (.appendLiteral \space)
+      (.optionalEnd)
+      (.appendValue ChronoField/DAY_OF_MONTH)
+      (.appendLiteral \space)
+      (.appendPattern "HH:mm:ss yyyy")
+      (.toFormatter http-date-locale)
+      (.withZone ZoneOffset/UTC)))
+
+(def ^:private http-date-parsers
+  [{:formatter imf-fixdate-formatter
+    :extract (fn [parsed]
+               (.toInstant (ZonedDateTime/from parsed)))}
+   {:formatter rfc-850-formatter
+    :extract (fn [parsed]
+               (let [zdt (ZonedDateTime/from parsed)
+                     year (.getYear zdt)
+                     adjusted-year (if (< year 100)
+                                     (if (>= year 70) (+ 1900 year) (+ 2000 year))
+                                     year)]
+                 (.toInstant (if (= year adjusted-year)
+                               zdt
+                               (.withYear zdt adjusted-year)))))}
+   {:formatter asctime-formatter
+    :extract (fn [parsed]
+               (.toInstant (ZonedDateTime/from parsed)))}])
+
+(defn- parse-with
+  [{:keys [formatter extract]} ^String s]
+  (try
+    (some-> (.parse ^DateTimeFormatter formatter s) extract)
+    (catch DateTimeParseException _)
+    (catch RuntimeException _)))
+
 (defn parse-http-time
-  "Parse an HTTP-date (RFC 7231) string. Skeleton: implement with java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME."
+  "Parse an HTTP-date (RFC 7231 §7.1.1.1) into java.time.Instant. Returns nil on blank or invalid input."
   [^String s]
-  ;; TODO: implement RFC 7231 parser
-  nil)
+  (let [candidate (some-> s str str/trim)]
+    (when (seq candidate)
+      (some #(parse-with % candidate) http-date-parsers))))
+
+(defn- now []
+  (Instant/now))
+
+(defn- retry-after-header->instant
+  ^Instant [raw]
+  (let [s (some-> raw str str/trim)]
+    (when (seq s)
+      (try
+        (if (re-matches #"\d+" s)
+          (.plusSeconds ^Instant (now) (Long/parseLong s))
+          (parse-http-time s))
+        (catch Exception _e
+          ;; invalid header => nil, caller uses fallback
+          nil)))))
 
 (defn retry-after-time
-  "Return java.time.Instant from Retry-After header or nil if absent/invalid."
+  "Return java.time.Instant derived from a Retry-After header; nil if absent/invalid."
   ^Instant [resp]
   (when-let [raw (get-header resp "retry-after")]
-    (try
-      (let [s (str/trim (str raw))]
-        (if (re-matches #"\d+" s)
-          (-> (Long/parseLong s)
-              (Duration/ofSeconds)
-              (.addTo (java.time.Instant/now)))
-          (parse-http-time s)))
-      (catch Exception _e
-        ;; invalid header => nil, caller uses fallback
-        nil))))
+    (retry-after-header->instant raw)))
 
 (defn retry-after
   "Return a java.time.Duration until retry time; or fallback if header missing/invalid."
   [resp ^Duration fallback]
   (if-let [inst (retry-after-time resp)]
-    (let [now (java.time.Instant/now)]
-      (if (.isAfter inst now)
-        (Duration/between now inst)
+    (let [current (now)]
+      (if (.isAfter inst current)
+        (Duration/between current inst)
         Duration/ZERO))
     fallback))
 

@@ -1,7 +1,6 @@
 (ns ol.clave.impl.test-util
   (:require
-   [ol.clave.impl.http.impl :as http]
-   [clojure.test :refer [deftest is testing]]))
+   [ol.clave.impl.http.impl :as http]))
 
 ((requiring-resolve 'hashp.install/install!))
 

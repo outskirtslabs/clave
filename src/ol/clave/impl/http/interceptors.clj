@@ -23,12 +23,11 @@
 (ns ol.clave.impl.http.interceptors
   (:refer-clojure :exclude [get])
   (:require
-   [ol.clave.impl.json :as json]
    [clojure.java.io :as io]
-   [clojure.string :as str])
+   [clojure.string :as str]
+   [ol.clave.impl.json :as json])
   (:import
    [java.net URLEncoder]
-   [java.util Base64]
    [java.util.zip
     GZIPInputStream
     Inflater

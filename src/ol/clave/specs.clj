@@ -47,6 +47,17 @@
   (s/and ::directory-unqualified
          (s/conformer qualify-keys)))
 
+;; ACME account resource (RFC 8555 Section 7.3)
+(s/def ::contact
+  (s/and vector?
+         (s/coll-of string? :kind vector?)))
+
+(s/def ::termsOfServiceAgreed boolean?)
+
+(s/def ::account
+  (s/keys :req [::contact
+                ::termsOfServiceAgreed]))
+
 (defn new-nonce-url [client]
   (get-in client [::directory ::newNonce]))
 

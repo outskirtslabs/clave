@@ -8,7 +8,6 @@
 ((requiring-resolve 'hashp.install/install!))
 
 (deftest get-nonce-test
-  (let [client (c/provision-directory (c/client {:http-client   http-client-opts
-                                                 :directory-url "https://localhost:14000/dir"}))]
+  (let [client (c/provision-directory (c/new-session "https://localhost:14000/dir" {:http-client http-client-opts}))]
     (is (string? (http/get-nonce client
                                  {:cancel-token nil})))))

@@ -19,7 +19,8 @@
 ## Milestones
 
 ### Milestone 1 – Session & Account Hardening
-- [x] Flesh out `impl.http/parse-http-time` for RFC 7231 Retry-After handling and surface durations through callers.
+- [x] Flesh out `impl.http/parse-http-time` for RFC 7231 Retry-After handling and surface durations through callers (updated 2025-10-29 to honour response `Date` for delta-seconds and expand regression tests).
+- [ ] Improve retry-after parsing based
 - [ ] Implement account `POST-as-GET`, contact updates, deactivation, and External Account Binding (RFC 8555 §7.3.4) with Pebble coverage.
 - [ ] Support account key rollover via directory `keyChange`, including verification that the new keypair is active.
 
@@ -28,6 +29,7 @@
 - [ ] Implement order retrieval (`POST-as-GET`), polling helpers respecting Retry-After, and tracking of authorization URLs.
 - [ ] Complete finalize-order flow that submits CSR bytes from `impl.csr/create-csr`, checks order state transitions, and captures certificate URLs.
 - [ ] Provide certificate download helper that dereferences the `certificate` link and returns PEM chain + parsed certificates.
+- [ ] Add Pebble integration/E2E coverage for Retry-After once POST-as-GET helpers land.
 
 ### Milestone 3 – Authorizations & Challenges
 - [ ] Implement authorization retrieval and caching, ensuring challenge objects reflect Pebble behaviour.

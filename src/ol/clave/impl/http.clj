@@ -169,23 +169,24 @@
 (defn- now []
   (Instant/now))
 
-(defn- retry-after-header->instant
-  ^Instant [raw]
-  (let [s (some-> raw str str/trim)]
-    (when (seq s)
-      (try
-        (if (re-matches #"\d+" s)
-          (.plusSeconds ^Instant (now) (Long/parseLong s))
-          (parse-http-time s))
-        (catch Exception _e
-          ;; invalid header => nil, caller uses fallback
-          nil)))))
+(defn retry-after-header->instant
+  ^Instant [resp]
+  (when-let [raw (some-> (get-header resp "retry-after") str str/trim)]
+    (try
+      (if (re-matches #"\d+" raw)
+        (let [delta (Long/parseLong raw)
+              base (or (some-> (get-header resp "date") parse-http-time)
+                       (now))
+              ^Instant base base]
+          (.plusSeconds base delta))
+        (parse-http-time raw))
+      (catch Exception _
+        nil))))
 
 (defn retry-after-time
   "Return java.time.Instant derived from a Retry-After header; nil if absent/invalid."
   ^Instant [resp]
-  (when-let [raw (get-header resp "retry-after")]
-    (retry-after-header->instant raw)))
+  (retry-after-header->instant resp))
 
 (defn retry-after
   "Return a java.time.Duration until retry time; or fallback if header missing/invalid."
@@ -286,7 +287,7 @@
   "Perform a single request. Drain body into bytes. Decide if safe to retry.
    Returns {:resp :headers :status :body-bytes :nonce :retry? :err}.
    Cancellation: if cancel-token (a CompletableFuture) completes first, the request future is cancelled."
-  [session {:keys [headers] :as req} {:keys [cancel-token]}]
+  [session req {:keys [cancel-token]}]
   (let [req' (cond-> req
                true (assoc :async true) ;; run async so we can cancel mid-flight
                (not (get-in req [:headers :user-agent])) (update :headers assoc :user-agent default-user-agent))

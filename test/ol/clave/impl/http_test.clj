@@ -53,27 +53,47 @@
       (is (nil? (http/parse-http-time "   "))))))
 
 (deftest retry-after-time-parsing
-  (let [baseline (Instant/parse "2025-10-29T12:00:00Z")]
+  (let [baseline (Instant/parse "2025-10-29T12:00:00Z")
+        date-header "Wed, 29 Oct 2025 11:59:00 GMT"]
     (with-redefs [ol.clave.impl.http/now (fn [] baseline)]
-      (testing "Delta-seconds header"
-        (is (= (Instant/parse "2025-10-29T12:00:30Z")
-               (@#'ol.clave.impl.http/retry-after-header->instant "30"))))
+      (testing "Delta-seconds header uses response Date baseline"
+        (let [resp {:headers {"retry-after" "30"
+                              "date" date-header}}
+              expected (Instant/parse "2025-10-29T11:59:30Z")]
+          (is (= expected (http/retry-after-header->instant resp)))
+          (is (= expected (http/retry-after-time resp)))))
+      (testing "Delta-seconds without Date falls back to now"
+        (let [resp {:headers {"retry-after" "45"}}
+              expected (Instant/parse "2025-10-29T12:00:45Z")]
+          (is (= expected (http/retry-after-header->instant resp)))
+          (is (= expected (http/retry-after-time resp)))))
       (testing "HTTP-date header"
-        (is (= (Instant/parse "2015-10-21T07:28:00Z")
-               (@#'ol.clave.impl.http/retry-after-header->instant "Wed, 21 Oct 2015 07:28:00 GMT"))))
-      (testing "Response map header delegates correctly"
-        (is (= (Instant/parse "2025-10-29T12:00:45Z")
-               (http/retry-after-time {:headers {"retry-after" "45"}}))))
+        (let [resp {:headers {"retry-after" "Wed, 21 Oct 2015 07:28:00 GMT"}}
+              expected (Instant/parse "2015-10-21T07:28:00Z")]
+          (is (= expected (http/retry-after-header->instant resp)))
+          (is (= expected (http/retry-after-time resp)))))
       (testing "Invalid header produces nil"
-        (is (nil? (@#'ol.clave.impl.http/retry-after-header->instant "later maybe"))))
-      (testing "Nil header produces nil"
-        (is (nil? (@#'ol.clave.impl.http/retry-after-header->instant nil)))))))
+        (let [resp {:headers {"retry-after" "later maybe"}}]
+          (is (nil? (http/retry-after-header->instant resp)))
+          (is (nil? (http/retry-after-time resp)))))
+      (testing "Missing header produces nil"
+        (let [resp {:headers {}}]
+          (is (nil? (http/retry-after-header->instant resp)))
+          (is (nil? (http/retry-after-time resp))))))))
 
 (deftest retry-after-duration-calculation
   (let [future-now (Instant/parse "2015-10-21T07:27:00Z")
         past-now (Instant/parse "2015-10-21T07:29:00Z")
         header "Wed, 21 Oct 2015 07:28:00 GMT"
-        fallback (Duration/ofSeconds 5)]
+        fallback (Duration/ofSeconds 5)
+        delta-now (Instant/parse "2025-10-29T12:00:00Z")
+        delta-header "Wed, 29 Oct 2025 12:00:00 GMT"]
+    (testing "Delta seconds uses Date baseline to build target instant"
+      (with-redefs [ol.clave.impl.http/now (fn [] delta-now)]
+        (is (= (Duration/ofSeconds 30)
+               (http/retry-after {:headers {"retry-after" "30"
+                                            "date" delta-header}}
+                                 fallback)))))
     (testing "Future retry-after yields positive duration"
       (with-redefs [ol.clave.impl.http/now (fn [] future-now)]
         (is (= (Duration/ofSeconds 60)

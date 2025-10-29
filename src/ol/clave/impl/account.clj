@@ -41,7 +41,6 @@
   contacts)
 
 (defn validate-account
-  "Validate and normalize an account map, returning the normalized map or throwing ex-info."
   [account]
   (ensure-map account)
   (let [contacts (-> account ::acme/contact normalize-contacts validate-contacts)
@@ -64,14 +63,12 @@
                           {:explain-data (s/explain-data ::acme/account normalized)}))))))
 
 (defn get-primary-contact
-  "Return the primary contact email (without scheme) or nil."
   [account]
   (let [contacts (::acme/contact (validate-account account))]
     (when-let [first-uri (first contacts)]
       (subs first-uri (count "mailto:")))))
 
 (defn account-from-edn
-  "Parse an EDN string representing account registration metadata."
   [registration-edn]
   (try
     (-> registration-edn edn/read-string validate-account)
@@ -91,8 +88,6 @@
   value)
 
 (defn serialize
-  "Serialize an account map and keypair into a pretty-printed EDN artifact.
-   keypair: proto/AsymmetricKeyPair (e.g., KeyPairAlgo record)."
   [account keypair]
   (let [normalized (validate-account account)
         private-key (proto/private keypair)
@@ -105,7 +100,6 @@
       (pprint/pprint artifact))))
 
 (defn deserialize
-  "Deserialize an EDN artifact into [account keypair] where keypair is a crypto/AsymmetricKeyPair."
   [account-edn]
   (let [artifact (try
                    (-> account-edn edn/read-string ensure-deserialized-map)
@@ -124,22 +118,12 @@
                         {:explain-data (s/explain-data ::acme/account-artifact artifact)})))))
 
 (defn generate-keypair
-  "Generate a new ACME account keypair.
-
-  Options map:
-  * `:algo` – choose `:ol.clave.algo/es256` (default) or `:ol.clave.algo/ed25519`.
-
-  Returns a crypto/AsymmetricKeyPair."
   ([] (generate-keypair {:algo :ol.clave.algo/es256}))
   ([{:keys [algo]
      :or {algo :ol.clave.algo/es256}}]
    (crypto/generate-keypair algo)))
 
 (defn create
-  "Construct an ACME account map suitable for directory interactions.
-
-  `contact` may be a single string or any sequential collection of strings; all
-  values must be `mailto:` URLs per RFC 8555 Section 7.3."
   ([contact tos-agreed]
    (create contact tos-agreed nil))
   ([contact tos-agreed _]

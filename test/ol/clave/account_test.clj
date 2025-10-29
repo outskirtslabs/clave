@@ -1,9 +1,9 @@
-(ns ol.clave.impl.account-test
+(ns ol.clave.account-test
   (:require
    [clojure.edn :as edn]
    [clojure.pprint :as pprint]
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.impl.account :as account]
+   [ol.clave.account :as account]
    [ol.clave.impl.crypto :as crypto]
    [ol.clave.protocols :as proto]
    [ol.clave.specs :as acme]))

@@ -58,7 +58,7 @@
   [value]
   (satisfies? proto/AsymmetricKeyPair value))
 
-(s/def ::account-key (s/nilable asymmetric-key-pair?))
+(s/def ::account-key asymmetric-key-pair?)
 (s/def ::account-kid
   (s/nilable (s/and string?
                     #(re-matches #"https://.*" %)
@@ -114,12 +114,8 @@
 
 (s/def ::session (s/keys :req [::directory-url ::nonces ::http ::poll-interval ::poll-timeout]))
 (s/def ::authed-session
-  (s/and
-   (s/keys :req [::directory-url ::nonces ::http ::poll-interval ::poll-timeout
-                 ::account-key ::account-kid])
-   (fn [session]
-     (and (::account-key session)
-          (asymmetric-key-pair? (::account-key session))))))
+  (s/keys :req [::directory-url ::nonces ::http ::poll-interval ::poll-timeout
+                ::account-key ::account-kid]))
 
 (s/def ::registration
   (s/keys :req [::contact ::termsOfServiceAgreed]

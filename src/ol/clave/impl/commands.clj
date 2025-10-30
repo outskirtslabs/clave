@@ -24,14 +24,15 @@
   [directory-url {:keys [http-client
                          account-key
                          account-kid]}]
-  (let [session {::acme/directory-url directory-url
-                 ::acme/nonces http/empty-nonces
-                 ::acme/http (http/http-client http-client)
-                 ::acme/directory nil
-                 ::acme/account-key account-key
-                 ::acme/account-kid account-kid
-                 ::acme/poll-interval 5000
-                 ::acme/poll-timeout 60000}]
+  (let [base {::acme/directory-url directory-url
+              ::acme/nonces http/empty-nonces
+              ::acme/http (http/http-client http-client)
+              ::acme/directory nil
+              ::acme/poll-interval 5000
+              ::acme/poll-timeout 60000}
+        session (cond-> base
+                   account-key (assoc ::acme/account-key account-key)
+                   account-kid (assoc ::acme/account-kid account-kid))]
     [session nil]))
 
 (defn load-directory

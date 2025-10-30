@@ -3,6 +3,7 @@
    [clojure.test :refer [deftest is testing]]
    [ol.clave.errors :as errors]
    [ol.clave.impl.crypto :as crypto]
+   [ol.clave.impl.test-util]
    [ol.clave.protocols :as proto])
   (:import
    [java.nio.charset StandardCharsets]
@@ -35,9 +36,8 @@
       (is (= "hello"
              (String. (crypto/base64url-decode encoded) StandardCharsets/UTF_8)))))
   (testing "base64url decode rejects invalid input"
-    (let [ex (is (thrown? clojure.lang.ExceptionInfo
-                          (crypto/base64url-decode "*invalid*")))]
-      (is (= errors/base64 (:type (ex-data ex)))))))
+    (is (thrown-with-error-type? ::errors/base64
+                                 (crypto/base64url-decode "*invalid*")))))
 
 (deftest sha256-and-hmac
   (testing "SHA256 digest matches expected value"
@@ -84,14 +84,14 @@
 
 (deftest decode-sec1-rejected
   (testing "SEC1 EC private keys are rejected"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Unsupported"
-                          (crypto/decode-private-key-pem sec1-es256-key)))))
+    (is (thrown-with-error-type? ::errors/unsupported-key
+                                 (crypto/decode-private-key-pem sec1-es256-key)))))
 
 (deftest decode-rejects-rsa
   (testing "RSA private keys are rejected"
     (let [rsa (slurp "test/fixtures/certs/pebble.minica.key.pem")]
-      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Unsupported"
-                            (crypto/decode-private-key-pem rsa))))))
+      (is (thrown-with-error-type? ::errors/unsupported-key
+                                   (crypto/decode-private-key-pem rsa))))))
 
 (deftest public-jwk-structure
   (testing "public-jwk returns expected fields"

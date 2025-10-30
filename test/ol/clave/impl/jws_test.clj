@@ -1,13 +1,15 @@
 (ns ol.clave.impl.jws-test
   (:require
    [clojure.test :refer [deftest is testing]]
+   [ol.clave.errors :as errors]
    [ol.clave.impl.crypto :as crypto]
    [ol.clave.impl.json :as json]
    [ol.clave.impl.jws :as jws]
+   [ol.clave.impl.test-util]
    [ol.clave.protocols :as proto])
   (:import
-   [java.security KeyPairGenerator]
-   [java.nio.charset StandardCharsets]))
+   [java.nio.charset StandardCharsets]
+   [java.security KeyPairGenerator]))
 
 ((requiring-resolve 'hashp.install/install!))
 
@@ -30,8 +32,8 @@
   (testing "unicode preserved"
     (is (= "emoji: 🎉" (jws/json-escape-string "emoji: 🎉"))))
   (testing "rejects non-strings"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"must be a string"
-                          (jws/json-escape-string 123)))))
+    (is (thrown-with-error-type? ::errors/json-escape
+                                 (jws/json-escape-string 123)))))
 
 (deftest jwk-canonical-json-test
   (testing "ES256 JWK canonical form"
@@ -43,11 +45,11 @@
           json (jws/jwk->canonical-json jwk)]
       (is (= "{\"crv\":\"Ed25519\",\"kty\":\"OKP\",\"x\":\"xyz\"}" json))))
   (testing "unsupported curve rejected"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Unsupported.*curve"
-                          (jws/jwk->canonical-json {:kty "EC" :crv "P-384" :x "a" :y "b"}))))
+    (is (thrown-with-error-type? ::errors/unsupported-key
+                                 (jws/jwk->canonical-json {:kty "EC" :crv "P-384" :x "a" :y "b"}))))
   (testing "unsupported kty rejected"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Unsupported.*kty"
-                          (jws/jwk->canonical-json {:kty "RSA"})))))
+    (is (thrown-with-error-type? ::errors/unsupported-key
+                                 (jws/jwk->canonical-json {:kty "RSA"})))))
 
 (deftest protected-header-json-test
   (testing "header with kid"
@@ -64,14 +66,14 @@
       (is (not (.contains header "nonce")))
       (is (.contains header "\"kid\":\"kid-123\""))))
   (testing "HS256 rejects nonce"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"must not include nonce"
-                          (jws/protected-header-json "HS256" "kid-123" "bad-nonce" "https://example.com" nil))))
+    (is (thrown-with-error-type? ::errors/invalid-header
+                                 (jws/protected-header-json "HS256" "kid-123" "bad-nonce" "https://example.com" nil))))
   (testing "kid and jwk mutual exclusivity"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Exactly one"
-                          (jws/protected-header-json "ES256" "kid-123" nil "https://example.com" "{}"))))
+    (is (thrown-with-error-type? ::errors/invalid-header
+                                 (jws/protected-header-json "ES256" "kid-123" nil "https://example.com" "{}"))))
   (testing "requires kid or jwk"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Exactly one"
-                          (jws/protected-header-json "ES256" nil nil "https://example.com" nil)))))
+    (is (thrown-with-error-type? ::errors/invalid-header
+                                 (jws/protected-header-json "ES256" nil nil "https://example.com" nil)))))
 
 (deftest final-jws-json-test
   (testing "deterministic field order"
@@ -137,8 +139,8 @@
           result (jws/ecdsa-der->rs-concat der 32)]
       (is (= 64 (alength result)))))
   (testing "rejects invalid DER"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"DER"
-                          (jws/ecdsa-der->rs-concat (byte-array [0xFF 0xFF]) 32)))))
+    (is (thrown-with-error-type? ::errors/ecdsa-signature-format
+                                 (jws/ecdsa-der->rs-concat (byte-array [0xFF 0xFF]) 32)))))
 
 (deftest sign-es256-test
   (testing "produces 64-byte signature"
@@ -173,8 +175,8 @@
           b64 (jws/encode-signature-b64 "HS256" mac-key message)]
       (is (string? b64))))
   (testing "HS256 rejects non-byte-array"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"byte.*MAC key"
-                          (jws/encode-signature-b64 "HS256" "not-bytes" (byte-array 0))))))
+    (is (thrown-with-error-type? ::errors/signing-failed
+                                 (jws/encode-signature-b64 "HS256" "not-bytes" (byte-array 0))))))
 
 (deftest jws-encode-json-es256-test
   (testing "full JWS encoding with kid"
@@ -234,15 +236,15 @@
           decoded-payload (String. (crypto/base64url-decode (:payload parsed)) StandardCharsets/UTF_8)]
       (is (.contains decoded-payload "\"kty\":\"OKP\""))))
   (testing "EAB rejects non-byte-array MAC key"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"byte array"
-                          (jws/jws-encode-eab sample-es256-keypair "not-bytes" "kid" "url")))))
+    (is (thrown-with-error-type? ::errors/invalid-eab
+                                 (jws/jws-encode-eab sample-es256-keypair "not-bytes" "kid" "url")))))
 
 (deftest error-handling-test
   (testing "unsupported algorithm in select-jws-alg"
     (let [rsa-priv-key (doto (KeyPairGenerator/getInstance "RSA")
                          (.initialize 1024)
                          (.generateKeyPair))]
-      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Unsupported key type" (jws/select-jws-alg rsa-priv-key)))))
+      (is (thrown-with-error-type? ::errors/unsupported-key (jws/select-jws-alg rsa-priv-key)))))
   (testing "JSON escape validates input type"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"must be a string"
-                          (jws/json-escape-string nil)))))
+    (is (thrown-with-error-type? ::errors/json-escape
+                                 (jws/json-escape-string nil)))))

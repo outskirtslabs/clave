@@ -5,6 +5,7 @@
    [ol.clave.impl.http.impl :as http]
    [ol.clave.impl.json :as json]
    [ol.clave.impl.jws :as jws]
+   [ol.clave.impl.util :as util]
    [ol.clave.specs :as acme])
   (:import
    [java.time
@@ -396,12 +397,15 @@
         (and (<= 400 status) (< status 600))
         (let [mt (parse-media-type res)]
           (if (= mt "application/problem+json")
-            (let [problem (parse-problem-json body-bytes)]
+            (let [problem (parse-problem-json body-bytes)
+                  problem-data (util/qualify-keys 'problem problem)
+                  data (merge {:status status} problem-data)]
               ;; Retry on 5xx if no request body (to avoid replaying JWS with nonce).
               (if (and (<= 500 status) (< status 600) (not has-request-body?) (< (inc i) max-attempts))
                 (recur (inc i))
-                (throw (errors/ex errors/problem  (or (:title problem) (str "Acme Server Error " (:type problem)))
-                                  (merge {:status status} problem)))))
+                (throw (errors/ex errors/problem (or (:problem/title data)
+                                                    (str "Acme Server Error " (:problem/type data)))
+                                  data))))
             ;; its not a problem document..
             (let [b (slurp body-bytes :encoding "UTF-8")
                   error-body (if (= mt "application/json") (json/read-str b) b)]
@@ -479,8 +483,7 @@
                    (catch clojure.lang.ExceptionInfo ex
                      (let [data (ex-data ex)
                            status (:status data)
-                           problem (:problem data)
-                           ptype (:type problem)]
+                           ptype (:problem/type data)]
                        (cond
                          (= ptype "urn:ietf:params:acme:error:badNonce") ::bad-nonce
                          (and status (<= 500 status) (< status 600)) ::server-5xx

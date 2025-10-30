@@ -12,6 +12,7 @@
    [ol.clave.impl.http :as http]
    [ol.clave.impl.json :as json]
    [ol.clave.impl.jws :as jws]
+   [ol.clave.impl.util :as util]
    [ol.clave.protocols :as proto]
    [ol.clave.specs :as acme]))
 
@@ -24,15 +25,15 @@
   [directory-url {:keys [http-client
                          account-key
                          account-kid]}]
-  (let [base {::acme/directory-url directory-url
-              ::acme/nonces http/empty-nonces
-              ::acme/http (http/http-client http-client)
-              ::acme/directory nil
-              ::acme/poll-interval 5000
-              ::acme/poll-timeout 60000}
+  (let [base    {::acme/directory-url directory-url
+                 ::acme/nonces        http/empty-nonces
+                 ::acme/http          (http/http-client http-client)
+                 ::acme/directory     nil
+                 ::acme/poll-interval 5000
+                 ::acme/poll-timeout  60000}
         session (cond-> base
-                   account-key (assoc ::acme/account-key account-key)
-                   account-kid (assoc ::acme/account-kid account-kid))]
+                  account-key (assoc ::acme/account-key account-key)
+                  account-kid (assoc ::acme/account-kid account-kid))]
     [session nil]))
 
 (defn load-directory
@@ -45,7 +46,10 @@
                                 :uri directory-url
                                 :as :json}
                        {:cancel-token nil})
-        qualified (acme/qualify-keys body)]
+        directory (util/qualify-keys 'ol.clave.specs body)
+        qualified (cond-> directory
+                    (::acme/meta directory)
+                    (update ::acme/meta #(util/qualify-keys 'ol.clave.specs %)))]
     (when-not (s/valid? ::acme/directory qualified)
       (throw (ex-info "Invalid directory response"
                       {:type ::invalid-directory
@@ -168,17 +172,21 @@
     (catch clojure.lang.ExceptionInfo ex
       (let [data (ex-data ex)
             status (:status data)
-            problem (:problem data)]
+            problem-type (:problem/type data)
+            problem-data (into {}
+                               (comp (filter (fn [[k _]] (= "problem" (namespace k))))
+                                     (map (fn [[k v]] [k v])))
+                               data)]
         (cond
           (or (= 401 status) (= 403 status))
           (throw (errors/ex errors/unauthorized-account
                             "Account is unauthorized (possibly deactivated)"
-                            {:status status :problem problem}))
+                            (merge {:status status} problem-data)))
 
-          (and (= 400 status) (= (:type problem) "urn:ietf:params:acme:error:externalAccountRequired"))
+          (and (= 400 status) (= problem-type "urn:ietf:params:acme:error:externalAccountRequired"))
           (throw (errors/ex errors/external-account-required
                             "External account binding required"
-                            {:status status :problem problem}))
+                            (merge {:status status} problem-data)))
 
           :else
           (throw ex))))))

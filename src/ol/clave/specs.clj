@@ -2,7 +2,7 @@
   (:require
    [clojure.spec.alpha :as s]
    [clojure.string :as str]
-   [clojure.walk :as walk]
+   [ol.clave.impl.util :as util]
    [ol.clave.protocols :as proto]))
 
 ;; Directory resource URLs (RFC 8555 Section 7.1.1)
@@ -19,21 +19,6 @@
 (s/def ::website string?)
 (s/def ::caaIdentities (s/coll-of string?))
 (s/def ::externalAccountRequired boolean?)
-
-;; Helper to qualify keywords from JSON to this namespace
-(defn qualify-keys
-  "Qualifies all unqualified keywords in map m to ol.clave.specs namespace."
-  [m]
-  (walk/postwalk
-   (fn [x]
-     (if (and (map? x) (not (record? x)))
-       (into {} (map (fn [[k v]]
-                       (if (and (keyword? k) (not (qualified-keyword? k)))
-                         [(keyword "ol.clave.specs" (name k)) v]
-                         [k v]))
-                     x))
-       x))
-   m))
 
 (s/def ::meta (s/keys :opt [::termsOfService ::website ::caaIdentities ::externalAccountRequired]))
 

@@ -1,12 +1,118 @@
 (ns ol.clave.scope
-  "Structured cancellation utilities for the ACME plumbing layer.
+  "Structured concurrency and cancellation for ACME protocol operations.
 
-  Scopes form a shallow tree that propagates cancellation, deadlines, and
-  lifecycle listeners. Use `derive` to create child scopes, `cancel!` to stop an
-  entire branch, `deadline`/`with-timeout` for budget control, `sleep` for
-  cooperative delays, and `run` for structured concurrency over virtual
-  threads. The root scope never cancels and acts as the default when callers do
-  not supply their own."
+  This namespace provides a small, purpose-built abstraction (“scope”) on top of
+  Java 21's StructuredTaskScope. A scope expresses a bounded lifetime for work:
+  it can be cancelled explicitly, or it may cease to be valid when a deadline is
+  reached. Child scopes inherit the parent's constraints, so a caller can set a
+  single upper bound for an entire operation and all nested work cooperates with
+  that bound.
+
+  ## Concepts
+
+  - Scope. A value representing (1) a status (:active, :cancelled, :timed-out),
+    (2) an optional deadline (Instant), and (3) a parent/child relation for
+    propagation. Cancellation is cooperative: functions consult the scope via
+    active? / active?! and register cleanups via on-cancel.
+
+  - Deadline vs timeout. A timeout is a duration (“at most 2s”); a deadline is a
+    wall-clock bound (“stop by t”). This library accepts either, but internally
+    reasons about a single deadline per scope. Children adopt the earliest
+    applicable deadline (the “earliest-wins” rule).
+
+  - Execution model. When you call run, the provided tasks are forked as
+    virtual threads within a StructuredTaskScope. Cancelling the parent scope
+    causes the underlying StructuredTaskScope to shut down, which interrupts
+    those virtual threads. Deadline enforcement is twofold: a fast-path check
+    in active?! compares Instant/now to the scope's deadline, and a dedicated
+    watcher (implemented as a cheap virtual thread) will cancel the scope when
+    the deadline elapses. Blocking I/O in virtual threads is encouraged; it is
+    safe and cancellation-friendly via interruption.
+
+  - Beware the CPU. Virtual threads are designed for blocking and I/O-heavy
+    workflows, not sustained CPU-bound computation. They shine when a task
+    frequently yields (network I/O, sleeps, waiting on servers) because the
+    runtime can park and resume them cheaply.
+
+    If a virtual thread performs long stretches of pure CPU work without
+    yielding, it monopolizes an underlying carrier thread and defeats the
+    scalability benefits of the model. In practice, scope/run tasks should consist
+    of cooperative, interruptible steps (issuing HTTP requests, writing to disk,
+    etc) and avoid tight busy loops, cpu work, heavy cryptography inside the virtual
+    thread itself (hand that to a thread pool).
+
+  ## Motivation
+
+  Traditional “timeout per call” patterns tend to scatter timing logic across a
+  codebase. Each HTTP request, retry loop, or polling cycle must remember to set
+  its own timer, and as operations nest this easily leads to inconsistent
+  budgets and subtle hangs.
+
+  A scope provides one coherent boundary: the caller defines the maximum time or
+  cancellation condition for the entire operation, and every nested task
+  inherits that constraint automatically. This shifts responsibility from
+  individual functions to the structure of the program itself, and makes
+  cancellation uniformly visible and predictable.
+
+  StructuredTaskScope supplies the execution model for this: virtual-thread
+  subtasks are forked in a tree, joined as a unit, and shut down together when
+  the scope ends or exceeds its deadline.
+
+  Scopes therefore behave like dynamic “lifetimes.” When the caller no longer
+  cares (due to success, failure, timeout, or explicit abort), all subordinate
+  work is promptly cancelled and cleaned up.
+
+  For ACME, this ensures HTTP exchanges, polling loops, and racing challenge
+  solvers never drift on after the client has moved on, and it removes a whole
+  class of timeout bookkeeping from individual operations.
+
+  ## Usage Examples
+
+  ### Basic usage: running a function with a real timeout
+
+  ```clojure
+  (require '[ol.clave.scope :as scope])
+  (import  '[java.time Duration])
+
+  (defn slow []
+    (Thread/sleep 500)
+    :done)
+
+  (let [root (scope/root)]
+    (try
+      (let [result
+            (scope/with-timeout root (Duration/ofMillis 200)
+              (fn [child]
+                ;; run slow work on a virtual thread so the REPL stays safe
+                (first (scope/run child [(fn [_] (slow))]))))]
+        (println ::success result))
+      (catch Throwable _
+        (println ::timed-out))))
+  ```
+
+  ### Structured concurrency: concurrent tasks (virtual threads) with a shared scope
+
+
+  ```clojure
+  ;; Fork two tasks; cancel both on first failure (fail-fast).
+  (scope/run root {:scope-type :collect}
+             [(fn [s] (scope/sleep s 50)  :a)
+              (fn [s] (scope/sleep s 500) :b)])
+  ;; => [:a :b]
+
+  (scope/run root {:scope-type :fail-fast}
+             [(fn [s] (scope/sleep s 50) (throw (Exception. \"failed\")))
+              (fn [s] (scope/sleep s 500) :b)])
+  ;; => java.lang.Exception \"failed\"
+
+  (scope/run root {:scope-type :first-success}
+             [(fn [s] (scope/sleep s 50)  :a)
+              (fn [s] (scope/sleep s 500) :b)])
+  ;; => :a
+  ```
+
+  See also: scope/derive (to create children with a narrower deadline), with-timeout,
+  run (to fork tasks under StructuredTaskScope), cancel!, on-cancel, active?!, sleep."
   (:require
    [ol.clave.errors :as errors])
   (:refer-clojure :exclude [derive])
@@ -52,6 +158,7 @@
    (errors/ex errors/timeout message (or data {}) cause)))
 
 (defn scope?
+  "Returns true if `x` is a Scope instance."
   [x]
   (instance? Scope x))
 
@@ -99,7 +206,12 @@
   (delay
     (new-scope nil nil)))
 
-(defn root []
+(defn root
+  "Returns the root scope.
+
+  The root scope never cancels, has no deadline, and serves as the default parent
+  for top-level operations. Use [[derive]] to create child scopes with timeouts."
+  []
   @root-scope*)
 
 (defn- clean-child-refs
@@ -156,10 +268,38 @@
                 (Thread/startVirtualThread runner))))))
 
 (defn derive
-  "Create a child scope from `parent`. Options:
-   - `:timeout` - java.time.Duration or long millis
-   - `:deadline` - java.time.Instant or TemporalAccessor
-  Child scopes inherit the earliest deadline between parent and supplied values."
+  "Creates a child scope from `parent` with optional timeout or deadline.
+
+  Child scopes inherit the parent's deadline and automatically combine it with any
+  supplied timeout or deadline, using the earliest one. When a parent cancels, all
+  children cancel automatically.
+
+  ## Options
+
+  - `:timeout` - `java.time.Duration` or long milliseconds from now
+  - `:deadline` - `java.time.Instant` or `TemporalAccessor` absolute deadline
+
+  ## Examples
+
+  ```clojure
+  ;; Child with no additional constraints
+  (scope/derive parent)
+
+  ;; Child with 5 second timeout
+  (scope/derive parent {:timeout (Duration/ofSeconds 5)})
+  (scope/derive parent {:timeout 5000})
+
+  ;; Child with absolute deadline
+  (scope/derive parent {:deadline (Instant/now).plusSeconds(10)})
+
+  ;; Both specified - earliest wins
+  (scope/derive parent {:timeout 1000
+                  :deadline far-future-instant})
+  ```
+
+  Throws if `parent` is not a scope or has already been cancelled.
+
+  See also: [[root]], [[cancel!]], [[with-timeout]]"
   ([parent]
    (derive parent {}))
   ([parent {:keys [timeout deadline] :as _opts}]
@@ -190,22 +330,49 @@
      child)))
 
 (defn deadline
-  "Return the Instant deadline for the scope, or nil."
+  "Returns the `java.time.Instant` deadline of `scope`, or nil if none.
+
+  The deadline is the earliest absolute time point at which the scope will
+  transition to `:timed-out`. Inherited from parent or set via [[derive]]."
   [scope]
   (:deadline scope))
 
 (defn with-timeout
-  "Derive a child scope with `timeout` (Duration or long millis) and invoke `f`
-  with the child scope. Cleans up deadline watcher on success; on exception the
-  child scope is cancelled with the thrown cause."
-  ([parent timeout f]
-   (with-timeout parent timeout f []))
+  "Executes `f` with a child scope that has a timeout.
+
+  Creates a child scope with the specified `timeout` (Duration or long millis),
+  then invokes `f` with the child scope and any additional `args`. Cleans up the
+  deadline watcher on normal completion. On exception, cancels the child scope
+  with the thrown cause before re-throwing.
+
+  ## Parameters
+
+  - `parent` - Parent scope
+  - `timeout` - `java.time.Duration` or long milliseconds
+  - `f` - Function taking the child scope as first argument, if args is non-nil, then args as 2nd argument
+  - `args` - Additional arguments passed to `f`
+
+  ## Examples
+
+  ```clojure
+  (with-timeout parent (Duration/ofSeconds 5)
+    (fn [child-scope]
+      (fetch-data child-scope url)))
+
+  ;; With additional arguments
+  (with-timeout parent 1000
+    (fn [child-scope user-id]
+      (process-user child-scope user-id))
+    123)
+  ```
+
+  See also: [[derive]], [[cancel!]]"
   ([parent timeout f & args]
    (when-not (ifn? f)
      (throw (IllegalArgumentException. "with-timeout requires a callable function")))
    (let [child (derive parent {:timeout timeout})]
      (try
-       (let [result (apply f child args)]
+       (let [result (if args (apply f child args) (f child))]
          (stop-deadline-task! child)
          result)
        (catch Throwable t
@@ -213,8 +380,25 @@
          (throw t))))))
 
 (defn sleep
-  "Block for `ms` milliseconds or until `scope` cancels or times out.
-  Returns :slept when the full delay elapses, otherwise throws a cancellation exception."
+  "Cooperatively blocks for `ms` milliseconds or until `scope` cancels.
+
+  Returns `:slept` when the full delay elapses without interruption. Throws a
+  cancellation exception if the scope is cancelled or times out during the sleep.
+
+  Unlike `Thread/sleep`, this function respects scope cancellation and will throw
+  immediately when the scope transitions to cancelled or timed-out.
+
+  ## Examples
+
+  ```clojure
+  ;; Sleep for 100ms
+  (sleep scope 100) ; => :slept
+
+  ;; Cancelled during sleep
+  (sleep scope 5000) ; throws ExceptionInfo with :ol.clave.errors/cancelled
+  ```
+
+  See also: [[active?]], [[active?!]], [[cancel!]]"
   [scope ^long ms]
   (when (pos? ms)
     (let [release (bind-thread-to-scope scope)]
@@ -237,7 +421,21 @@
   (:status @(:state scope)))
 
 (defn active?
-  "True when the scope has not been cancelled or timed out."
+  "Returns true when `scope` has not been cancelled or timed out.
+
+  Checks both the scope's internal state and whether its deadline has passed.
+  Use this for non-throwing checks. For throwing behavior, see [[active?!]].
+
+  ## Examples
+
+  ```clojure
+  (active? scope) ; => true
+
+  (cancel! scope)
+  (active? scope) ; => false
+  ```
+
+  See also: [[active?!]], [[cancel!]]"
   [scope]
   (let [status (scope-status scope)
         deadline (:deadline scope)]
@@ -247,7 +445,23 @@
                   (.isAfter ^Instant deadline (now)))))))
 
 (defn active?!
-  "Return scope when active; otherwise throw structured cancellation/timeout errors."
+  "Returns `scope` if active, otherwise throws an exception.
+
+  Throws `ExceptionInfo` with appropriate error type when the scope has been
+  cancelled (`:ol.clave.errors/cancelled`) or timed out
+  (`:ol.clave.errors/timeout`). Use this for explicit cancellation checks that
+  should fail fast.
+
+  ## Examples
+
+  ```clojure
+  (active?! scope) ; => scope (when active)
+
+  (cancel! scope)
+  (active?! scope) ; throws ExceptionInfo
+  ```
+
+  See also: [[active?]], [[cancel!]], [[sleep]]"
   [scope]
   (let [{:keys [status cause]} @(:state scope)
         deadline (:deadline scope)]
@@ -287,8 +501,42 @@
       (cancel! child cause))))
 
 (defn cancel!
-  "Cancel `scope`, optionally with Throwable `cause`. Returns true when this call
-  transitioned the scope."
+  "Cancels `scope`, transitioning it from active to cancelled or timed-out.
+
+  ## Parameters
+
+  - `scope` - The scope to cancel
+  - `cause` - Optional `Throwable` describing the cancellation reason. If not
+              provided, a generic cancellation exception is created.
+
+  When `cancel!` is invoked, the scope attempts a single atomic transition from
+  `:active` to either `:cancelled` or `:timed-out`. Only the first successful call
+  wins; subsequent calls return `false` without re-running cancellation effects.
+
+  On a successful transition, deadline enforcement for the scope is stopped,
+  registered [[on-cancel]] handlers are invoked exactly once, and any child scopes
+  are cancelled recursively. Tasks blocked in virtual threads will be interrupted
+  cooperatively, allowing work to stop promptly.
+
+  The function returns `true` if
+  this invocation performed the transition and `false` if the scope was already
+  cancelled.
+
+  ## Examples
+
+  ```clojure
+  ;; Cancel without specific reason
+  (cancel! scope)
+
+  ;; Cancel with custom exception
+  (cancel! scope (ex-info \"Operation aborted\" {:reason :user-request}))
+
+  ;; Check if this call performed the transition
+  (when (cancel! scope)
+    (println \"Scope was cancelled by this call\"))
+  ```
+
+  See also: [[active?]], [[active?!]], [[on-cancel]], [[derive]]"
   ([scope]
    (cancel! scope nil))
   ([scope cause]
@@ -311,8 +559,47 @@
            false))))))
 
 (defn on-cancel
-  "Register `f` to run once when scope cancels. Returns a handle that removes the
-  listener when invoked."
+  "Registers callback `f` (arity-2) to run when `scope` cancels or times out.
+
+  ## Parameters
+
+  - `scope` - The scope to watch
+  - `f` - Callback function with signature `(fn [scope cause] ...)` where:
+    - `scope` - The cancelled scope
+    - `cause` - The `Throwable` describing why cancellation occurred
+
+  `on-cancel` installs a handler that will be invoked exactly once, at the moment
+  the scope transitions out of the active state. If the scope has already been
+  cancelled, the handler is invoked immediately. The function returns a
+  deregistration handle; calling it removes the handler so it will not run if the
+  scope later cancels.
+
+  Handlers receive two arguments: the scope that cancelled and the cause
+  (`Throwable`) explaining why. They are intended for cleanup tasks such as
+  interrupting external work, closing resources, or signalling dependent
+  components. Errors thrown by handlers are caught and ignored, so cancellation
+  always completes.
+
+  ## Examples
+
+  ```clojure
+  ;; Register cleanup handler
+  (on-cancel scope
+    (fn [_ cause]
+      (println \"Cancelled because:\" (ex-message cause))
+      (cleanup-resources)))
+
+  ;; Store handle to remove listener later
+  (let [remove! (on-cancel scope #(println \"Cancelled\"))]
+    ;; ... do work ...
+    (remove!)) ; unregister before scope cancels
+
+  ;; Already cancelled - runs immediately
+  (cancel! scope)
+  (on-cancel scope
+    (fn [_ _] (println \"This runs immediately\")))
+
+  See also: [[cancel!]], [[active?]], [[derive]]"
   [scope f]
   (when-not (ifn? f)
     (throw (IllegalArgumentException. "on-cancel requires a function callback")))
@@ -401,12 +688,76 @@
     :else (vec [callables])))
 
 (defn run
-  "Execute `callables` (a seq of functions taking a child scope) within a Java
-  StructuredTaskScope derived from `scope`. Options:
-  - `:scope-type` one of `:collect` (default), `:fail-fast`, or `:first-success`.
+  "Execute multiple tasks under structured concurrency with a shared cancellation context.
 
-  Returns a vector of results for `:collect`/`:fail-fast`, or the first success
-  result for `:first-success`."
+  `run` derives a child scope for each task, forks the tasks as virtual threads in
+  a Java `StructuredTaskScope`, waits for completion according to the selected
+  coordination policy, and returns results or propagates failure.
+
+  When any task causes the scope to conclude--whether by success, error, or
+  timeout--remaining tasks are cancelled and do not outlive the caller’s
+  interest. Each task receives its own child scope so nested work observes the
+  same lifetime and deadline.
+
+
+  ## Parameters
+
+  - `scope` - Parent scope (must be active)
+  - `opts` - Options map with optional `:scope-type` key (see below)
+  - `callables` - Sequence of arity-1 functions, each taking a child scope as argument (see below)
+
+  ## Scope Types
+
+  Scope types are coordination policies that determine how results are gathered.
+
+  The `:scope-type` option controls how tasks are coordinated:
+
+  `:collect` (default) waits for all tasks and returns their values in order.
+  If a task fails, cancellation is propagated and the error is thrown, but
+  completed results remain visible.
+
+  `:fail-fast` stops as soon as the first task fails. Sibling tasks are cancelled
+  promptly, and the failure is rethrown to the caller. Successful results are only
+  returned if no task fails.
+
+  `:first-success` returns as soon as any task produces a value without error and
+  cancels the rest. If every task fails, the most recent error is thrown.
+
+  ## Callables
+
+  Callers should supply `callables` a sequence of arity 1 functions that accept
+  the child scope as their arg.
+
+  Task functions may perform blocking operations (such as network I/O or sleeps)
+  without harming concurrency, because each runs in its own virtual thread. They
+  should not perform long stretches of CPU-bound work, as that can monopolize
+  underlying carrier threads; heavy computation should instead be off-loaded to
+  a dedicated executor or thread pool.
+
+  Scopes created inside `run` inherit deadlines and cancellation state from the
+  parent, ensuring the entire computation respects a single budget and
+  termination boundary.
+
+  ## Examples
+  ```clojure
+    ;; Collect all results
+    (run parent
+      [(fn [s] (fetch-user s user-id))
+       (fn [s] (fetch-orders s user-id))])
+    ;; => [user orders]
+
+    ;; Fail-fast on errors
+    (run parent {:scope-type :fail-fast}
+      [(fn [s] (validate-input s input))
+       (fn [s] (check-permissions s user))])
+
+    ;; Race for first success
+    (run parent {:scope-type :first-success}
+      [(fn [s] (fetch-from-cache s key))
+       (fn [s] (fetch-from-db s key))])
+    ;; => cached-value (if available first)
+  ```
+  See also: [[derive]], [[cancel!]], [[on-cancel]]"
   ([scope callables]
    (run scope {} callables))
   ([scope {:keys [scope-type] :as _opts} callables]

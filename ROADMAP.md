@@ -24,13 +24,14 @@
 - [x] Spec 005: Account KID Persistence
 - [x] Spec 006: Implement account `POST-as-GET`, contact updates, deactivation, and External Account Binding (RFC 8555 §7.3.4) with Pebble coverage.
 - [x] Support account key rollover via directory `keyChange`, including verification that the new keypair is active. (updated 2025-10-30)
-- [ ] Proper cancellation/timeout with structured concurrency
+- [x] Proper cancellation/timeout with structured concurrency
 
 ### Milestone 2 – Order Lifecycle
 - [ ] Add `new-order` command covering identifier payloads, optional `notBefore`/`notAfter`, and idempotent retry behaviour.
 - [ ] Implement order retrieval (`POST-as-GET`), polling helpers respecting Retry-After, and tracking of authorization URLs.
 - [ ] Complete finalize-order flow that submits CSR bytes from `impl.csr/create-csr`, checks order state transitions, and captures certificate URLs.
 - [ ] Provide certificate download helper that dereferences the `certificate` link and returns PEM chain + parsed certificates.
+- [ ] Implement "Feedback / Potential improvements" for scope in specs/008-context-propagation.md
 - [ ] Add Pebble integration/E2E coverage for Retry-After once POST-as-GET helpers land.
 
 ### Milestone 3 – Authorizations & Challenges

@@ -43,11 +43,15 @@
    [java.security KeyStore SecureRandom]
    [javax.net.ssl KeyManagerFactory TrustManagerFactory SSLContext TrustManager]
    [java.time Duration]
-   [java.util.concurrent CompletableFuture]
+   [java.util.concurrent CompletableFuture Executor Executors]
    [java.util.function Function Supplier]
    [java.util.function Supplier]))
 
 (set! *warn-on-reflection* true)
+
+(defonce ^Executor shared-virtual-executor
+  (delay
+    (Executors/newVirtualThreadPerTaskExecutor)))
 
 (defn coerce-key
   "Coerces a key to str"
@@ -173,7 +177,8 @@
                  proxy
                  ssl-context
                  ssl-parameters
-                 version]} opts]
+                 version]} opts
+         executor          (or executor @shared-virtual-executor)]
      (cond-> (HttpClient/newBuilder)
        connect-timeout  (.connectTimeout (->timeout connect-timeout))
        executor         (.executor executor)

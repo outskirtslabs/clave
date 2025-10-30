@@ -8,15 +8,17 @@
   No other extensions or key types are supported.
 
   If you need more features then you will need to use external tools to provide your own CSR."
-  (:require [clojure.string :as str]
-            [ol.clave.errors :as errors]
-            [ol.clave.impl.parse-ip :as parse-ip])
-  (:import [java.math BigInteger]
-           [java.net IDN InetAddress]
-           [java.nio.charset StandardCharsets]
-           [java.security Signature]
-           [java.security.interfaces ECPublicKey RSAPublicKey]
-           [java.util Base64]))
+  (:require
+   [clojure.string :as str]
+   [ol.clave.errors :as errors]
+   [ol.clave.impl.parse-ip :as parse-ip])
+  (:import
+   [java.math BigInteger]
+   [java.net IDN InetAddress]
+   [java.nio.charset StandardCharsets]
+   [java.security Signature]
+   [java.security.interfaces ECPublicKey RSAPublicKey]
+   [java.util Base64]))
 
 ;; -------------------------
 ;; DER Encoding Primitives

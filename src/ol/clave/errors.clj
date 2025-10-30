@@ -22,6 +22,10 @@
 (def account-creation-failed ::account-creation-failed)
 (def missing-location-header ::missing-location-header)
 
+(def cancelled ::cancelled)
+(def timeout ::timeout)
+(def invalid-scope ::invalid-scope)
+
 ;; Account management errors (spec 006)
 (def account-retrieval-failed ::account-retrieval-failed)
 (def account-update-failed ::account-update-failed)

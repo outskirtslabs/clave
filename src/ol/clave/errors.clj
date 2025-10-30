@@ -22,11 +22,29 @@
 (def account-creation-failed ::account-creation-failed)
 (def missing-location-header ::missing-location-header)
 
+;; Account management errors (spec 006)
+(def account-retrieval-failed ::account-retrieval-failed)
+(def account-update-failed ::account-update-failed)
+(def account-deactivation-failed ::account-deactivation-failed)
+(def external-account-required ::external-account-required)
+(def unauthorized-account ::unauthorized-account)
+(def missing-account-context ::missing-account-context)
+
 ;; CSR-related errors (spec 003)
 (def invalid-san ::invalid-san)
 (def invalid-idna ::invalid-idna)
 (def invalid-ip ::invalid-ip)
 (def encoding-failed ::encoding-failed)
+
+(def malformed-pem ::malformed-pem)
+(def key-mismatch ::key-mismatch)
+
+;; RFC 7807 "problem" documents returned by the server
+(def problem ::problem)
+;; errors returned by the server with unknown structure
+(def server-error ::server-error)
+
+(def value-too-large ::value-too-large)
 
 (defn ex
   "Convenience wrapper for ex-info that associates the shared :type key.

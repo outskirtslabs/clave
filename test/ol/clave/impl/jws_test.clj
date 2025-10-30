@@ -6,7 +6,10 @@
    [ol.clave.impl.jws :as jws]
    [ol.clave.protocols :as proto])
   (:import
+   [java.security KeyPairGenerator]
    [java.nio.charset StandardCharsets]))
+
+((requiring-resolve 'hashp.install/install!))
 
 ;; Test fixtures
 (def ^:private sample-es256-keypair
@@ -236,9 +239,10 @@
 
 (deftest error-handling-test
   (testing "unsupported algorithm in select-jws-alg"
-    (let [rsa-key-pem "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj\nMzEfYyjiWA4R4/M2bS1+fWIcPm15j9gLHvHKDCxjrU7Vd3XYxLLH7KvK/+0y/MYl\nvKiI4QEqQLzFLDjD+A7aeR+K2j+JvH+W8wDJdLZj9VDQqxUHtU3Z5rk5xLH7kXwD\n+x6pxKjqXE6gGhCXTCUkGNr0gfLKHQxYmZiP3W5hIQyh8lCnBBD/ZbwCWRqJ+OEc\nX8JfvIjN0JIH+pVcFrGdXcYXJLB/A+VqVP5OaJh8w7NKYDCy9f9+vOq2r7F+0xqK\njn0y7cj2sLGkxYjPxqT0c/3g1cNvBBgBHEfGCCRBpgZJT8sX8lJC8TYGFxX7T+w0\nY0zMfNKJAgMBAAECggEARL3AHp8u9GGU7j+XVMS9wF8GGV9m8f7M6t0NLVVx0NTb\nMSbHbF+sXmDYEDcU7fJxKqDWZW0Qqz0qBB1EYmSQy2jIW+M1KO7aM6xECY3eBPm1\n1GUzr8rvH8SQwDrQSNTr8gd5GYhOTZJLVMQmHKVmqP9WRTXYYnGZMkZf/R0Fk8Fn\nUW1yxYMPwLJw0yJVDsZ6LKQqU7C1EcUx8yG7M8OvJGH+yZmJoMU3LHW6V9jF3gMd\nMO/jvCKqY8F0GNMV8a1HmLXJpZxGLqZhHXMtG8vCXWHKQDZpnxVhT0fLB0uc0Kxf\n8VGYDRiRXHQfZ2vUNJgbmLGCEqFmKF7FJR+vImXlQQKBgQDw0oLVLdVuJxN8R5Lu\nd8m1r+M8VqVWzZ2T0FLG8Y1TqLVHHxBPgAQXvH7TQNR6LN8BVBU8hC1WJ5TZGEWn\nqj0Gr7X6nqH6sN3xXj/xt1qQ3TZhYl+cxVPKKG3JpQqJMOKOSXEVQ3qZxKX1w3hZ\ndqLJqKl8vLDY9KxqVNq7Y2XdSQKBgQDHT1F4Y4rJvJ4nJRlCqE4C8ylqmQP1W6bv\n8l4LGF5cqXGMPyYPxZkzMJv0rC5WZCYVkJ3LK1dJ2xJGdVqYvDv7fKQqFcGSqEKC\nYPr0U8FBXsJ5YJn9vKYdF3j+xkL8OXHG5pQVxHXVFqK1xYLnDcQXN7q8YfLGWKPH\n3fZRTmgwCQKBgBUJ5yGM8XY0qVvxHYgGvF5h7u6L8dPDXP9VxJvNJEF0qlKJW6Oe\nd5vN2W3rH8vGX5LFjxqP7CpLKQxFqKSFqJYLqXHvCYxNMWpZGPCqGJ8OL2QqH8HQ\noGDLfJ8zKmB5qL6vH5TXN2FqGDcqEWL6YV0fZDKPHFKqH5L2vqKp8IYxAoGAFvXj\nY7dQqW8xYfJ3zL6xKqM5Y6HfN8L8DcQvXM6PqVKqYH5zLG8FqJYVqXH0CqKp5YVq\nXJ8YqH6zL2vH5TXN2FqGDcqEWL6YV0fZDKPHFKqH5L2vqKp8IYxFqKSFqJYLqXHv\nCYxNMWpZGPCqGJ8OL2QqH8HQoGDLfJ8zKmB5qL6vAoGAFvXjY7dQqW8xYfJ3zL6x\nKqM5Y6HfN8L8DcQvXM6PqVKqYH5zLG8FqJYVqXH0CqKp5YVqXJ8YqH6zL2vH5TXN\n2FqGDcqEWL6YV0fZDKPHFKqH5L2vqKp8IYxFqKSFqJYLqXHvCYxNMWpZGPCqGJ8O\nL2QqH8HQoGDLfJ8zKmB5qL6v\n-----END PRIVATE KEY-----"]
-      ;; This would fail on key loading since we only support EC/Ed25519
-      (is true))) ; Placeholder since we reject RSA at key load time
+    (let [rsa-priv-key (doto (KeyPairGenerator/getInstance "RSA")
+                         (.initialize 1024)
+                         (.generateKeyPair))]
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Unsupported key type" (jws/select-jws-alg rsa-priv-key)))))
   (testing "JSON escape validates input type"
     (is (thrown-with-msg? clojure.lang.ExceptionInfo #"must be a string"
                           (jws/json-escape-string nil)))))

@@ -53,9 +53,7 @@
   (try
     (.encodeToString url-encoder bs)
     (catch Exception ex
-      (throw (ex-info "Base64url encoding failed"
-                      {:type errors/base64}
-                      ex)))))
+      (throw (errors/ex errors/base64 "Base64url encoding failed" {} ex)))))
 
 (defn base64url-decode
   "Decode a URL-safe base64 (unpadded) string into bytes.
@@ -64,10 +62,7 @@
   (try
     (.decode url-decoder s)
     (catch IllegalArgumentException ex
-      (throw (ex-info "Base64url decoding failed"
-                      {:type errors/base64
-                       :value s}
-                      ex)))))
+      (throw (errors/ex errors/base64 "Base64url decoding failed" {:value s} ex)))))
 
 (defn sha256-bytes
   "Compute SHA-256 digest of the given bytes."
@@ -85,9 +80,7 @@
       (.init mac key-spec)
       (.doFinal mac data))
     (catch Exception ex
-      (throw (ex-info "Failed to compute HMAC-SHA256"
-                      {:type errors/signing-failed}
-                      ex)))))
+      (throw (errors/ex errors/signing-failed "Failed to compute HMAC-SHA256" {} ex)))))
 
 (def ^:private p256-prime
   (BigInteger. "FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF" 16))
@@ -104,10 +97,9 @@
   (let [raw (strip-leading-zero (.toByteArray value))
         raw-length (alength raw)]
     (when (> raw-length size)
-      (throw (ex-info "Value exceeds expected size"
-                      {:type ::value-too-large
-                       :size size
-                       :value-length raw-length})))
+      (throw (errors/ex errors/value-too-large "Value exceeds expected size"
+                        {:size size
+                         :value-length raw-length})))
     (let [target (byte-array size)]
       (System/arraycopy raw 0 target (- size raw-length) raw-length)
       (.encodeToString url-encoder target))))
@@ -119,14 +111,12 @@
 (defn- ensure-es256-params [^ECKey key]
   (let [params (.getParams key)]
     (when (nil? params)
-      (throw (ex-info "EC key missing parameter specification"
-                      {:type ::unsupported-key})))
+      (throw (errors/ex errors/unsupported-key "EC key missing parameter specification" {})))
     (let [curve (.getCurve params)
           field (.getField curve)]
       (when-not (and (instance? ECFieldFp field)
                      (= (.getP ^ECFieldFp field) p256-prime))
-        (throw (ex-info "Only P-256 EC keys are supported"
-                        {:type ::unsupported-key}))))
+        (throw (errors/ex errors/unsupported-key "Only P-256 EC keys are supported" {}))))
     :ol.clave.algo/es256))
 
 (defn key-algorithm
@@ -135,9 +125,8 @@
   (cond
     (instance? EdECKey key) :ol.clave.algo/ed25519
     (instance? ECKey key) (ensure-es256-params ^ECKey key)
-    :else (throw (ex-info "Unsupported key type"
-                          {:type ::unsupported-key
-                           :key-class (some-> key class)}))))
+    :else (throw (errors/ex errors/unsupported-key "Unsupported key type"
+                            {:key-class (some-> key class)}))))
 
 (defn assert-supported-key
   "Raise if the key is not supported."
@@ -151,7 +140,7 @@
           (.encodeToString mime-encoder der)
           type))
 
-(defn- parse-pem [pem]
+(defn parse-pem [pem]
   (let [normalized (-> pem
                        (str/replace "\r" "")
                        (str/trim))
@@ -159,9 +148,9 @@
     (if-let [[_ type body] (re-matches re normalized)]
       {:type type
        :bytes (.decode mime-decoder (str/replace body #"\s" ""))}
-      (throw (ex-info "Invalid PEM encoding" {:type ::malformed-pem})))))
+      (throw (errors/ex errors/malformed-pem "Invalid PEM encoding" {})))))
 
-(defn- decode-pkcs8 [^bytes der]
+(defn decode-pkcs8 [^bytes der]
   (let [spec (PKCS8EncodedKeySpec. der)]
     (or
      (try
@@ -176,8 +165,7 @@
          (assert-supported-key key)
          key)
        (catch Exception _))
-     (throw (ex-info "Unsupported private key algorithm"
-                     {:type ::unsupported-key})))))
+     (throw (errors/ex errors/unsupported-key "Unsupported private key algorithm" {})))))
 
 (defn- decode-spki [^bytes der]
   (let [spec (X509EncodedKeySpec. der)]
@@ -194,8 +182,7 @@
          (assert-supported-key key)
          key)
        (catch Exception _))
-     (throw (ex-info "Unsupported public key algorithm"
-                     {:type ::unsupported-key})))))
+     (throw (errors/ex errors/unsupported-key "Unsupported public key algorithm" {})))))
 
 (defn encode-public-key-pem
   "Encode a supported public key as SubjectPublicKeyInfo PEM."
@@ -209,9 +196,8 @@
   (let [{:keys [type bytes]} (parse-pem pem)]
     (if (= type "PUBLIC KEY")
       (decode-spki bytes)
-      (throw (ex-info "Unsupported public key encoding"
-                      {:type ::unsupported-key
-                       :pem-type type})))))
+      (throw (errors/ex errors/unsupported-key "Unsupported public key encoding"
+                        {:pem-type type})))))
 
 (defn encode-private-key-pem
   "Encode a supported private key as PKCS#8 PEM."
@@ -225,9 +211,8 @@
   (let [{:keys [type bytes]} (parse-pem pem)]
     (if (= type "PRIVATE KEY")
       (decode-pkcs8 bytes)
-      (throw (ex-info "Unsupported private key encoding"
-                      {:type ::unsupported-key
-                       :pem-type type})))))
+      (throw (errors/ex errors/unsupported-key "Unsupported private key encoding"
+                        {:pem-type type})))))
 
 (defrecord KeyPairAlgo [^java.security.PublicKey public-key
                         ^java.security.PrivateKey private-key
@@ -265,9 +250,8 @@
      (let [^KeyPairGenerator generator (KeyPairGenerator/getInstance "Ed25519")
            key-pair (.generateKeyPair generator)]
        (->KeyPairAlgo (.getPublic key-pair) (.getPrivate key-pair) :ol.clave.algo/ed25519 {:curve "Ed25519"}))
-     (throw (ex-info "Unsupported key algorithm"
-                     {:type ::unsupported-key
-                      :algo algo})))))
+     (throw (errors/ex errors/unsupported-key "Unsupported key algorithm"
+                       {:algo algo})))))
 
 (defn public-jwk
   "Return a public JWK map for the given public key."
@@ -298,7 +282,7 @@
           {:crv (:crv jwk) :kty "EC" :x (:x jwk) :y (:y jwk)}
           "OKP"
           {:crv (:crv jwk) :kty "OKP" :x (:x jwk)}
-          (throw (ex-info "Unsupported JWK kty" {:type ::unsupported-key :kty (:kty jwk)})))
+          (throw (errors/ex errors/unsupported-key "Unsupported JWK kty" {:kty (:kty jwk)})))
         ordered (into (sorted-map) canonical)
         ^String json-str (json/write-str ordered)
         ^MessageDigest digest (MessageDigest/getInstance "SHA-256")]
@@ -309,7 +293,7 @@
   (let [^Signature signature (Signature/getInstance algo)]
     (.initSign signature private)
     (.update signature message)
-    (let [sig-bytes           (.sign signature)
+    (let [sig-bytes (.sign signature)
           ^Signature verifier (Signature/getInstance algo)]
       (.initVerify verifier public)
       (.update verifier message)
@@ -320,17 +304,15 @@
   [^java.security.PrivateKey private ^java.security.PublicKey public]
   (let [algo (key-algorithm private)]
     (when-not (= algo (key-algorithm public))
-      (throw (ex-info "Mismatched key algorithms"
-                      {:type ::unsupported-key
-                       :private algo
-                       :public (key-algorithm public)})))
+      (throw (errors/ex errors/unsupported-key "Mismatched key algorithms"
+                        {:private algo
+                         :public (key-algorithm public)})))
     (let [message (.getBytes "ol.clave.keypair.check" StandardCharsets/UTF_8)
           signature-algo (case algo
                            :ol.clave.algo/es256 "SHA256withECDSA"
                            :ol.clave.algo/ed25519 "Ed25519")]
       (when-not (sign-verify signature-algo private public message)
-        (throw (ex-info "Keypair verification failed"
-                        {:type ::key-mismatch}))))
+        (throw (errors/ex errors/key-mismatch "Keypair verification failed" {}))))
     {:private private :public public :algo algo}))
 
 (defn keypair-from-pems

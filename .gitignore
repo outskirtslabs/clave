@@ -1,3 +1,4 @@
+.*
 .cpcache/
 **/.claude/settings.local.json
 .clj-kondo/
@@ -10,3 +11,4 @@ extra/
 .direnv
 example-project
 *.md
+*.log

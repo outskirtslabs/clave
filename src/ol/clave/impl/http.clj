@@ -1,21 +1,26 @@
 (ns ^:no-doc ol.clave.impl.http
   (:require
    [clojure.string :as str]
+   [ol.clave.errors :as errors]
    [ol.clave.impl.http.impl :as http]
    [ol.clave.impl.json :as json]
    [ol.clave.impl.jws :as jws]
    [ol.clave.specs :as acme])
   (:import
-   [java.time Duration Instant ZoneOffset ZonedDateTime]
+   [java.time
+    Duration
+    Instant
+    ZoneOffset
+    ZonedDateTime]
    [java.time.format DateTimeFormatter DateTimeFormatterBuilder DateTimeParseException]
    [java.time.temporal ChronoField]
+   [java.util Locale]
    [java.util.concurrent
     CancellationException
     CompletableFuture
     ExecutionException
     TimeUnit
     TimeoutException]
-   [java.util Locale]
    [java.util.concurrent CompletableFuture]))
 
 (set! *warn-on-reflection* true)
@@ -395,13 +400,13 @@
               ;; Retry on 5xx if no request body (to avoid replaying JWS with nonce).
               (if (and (<= 500 status) (< status 600) (not has-request-body?) (< (inc i) max-attempts))
                 (recur (inc i))
-                (throw (ex-info (str "HTTP " status " problem+json")
-                                {:status status :problem problem}))))
-            ;; Non-problem+json error
+                (throw (errors/ex errors/problem  (or (:title problem) (str "Acme Server Error " (:type problem)))
+                                  (merge {:status status} problem)))))
+            ;; its not a problem document..
             (let [b (slurp body-bytes :encoding "UTF-8")
                   error-body (if (= mt "application/json") (json/read-str b) b)]
-              (throw (ex-info (str "HTTP " status " error")
-                              {:status status :body error-body})))))
+              (throw (errors/ex errors/server-error (str "HTTP " status " error")
+                                {:status status :body error-body})))))
 
         ;; Unexpected status
         :else
@@ -413,9 +418,10 @@
 
 (defn jws-encode-json
   "JWS-encode `input` JSON with `keypair`, `kid`, `nonce`, and `endpoint`.
+   For POST-as-GET, pass nil as input to use empty payload.
    Return bytes of application/jose+json."
   [keypair kid nonce endpoint input]
-  (let [payload-json (json/write-str input)]
+  (let [payload-json (if (nil? input) "" (json/write-str input))]
     (.getBytes (jws/jws-encode-json payload-json keypair kid nonce endpoint)
                java.nio.charset.StandardCharsets/UTF_8)))
 

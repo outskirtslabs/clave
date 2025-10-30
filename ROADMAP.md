@@ -22,7 +22,7 @@
 - [x] Flesh out `impl.http/parse-http-time` for RFC 7231 Retry-After handling and surface durations through callers (updated 2025-10-29 to honour response `Date` for delta-seconds and expand regression tests).
 - [x] Improve retry-after parsing based
 - [x] Spec 005: Account KID Persistence
-- [ ] Spec 006: Implement account `POST-as-GET`, contact updates, deactivation, and External Account Binding (RFC 8555 §7.3.4) with Pebble coverage.
+- [x] Spec 006: Implement account `POST-as-GET`, contact updates, deactivation, and External Account Binding (RFC 8555 §7.3.4) with Pebble coverage.
 - [ ] Support account key rollover via directory `keyChange`, including verification that the new keypair is active.
 
 ### Milestone 2 – Order Lifecycle

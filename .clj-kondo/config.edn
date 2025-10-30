@@ -1,0 +1,2 @@
+{:linters {:unresolved-symbol {:exclude [(clojure.test/are [thrown? thrown-with-msg? thrown-with-error-type?])
+                                         (clojure.test/is [thrown? thrown-with-msg? thrown-with-error-type?])]}}}

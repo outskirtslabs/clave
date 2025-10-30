@@ -2,7 +2,8 @@
   (:require
    [clojure.spec.alpha :as s]
    [clojure.string :as str]
-   [clojure.walk :as walk]))
+   [clojure.walk :as walk]
+   [ol.clave.protocols :as proto]))
 
 ;; Directory resource URLs (RFC 8555 Section 7.1.1)
 (s/def ::newNonce string?)
@@ -53,14 +54,17 @@
 
 (s/def ::termsOfServiceAgreed boolean?)
 
-(s/def ::account-key (s/nilable map?))
+(defn- asymmetric-key-pair?
+  [value]
+  (satisfies? proto/AsymmetricKeyPair value))
+
+(s/def ::account-key (s/nilable asymmetric-key-pair?))
 (s/def ::account-kid
   (s/nilable (s/and string?
                     #(re-matches #"https://.*" %)
                     #(not (str/blank? %)))))
 
-(s/def ::account-key-required
-  (s/and map? some?))
+(s/def ::account-key-required asymmetric-key-pair?)
 
 (s/def ::account-kid-required
   (s/and string?
@@ -109,8 +113,13 @@
 (s/def ::poll-timeout int?)
 
 (s/def ::session (s/keys :req [::directory-url ::nonces ::http ::poll-interval ::poll-timeout]))
-(s/def ::authed-session (s/keys :req [::directory-url ::nonces ::http ::poll-interval ::poll-timeout
-                                      ::account-key ::account-kid]))
+(s/def ::authed-session
+  (s/and
+   (s/keys :req [::directory-url ::nonces ::http ::poll-interval ::poll-timeout
+                 ::account-key ::account-kid])
+   (fn [session]
+     (and (::account-key session)
+          (asymmetric-key-pair? (::account-key session))))))
 
 (s/def ::registration
   (s/keys :req [::contact ::termsOfServiceAgreed]

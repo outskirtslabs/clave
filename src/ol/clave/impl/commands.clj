@@ -249,10 +249,6 @@
   (let [new-account-key (ensure-keypair new-account-key)
         [old-account-key account-kid] (ensure-authed-session session)
         endpoint (acme/key-change-url session)]
-    (when-not (satisfies? proto/AsymmetricKeyPair old-account-key)
-      (throw (errors/ex errors/missing-account-context
-                        "ACME session is missing an account key usable for rollover"
-                        {:account account-kid})))
     (when-not (string? endpoint)
       (throw (errors/ex errors/account-key-rollover-failed
                         "ACME directory does not advertise keyChange endpoint"

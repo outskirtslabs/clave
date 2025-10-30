@@ -6,6 +6,7 @@
    [ol.clave.account :as account]
    [ol.clave.impl.commands :as commands]
    [ol.clave.impl.test-util :as util]
+   [ol.clave.protocols :as proto]
    [ol.clave.specs :as specs]))
 
 (use-fixtures :each util/pebble-fixture)
@@ -90,6 +91,37 @@
       (testing "subsequent POST-as-GET raises unauthorized error"
         (is (thrown-with-error-type? ::errors/unauthorized-account
                                      (commands/get-account session deactivated-account)))))))
+
+(deftest rollover-account-key-updates-session-key
+  (testing "rollover-account-key swaps the stored key and verifies with Pebble"
+    (let [[account original-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
+          [session _directory] (commands/create-session "https://localhost:14000/dir"
+                                                        {:http-client util/http-client-opts
+                                                         :account-key original-key})
+          [session account] (commands/new-account session account)
+          new-key (account/generate-keypair)
+          [rolled-session verified-account] (commands/rollover-account-key session account new-key)]
+      (expect {::specs/account-key new-key
+               ::specs/account-kid (::specs/account-kid account)}
+              (in rolled-session))
+      (is (= (::specs/account-kid account)
+             (::specs/account-kid verified-account)))
+      (is (not= (proto/public original-key)
+                (proto/public new-key)))
+      (testing "subsequent POST-as-GET works with new key"
+        (let [[_ refreshed-account] (commands/get-account rolled-session verified-account)]
+          (is (= (::specs/account-kid verified-account)
+                 (::specs/account-kid refreshed-account))))))))
+
+(deftest rollover-account-key-rejects-invalid-pair
+  (testing "rollover-account-key requires a valid AsymmetricKeyPair"
+    (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
+          [session _directory] (commands/create-session "https://localhost:14000/dir"
+                                                        {:http-client util/http-client-opts
+                                                         :account-key account-key})
+          [session account] (commands/new-account session account)]
+      (is (thrown-with-error-type? ::errors/invalid-account-key
+                                   (commands/rollover-account-key session account {:not :a-key}))))))
 
 (deftest eab-with-invalid-base64-fails
   (testing "EAB with invalid base64 MAC key throws error"

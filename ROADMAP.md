@@ -23,7 +23,7 @@
 - [x] Improve retry-after parsing based
 - [x] Spec 005: Account KID Persistence
 - [x] Spec 006: Implement account `POST-as-GET`, contact updates, deactivation, and External Account Binding (RFC 8555 §7.3.4) with Pebble coverage.
-- [ ] Support account key rollover via directory `keyChange`, including verification that the new keypair is active.
+- [x] Support account key rollover via directory `keyChange`, including verification that the new keypair is active. (updated 2025-10-30)
 
 ### Milestone 2 – Order Lifecycle
 - [ ] Add `new-order` command covering identifier payloads, optional `notBefore`/`notAfter`, and idempotent retry behaviour.

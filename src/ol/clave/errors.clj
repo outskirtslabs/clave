@@ -29,6 +29,9 @@
 (def external-account-required ::external-account-required)
 (def unauthorized-account ::unauthorized-account)
 (def missing-account-context ::missing-account-context)
+(def invalid-account-key ::invalid-account-key)
+(def account-key-rollover-failed ::account-key-rollover-failed)
+(def account-key-rollover-verification-failed ::account-key-rollover-verification-failed)
 
 ;; CSR-related errors (spec 003)
 (def invalid-san ::invalid-san)

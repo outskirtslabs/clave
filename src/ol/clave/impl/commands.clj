@@ -12,6 +12,7 @@
    [ol.clave.impl.http :as http]
    [ol.clave.impl.json :as json]
    [ol.clave.impl.jws :as jws]
+   [ol.clave.protocols :as proto]
    [ol.clave.specs :as acme]))
 
 (set! *warn-on-reflection* true)
@@ -181,6 +182,21 @@
           :else
           (throw ex))))))
 
+(defn- ensure-keypair
+  [value]
+  (if (and (some? value) (satisfies? proto/AsymmetricKeyPair value))
+    value
+    (throw (errors/ex errors/invalid-account-key
+                      "New account key must satisfy AsymmetricKeyPair"
+                      {:provided (some-> value class str)}))))
+
+(defn- key-change-inner-jws
+  [account-kid old-key new-key endpoint]
+  (let [payload-json (json/write-str {:account account-kid
+                                      :oldKey (crypto/public-jwk (proto/public old-key))})
+        inner-json (jws/jws-encode-json payload-json new-key nil nil endpoint)]
+    (json/read-str inner-json)))
+
 (defn get-account
   "Retrieves account resource via POST-as-GET (RFC 8555 Section 7.3).
 
@@ -223,3 +239,43 @@
         account-kid (::acme/account-kid session)
         deactivated-account (assoc account ::acme/account-kid account-kid)]
     [session' deactivated-account]))
+
+(defn rollover-account-key
+  "Roll the ACME account key using directory keyChange endpoint (RFC 8555 §7.3.5).
+
+  Returns [updated-session verified-account] with the session updated to store the
+  new key pair."
+  [session account new-account-key]
+  (let [new-account-key (ensure-keypair new-account-key)
+        [old-account-key account-kid] (ensure-authed-session session)
+        endpoint (acme/key-change-url session)]
+    (when-not (satisfies? proto/AsymmetricKeyPair old-account-key)
+      (throw (errors/ex errors/missing-account-context
+                        "ACME session is missing an account key usable for rollover"
+                        {:account account-kid})))
+    (when-not (string? endpoint)
+      (throw (errors/ex errors/account-key-rollover-failed
+                        "ACME directory does not advertise keyChange endpoint"
+                        {:directory (::acme/directory session)})))
+    (let [inner-jws (key-change-inner-jws account-kid old-account-key new-account-key endpoint)
+          [session {:keys [status body-bytes nonce]}]
+          (http/http-post-jws session old-account-key account-kid endpoint inner-jws {:cancel-token nil})]
+      (when-not (<= 200 status 299)
+        (let [problem (when body-bytes (http/parse-problem-json body-bytes))]
+          (throw (errors/ex errors/account-key-rollover-failed
+                            "Account key rollover failed"
+                            {:status status
+                             :account account-kid
+                             :problem problem}))))
+      (let [session-with-new-key (-> session
+                                     (assoc ::acme/account-key new-account-key)
+                                     (http/push-nonce nonce))]
+        (try
+          (get-account session-with-new-key account)
+          (catch clojure.lang.ExceptionInfo ex
+            (let [cause-data (ex-data ex)]
+              (throw (errors/ex errors/account-key-rollover-verification-failed
+                                "Failed to verify account with new key"
+                                {:account account-kid
+                                 :cause-type (:type cause-data)}
+                                ex)))))))))

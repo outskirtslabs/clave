@@ -96,6 +96,9 @@
 (defn new-account-url [session]
   (get-in session [::directory ::newAccount]))
 
+(defn key-change-url [session]
+  (get-in session [::directory ::keyChange]))
+
 (s/def ::directory-url string?)
 (s/def ::nonces
   (s/and list?

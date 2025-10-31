@@ -1,9 +1,4 @@
 (ns ol.clave.impl.commands
-  "ACME protocol commands that perform side effects (HTTP requests, etc).
-
-  Every command takes an immutable ACME session map as its first argument and
-  returns a tuple where the first element is the updated session (with refreshed
-  nonces, account metadata, etc.). This keeps side effects explicit for callers."
   (:require
    [clojure.spec.alpha :as s]
    [ol.clave.errors :as errors]
@@ -20,9 +15,6 @@
 (set! *warn-on-reflection* true)
 
 (defn new-session
-  "Builds a new ACME session map without contacting the server.
-
-  Returns [session nil] so callers follow the tuple convention."
   [directory-url {:keys [http-client
                          account-key
                          account-kid
@@ -41,9 +33,6 @@
     [session nil]))
 
 (defn load-directory
-  "Loads the ACME directory and attaches it to the session.
-
-  Returns [updated-session directory]."
   ([session]
    (load-directory session nil))
   ([{::acme/keys [directory-url] :as session} opts]
@@ -68,17 +57,12 @@
        [session' qualified]))))
 
 (defn create-session
-  "Creates a new session for the given ACME server at `directory-url`.
-
-  Returns [session directory]."
   [directory-url opts]
   (let [[session _] (new-session directory-url opts)
         [session directory] (load-directory session opts)]
     [session directory]))
 
 (defn compute-eab-binding
-  "Computes External Account Binding JWS per RFC 8555 §7.3.4.
-  Returns the binding map, or nil if eab-opts is nil."
   [eab-opts account-key endpoint]
   (when eab-opts
     (let [{:keys [kid mac-key]} eab-opts
@@ -95,13 +79,6 @@
        (jws/jws-encode-eab account-key mac-bytes kid endpoint)))))
 
 (defn new-account
-  "Register a new ACME account with the server (RFC 8555 Section 7.3).
-
-  Optionally accepts `opts` map with:
-  - `:external-account` - {:kid <string> :mac-key <bytes-or-base64>}
-  - `:scope` - scope to use for cancellation/deadlines
-
-  Returns [updated-session normalized-account]."
   ([session account]
    (new-account session account nil))
   ([session account opts]
@@ -219,10 +196,6 @@
     (json/read-str inner-json)))
 
 (defn get-account
-  "Retrieves account resource via POST-as-GET (RFC 8555 Section 7.3).
-
-  Returns [updated-session account-map] where account-map includes
-  the server's current account resource with ::acme/account-kid attached."
   ([session account]
    (get-account session account nil))
   ([session account opts]
@@ -234,10 +207,6 @@
      [session' normalized-account])))
 
 (defn update-account-contact
-  "Updates account contact information (RFC 8555 Section 7.3.2).
-
-  `contacts` should be a vector of mailto: URIs.
-  Returns [updated-session updated-account]."
   ([session account contacts]
    (update-account-contact session account contacts nil))
   ([session account contacts opts]
@@ -255,9 +224,6 @@
      [session' updated-account])))
 
 (defn deactivate-account
-  "Deactivates the account (RFC 8555 Section 7.3.6).
-
-  Returns [updated-session deactivated-account]."
   ([session account]
    (deactivate-account session account nil))
   ([session account opts]
@@ -268,10 +234,6 @@
      [session' deactivated-account])))
 
 (defn rollover-account-key
-  "Roll the ACME account key using directory keyChange endpoint (RFC 8555 §7.3.5).
-
-  Returns [updated-session verified-account] with the session updated to store the
-  new key pair."
   ([session account new-account-key]
    (rollover-account-key session account new-account-key nil))
   ([session account new-account-key opts]

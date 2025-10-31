@@ -290,7 +290,7 @@
   (scope/derive parent {:timeout 5000})
 
   ;; Child with absolute deadline
-  (scope/derive parent {:deadline (Instant/now).plusSeconds(10)})
+  (scope/derive parent {:deadline (doto (Instant/now) (.plusSeconds 10))})
 
   ;; Both specified - earliest wins
   (scope/derive parent {:timeout 1000

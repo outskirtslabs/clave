@@ -54,7 +54,7 @@
   [f]
   (let [proc (pebble-start)]
     (try
-      (Thread/sleep 300)
+      (Thread/sleep 100)
       (f)
       (finally
         (pebble-stop proc)))))
@@ -64,7 +64,7 @@
   [[pebble# init-expr] & body]
   `(let [~pebble# ~init-expr]
      (try
-       (Thread/sleep 300)
+       (Thread/sleep 100)
        ~@body
        (finally
          (pebble-stop ~pebble#)))))
@@ -74,7 +74,7 @@
   [& body]
   `(let [pebble# (pebble-start)]
      (try
-       (Thread/sleep 300)
+       (Thread/sleep 100)
        ~@body
        (finally
          (pebble-stop pebble#)))))

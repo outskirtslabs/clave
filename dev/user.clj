@@ -87,7 +87,7 @@
 
   (do
     (require '[ol.clave.scope :as scope])
-    (import  '[java.time Duration])
+    (import  '[java.time Instant Duration])
 
     ;; Simulate an operation that takes ~500ms; we give it only 200ms.
     (defn slow-op [s]

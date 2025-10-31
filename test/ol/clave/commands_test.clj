@@ -1,10 +1,10 @@
-(ns ol.clave.impl.commands-test
+(ns ol.clave.commands-test
   (:require
-   [ol.clave.errors :as errors]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [expectations.clojure.test :refer [expect in]]
    [ol.clave.account :as account]
-   [ol.clave.impl.commands :as commands]
+   [ol.clave.commands :as commands]
+   [ol.clave.errors :as errors]
    [ol.clave.impl.test-util :as util]
    [ol.clave.protocols :as proto]
    [ol.clave.specs :as specs]))

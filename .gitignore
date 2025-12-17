@@ -1,4 +1,3 @@
-.*
 .cpcache/
 **/.claude/settings.local.json
 .clj-kondo/
@@ -10,5 +9,5 @@ target/
 extra/
 .direnv
 example-project
-*.md
 *.log
+prompts/PROMPTS.md

@@ -31,24 +31,20 @@
             pkgs.clj-kondo
             pkgs.cljfmt
             pkgs.babashka
+            pkgs.bbin
             pkgs.git
-            (pkgs.writeScriptBin "run-clojure-mcp" ''
-              #!/usr/bin/env bash
-                set -euo pipefail
-                PORT_FILE=''${1:-.nrepl-port}
-                PORT=''${1:-4888}
-                if [ -f "$PORT_FILE" ]; then
-                PORT=$(cat ''${PORT_FILE})
-                fi
-                ${clojure}/bin/clojure -X:mcp/clojure :port $PORT
-            '')
           ];
           env.LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libraries;
           shellHook = ''
+            if ! command -v clj-nrepl-eval &> /dev/null; then
+              bbin install https://github.com/bhauman/clojure-mcp-light.git --tag v0.2.1 --as clj-nrepl-eval --main-opts '["-m" "clojure-mcp-light.nrepl-eval"]'
+            fi
+            if ! command -v clj-paren-repair &> /dev/null; then
+              bbin install https://github.com/bhauman/clojure-mcp-light.git --tag v0.2.1 --as clj-paren-repair --main-opts '["-m" "clojure-mcp-light.paren-repair"]'
+            fi
             mkdir -p extra/
             pushd extra/
-            test -f rfc8555.txt || wget -q https://www.rfc-editor.org/rfc/rfc8555.txt
-            test -f rfc9773.txt || wget -q https://www.rfc-editor.org/rfc/rfc9773.txt
+            test -f seed.bb && bb ./seed.bb
             popd
           '';
         };

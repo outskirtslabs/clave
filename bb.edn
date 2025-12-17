@@ -3,26 +3,53 @@
  :tasks {:requires         ([babashka.fs :as fs]
                             [clojure.string :as str]
                             [babashka.tasks :refer [shell]])
-         test {:doc  "Run tests"
-               :task (apply clojure "-M:dev:test:kaocha" *command-line-args*)}
-         test.jvm          (clojure "-M:kaocha" "--focus" ":unit-jvm")
-         deps-tree         (clojure "-X:deps tree :aliases '[:dev]'")
+
          dev               {:doc "Start a local development server" :task (apply clojure "-M:dev:repl/dev" *command-line-args*)}
-         fmt               (shell "cljfmt -v fix src test")
-         fmt.check         (shell "cljfmt -v check src test")
-         lint.copy-configs (shell "clj-kondo" "--lint" (-> (shell {:out :string} "clojure -Spath -M:test:dev") :out str/trim) "--dependencies" "--copy-configs" "--skip-lint")
-         lint              (if (seq *command-line-args*)
-                             (apply shell "clj-kondo" "--lint" *command-line-args*)
-                             (shell "clj-kondo" "--lint" "src" "test"))
+
+         test
+         {:doc  "Run tests"
+          :task (apply clojure "-M:dev:test:kaocha" *command-line-args*)}
+
+         fmt
+         {:doc  "Format code with cljfmt"
+          :task (apply shell "cljfmt --quiet -v fix" (if (seq *command-line-args*) *command-line-args* paths))}
+
+         fmt:check
+         {:doc  "Check code formatting without making changes"
+          :task (apply shell "cljfmt check " paths)}
+
+         lint:copy-configs
+         {:doc  "Copy clj-kondo config files from deps in the project"
+          :task (let [cp (-> (shell {:out :string} "clojure -Spath -M:test:dev") :out str/trim)]
+                  (shell (str "clj-kondo --lint " cp " --dependencies --copy-configs --skip-lint")))}
+
+         lint
+         {:doc  "Run the clj-kondo linter on the clojure code"
+          :task (shell (str "clj-kondo" " --fail-level error"
+                            (if (seq *command-line-args*)
+                              (str " --lint " (first *command-line-args*))
+                              " --lint src")))}
+
+         deps-tree
+         {:doc  "Show dependency tree"
+          :task (clojure "-X:deps tree :aliases '[:dev]'")}
 
          jar     {:override-builtin true
                   :depends          [clean]
                   :doc              "Build an jar"
                   :task             (shell "clojure -T:build jar")}
+
          clean   {:override-builtin true
                   :doc              "Clean build artifacts"
                   :task             (shell "clojure -T:build clean")}
+
          publish {:doc     "Publish the clojure sdk libs to clojars"
                   :depends [jar]
                   :task    (clojure "-T:build deploy")}
-         ci      {:depends [test fmt.check lint]}}}
+
+         qa
+         {:doc     "Run full quality assurance: format, lint, and test"
+          :depends [fmt lint test]}
+
+         ci {:doc     "Ran by the CI"
+             :depends [fmt:check lint test]}}}

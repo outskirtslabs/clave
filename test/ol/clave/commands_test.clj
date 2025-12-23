@@ -185,3 +185,17 @@
                    ::specs/termsOfServiceAgreed true}]
       (is (thrown-with-error-type? errors/missing-account-context
                                    (commands/get-account session account))))))
+
+(deftest set-polling-updates-session-defaults
+  (let [session {::specs/poll-interval 5000 ::specs/poll-timeout 60000}]
+    (is (= {::specs/poll-interval 1000 ::specs/poll-timeout 30000}
+           (commands/set-polling session {:interval-ms 1000 :timeout-ms 30000}))
+        "updates both keys")
+    (is (= {::specs/poll-interval 2000 ::specs/poll-timeout 60000}
+           (commands/set-polling session {:interval-ms 2000}))
+        "updates only interval when timeout not provided")
+    (is (= {::specs/poll-interval 5000 ::specs/poll-timeout 15000}
+           (commands/set-polling session {:timeout-ms 15000}))
+        "updates only timeout when interval not provided")
+    (is (= session (commands/set-polling session {}))
+        "empty opts returns session unchanged")))

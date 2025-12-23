@@ -36,11 +36,29 @@
                   account-kid (assoc ::acme/account-kid account-kid))]
     [session nil]))
 
+(defn set-polling
+  "Updates polling defaults in the session.
+
+  Parameters:
+  - `session` — ACME session map.
+  - `opts` — map with optional `:interval-ms` and `:timeout-ms` keys.
+
+  Returns the updated session with new polling defaults."
+  [session {:keys [interval-ms timeout-ms]}]
+  (cond-> session
+    interval-ms (assoc ::acme/poll-interval (long interval-ms))
+    timeout-ms (assoc ::acme/poll-timeout (long timeout-ms))))
+
+(defn- resolve-scope
+  "Resolve effective scope from options, session, or root fallback."
+  [session opts]
+  (or (:scope opts) (::acme/scope session) (scope/root)))
+
 (defn load-directory
   ([session]
    (load-directory session nil))
   ([{::acme/keys [directory-url] :as session} opts]
-   (let [scope (or (:scope opts) (::acme/scope session) (scope/root))
+   (let [scope (resolve-scope session opts)
          {:keys [body nonce]}
          (http/http-req session {:method :get
                                  :uri directory-url
@@ -86,7 +104,7 @@
   ([session account]
    (new-account session account nil))
   ([session account opts]
-   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+   (let [scope* (resolve-scope session opts)
          account-key (::acme/account-key session)
          endpoint (acme/new-account-url session)
          directory (::acme/directory session)
@@ -150,7 +168,7 @@
    (signed-account-request session payload nil))
   ([session payload opts]
    (try
-     (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+     (let [scope* (resolve-scope session opts)
            [account-key account-kid] (ensure-authed-session session)
            [session {:keys [status body-bytes nonce]}]
            (http/http-post-jws session account-key account-kid account-kid payload {:scope scope*})]
@@ -248,7 +266,7 @@
        (throw (errors/ex errors/account-key-rollover-failed
                          "ACME directory does not advertise keyChange endpoint"
                          {:directory (::acme/directory session)})))
-     (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+     (let [scope* (resolve-scope session opts)
            inner-jws (key-change-inner-jws account-kid old-account-key new-account-key endpoint)
            [session {:keys [status body-bytes nonce]}]
            (http/http-post-jws session old-account-key account-kid endpoint inner-jws {:scope scope*})]
@@ -276,7 +294,7 @@
   ([session order]
    (new-order session order nil))
   ([session order opts]
-   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+   (let [scope* (resolve-scope session opts)
          [account-key account-kid] (ensure-authed-session session)
          endpoint (acme/new-order-url session)
          profiles (get-in session [::acme/directory ::acme/meta ::acme/profiles])
@@ -302,7 +320,7 @@
 
 (defn- fetch-order
   [session order-url opts]
-  (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+  (let [scope* (resolve-scope session opts)
         [account-key account-kid] (ensure-authed-session session)
         [session {:keys [status body-bytes nonce] :as resp}]
         (http/http-post-jws session account-key account-kid order-url nil {:scope scope*})]
@@ -336,13 +354,16 @@
   ([session order-url]
    (poll-order session order-url nil))
   ([session order-url opts]
-   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+   (let [scope* (resolve-scope session opts)
          interval-ms (long (or (:interval-ms opts) (::acme/poll-interval session) 5000))
          timeout-ms (long (or (:timeout-ms opts) (::acme/poll-timeout session) 60000))
+         max-wait-ms (:max-wait-ms opts)
          start (java.time.Instant/now)]
-     (loop [session session]
+     (loop [session session
+            attempts 0]
        (scope/active?! scope*)
-       (let [[session order resp] (fetch-order session order-url opts)]
+       (let [attempts (inc attempts)
+             [session order resp] (fetch-order session order-url opts)]
          (cond
            (= "valid" (::acme/status order))
            [session order]
@@ -360,19 +381,21 @@
                (throw (errors/ex errors/order-timeout
                                  "Order polling timed out"
                                  {:url order-url
+                                  :attempts attempts
                                   :elapsed-ms (.toMillis elapsed)})))
              (let [fallback (java.time.Duration/ofMillis interval-ms)
                    ^java.time.Duration retry (http/retry-after resp fallback)
-                   delay-ms (min remaining (.toMillis retry))]
+                   delay-ms (cond-> (min remaining (.toMillis retry))
+                              max-wait-ms (min (long max-wait-ms)))]
                (when (pos? delay-ms)
                  (scope/sleep scope* delay-ms))
-               (recur session)))))))))
+               (recur session attempts)))))))))
 
 (defn finalize-order
   ([session order csr]
    (finalize-order session order csr nil))
   ([session order csr opts]
-   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+   (let [scope* (resolve-scope session opts)
          [account-key account-kid] (ensure-authed-session session)
          csr-b64url (or (:csr-b64url csr) (::acme/csr-b64url csr))
          _ (when-not (order/order-ready? order)
@@ -385,24 +408,39 @@
                                {:csr csr})))
          endpoint (::acme/finalize order)
          payload {:csr csr-b64url}
-         [session {:keys [status body-bytes nonce] :as resp}]
-         (http/http-post-jws session account-key account-kid endpoint payload {:scope scope*})]
-     (when-not (<= 200 status 299)
-       (let [problem (when body-bytes (http/parse-problem-json body-bytes))]
-         (throw (errors/ex errors/order-not-ready
-                           "Finalize request rejected"
-                           {:status status
-                            :problem problem
-                            :order order}))))
-     (let [order-resp (json/read-str (slurp body-bytes :encoding "UTF-8"))
-           location (or (http/get-header resp "Location") (::acme/order-location order))
-           normalized (order/normalize-order order-resp location)
-           session' (http/push-nonce session nonce)]
-       [session' normalized]))))
+         order-url (::acme/order-location order)]
+     (try
+       (let [[session {:keys [status body-bytes nonce] :as resp}]
+             (http/http-post-jws session account-key account-kid endpoint payload {:scope scope*})]
+         (when-not (<= 200 status 299)
+           (let [problem (when body-bytes (http/parse-problem-json body-bytes))]
+             (throw (errors/ex errors/order-not-ready
+                               "Finalize request rejected"
+                               {:status status
+                                :problem problem
+                                :order order}))))
+         (let [order-resp (json/read-str (slurp body-bytes :encoding "UTF-8"))
+               location (or (http/get-header resp "Location") order-url)
+               normalized (order/normalize-order order-resp location)
+               session' (http/push-nonce session nonce)]
+           [session' normalized]))
+       (catch clojure.lang.ExceptionInfo ex
+         (let [data (ex-data ex)
+               problem-type (:problem/type data)]
+           (if (= problem-type "urn:ietf:params:acme:error:orderNotReady")
+             ;; Server rejected with orderNotReady - fetch refreshed order
+             (let [[_session refreshed-order] (get-order session order-url {:scope scope*})
+                   problem (select-keys data [:problem/type :problem/detail :problem/status])]
+               (throw (errors/ex errors/order-not-ready
+                                 "Order is not ready for finalization"
+                                 {:order refreshed-order
+                                  :problem problem})))
+             ;; Re-throw other errors
+             (throw ex))))))))
 
 (defn- fetch-authorization
   [session authorization-url opts]
-  (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+  (let [scope* (resolve-scope session opts)
         [account-key account-kid] (ensure-authed-session session)
         [session {:keys [status body-bytes nonce] :as resp}]
         (http/http-post-jws session account-key account-kid authorization-url nil {:scope scope*})]
@@ -434,13 +472,16 @@
   ([session authorization-url]
    (poll-authorization session authorization-url nil))
   ([session authorization-url opts]
-   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+   (let [scope* (resolve-scope session opts)
          interval-ms (long (or (:interval-ms opts) (::acme/poll-interval session) 5000))
          timeout-ms (long (or (:timeout-ms opts) (::acme/poll-timeout session) 60000))
+         max-attempts (:max-attempts opts)
          start (java.time.Instant/now)]
-     (loop [session session]
+     (loop [session session
+            attempts 0]
        (scope/active?! scope*)
-       (let [[session authorization resp] (fetch-authorization session authorization-url opts)]
+       (let [attempts (inc attempts)
+             [session authorization resp] (fetch-authorization session authorization-url opts)]
          (cond
            (authorization/authorization-valid? authorization)
            [session authorization]
@@ -462,23 +503,30 @@
            :else
            (let [elapsed (java.time.Duration/between start (java.time.Instant/now))
                  remaining (- timeout-ms (.toMillis elapsed))]
+             (when (and max-attempts (>= attempts (long max-attempts)))
+               (throw (errors/ex errors/authorization-timeout
+                                 "Authorization polling exceeded max attempts"
+                                 {:url authorization-url
+                                  :attempts attempts
+                                  :elapsed-ms (.toMillis elapsed)})))
              (when (<= remaining 0)
                (throw (errors/ex errors/authorization-timeout
                                  "Authorization polling timed out"
                                  {:url authorization-url
+                                  :attempts attempts
                                   :elapsed-ms (.toMillis elapsed)})))
              (let [fallback (java.time.Duration/ofMillis interval-ms)
                    ^java.time.Duration retry (http/retry-after resp fallback)
                    delay-ms (min remaining (.toMillis retry))]
                (when (pos? delay-ms)
                  (scope/sleep scope* delay-ms))
-               (recur session)))))))))
+               (recur session attempts)))))))))
 
 (defn deactivate-authorization
   ([session authorization-or-url]
    (deactivate-authorization session authorization-or-url nil))
   ([session authorization-or-url opts]
-   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+   (let [scope* (resolve-scope session opts)
          authorization-url (if (map? authorization-or-url)
                              (or (::acme/authorization-location authorization-or-url)
                                  (::acme/url authorization-or-url))
@@ -503,7 +551,7 @@
   ([session challenge]
    (respond-challenge session challenge nil))
   ([session challenge opts]
-   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+   (let [scope* (resolve-scope session opts)
          [account-key account-kid] (ensure-authed-session session)
          challenge-url (if (map? challenge)
                          (or (::acme/url challenge) (:url challenge))
@@ -526,7 +574,7 @@
   ([session certificate-url]
    (get-certificate session certificate-url nil))
   ([session certificate-url opts]
-   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+   (let [scope* (resolve-scope session opts)
          accept "application/pem-certificate-chain"
          [account-key account-kid] (ensure-authed-session session)
          fetch (fn fetch [session url visited]

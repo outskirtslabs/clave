@@ -43,9 +43,9 @@
    (pebble-start config-path nil))
   ([config-path {:keys [env]}]
    (p/process ["pebble" "-config" config-path]
-              {:out :str
-               :err :out
-               :env env})))
+              (cond-> {:out :str
+                       :err :out}
+                env (assoc :extra-env env)))))
 
 (defn pebble-stop
   "Stops the Pebble ACME test server.
@@ -153,6 +153,21 @@
         _ (wait-for-challtestsrv)
         pebble-proc (pebble-start "test/fixtures/pebble-config.json"
                                   {:env {"PEBBLE_VA_NOSLEEP" "1"}})]
+    (try
+      (wait-for-pebble)
+      (f)
+      (finally
+        (pebble-stop pebble-proc)
+        (challtestsrv-stop chall-proc)))))
+
+(defn pebble-alternate-roots-fixture
+  "Test fixture for starting Pebble with alternate roots enabled plus challenge server."
+  [f]
+  (let [chall-proc (challtestsrv-start)
+        _ (wait-for-challtestsrv)
+        pebble-proc (pebble-start "test/fixtures/pebble-config.json"
+                                  {:env {"PEBBLE_VA_NOSLEEP" "1"
+                                         "PEBBLE_ALTERNATE_ROOTS" "1"}})]
     (try
       (wait-for-pebble)
       (f)

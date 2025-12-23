@@ -2,6 +2,7 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [ol.clave.errors :as errors]
+   [ol.clave.impl.order :as impl]
    [ol.clave.impl.test-util]
    [ol.clave.order :as order]
    [ol.clave.specs :as specs]))
@@ -41,9 +42,57 @@
 
 (deftest order-accessors
   (testing "accessor helpers"
-    (let [order {::specs/authorizations ["https://example.test/authz/1"]
+    (let [identifiers [{:type "dns" :value "example.com"}
+                       {:type "dns" :value "www.example.com"}]
+          order {::specs/identifiers identifiers
+                 ::specs/authorizations ["https://example.test/authz/1"]
                  ::specs/order-location "https://example.test/order/1"
                  ::specs/certificate "https://example.test/cert/1"}]
-      (is (= ["https://example.test/authz/1"] (order/authorizations order)))
-      (is (= "https://example.test/order/1" (order/url order)))
-      (is (= "https://example.test/cert/1" (order/certificate-url order))))))
+      (is (= identifiers (order/identifiers order))
+          "identifiers returns the identifier vector")
+      (is (= ["https://example.test/authz/1"] (order/authorizations order))
+          "authorizations returns the authorization URLs")
+      (is (= "https://example.test/order/1" (order/url order))
+          "url returns the order location")
+      (is (= "https://example.test/cert/1" (order/certificate-url order))
+          "certificate-url returns the certificate URL")))
+  (testing "returns nil for missing keys"
+    (let [empty-order {}]
+      (is (nil? (order/identifiers empty-order)))
+      (is (nil? (order/authorizations empty-order)))
+      (is (nil? (order/url empty-order)))
+      (is (nil? (order/certificate-url empty-order))))))
+
+(deftest ensure-identifiers-consistent-throws-on-mismatch
+  (testing "returns order when identifiers match"
+    (let [identifiers [{:type "dns" :value "example.com"}]
+          order {::specs/identifiers identifiers
+                 ::specs/status "pending"}
+          result (impl/ensure-identifiers-consistent identifiers order)]
+      (is (= order result))))
+
+  (testing "returns order when expected is nil"
+    (let [order {::specs/identifiers [{:type "dns" :value "example.com"}]
+                 ::specs/status "pending"}
+          result (impl/ensure-identifiers-consistent nil order)]
+      (is (= order result))))
+
+  (testing "throws order-inconsistent when identifiers differ"
+    (let [expected [{:type "dns" :value "example.com"}]
+          order {::specs/identifiers [{:type "dns" :value "different.com"}]
+                 ::specs/status "pending"}
+          ex (try
+               (impl/ensure-identifiers-consistent expected order)
+               nil
+               (catch clojure.lang.ExceptionInfo e e))]
+      (is (= errors/order-inconsistent (:type (ex-data ex))))
+      (is (= expected (:expected (ex-data ex))))
+      (is (= [{:type "dns" :value "different.com"}] (:actual (ex-data ex))))))
+
+  (testing "throws when identifier count differs"
+    (let [expected [{:type "dns" :value "example.com"}
+                    {:type "dns" :value "www.example.com"}]
+          order {::specs/identifiers [{:type "dns" :value "example.com"}]
+                 ::specs/status "pending"}]
+      (is (thrown-with-error-type? errors/order-inconsistent
+                                   (impl/ensure-identifiers-consistent expected order))))))

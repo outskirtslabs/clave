@@ -78,6 +78,41 @@
                                                                 {:timeout-ms 1000
                                                                  :interval-ms 100}))))))
 
+(deftest poll-authorization-honors-max-attempts
+  (testing "poll-authorization throws after max-attempts with :attempts in ex-data"
+    (let [session (fresh-session)
+          identifiers [{:type "dns" :value "localhost"}]
+          order-request {::specs/identifiers identifiers}
+          [session order] (commands/new-order session order-request)
+          authz-url (first (::specs/authorizations order))
+          ex (try
+               (commands/poll-authorization session authz-url
+                                            {:timeout-ms 60000
+                                             :interval-ms 10
+                                             :max-attempts 1})
+               nil
+               (catch clojure.lang.ExceptionInfo e e))]
+      (is (= errors/authorization-timeout (:type (ex-data ex))))
+      (is (= 1 (:attempts (ex-data ex)))
+          "ex-data should include :attempts equal to max-attempts")))
+
+  (testing "poll-authorization with max-attempts=3 makes exactly 3 attempts"
+    (let [session (fresh-session)
+          identifiers [{:type "dns" :value "localhost"}]
+          order-request {::specs/identifiers identifiers}
+          [session order] (commands/new-order session order-request)
+          authz-url (first (::specs/authorizations order))
+          ex (try
+               (commands/poll-authorization session authz-url
+                                            {:timeout-ms 60000
+                                             :interval-ms 10
+                                             :max-attempts 3})
+               nil
+               (catch clojure.lang.ExceptionInfo e e))]
+      (is (= errors/authorization-timeout (:type (ex-data ex))))
+      (is (= 3 (:attempts (ex-data ex)))
+          "ex-data should include :attempts equal to max-attempts"))))
+
 (deftest deactivate-authorization-sets-status
   (testing "deactivate-authorization transitions to deactivated"
     (let [session (fresh-session)

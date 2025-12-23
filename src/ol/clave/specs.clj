@@ -196,10 +196,14 @@
 (s/def ::url string?)
 (s/def ::pem string?)
 (s/def ::certificates (s/and vector? (s/coll-of #(instance? java.security.cert.X509Certificate %) :kind vector?)))
+
+(s/def ::der-first bytes?)
+
+(s/def ::renewal-info (s/nilable map?))
 (s/def ::alternate (s/and vector? (s/coll-of string? :kind vector?)))
 (s/def ::up (s/and vector? (s/coll-of string? :kind vector?)))
 (s/def ::links (s/keys :opt-un [::alternate ::up]))
 
 (s/def ::certificate-chain
   (s/keys :req [::pem]
-          :opt [::certificates ::url ::links]))
+          :opt [::certificates ::url ::links ::der-first ::renewal-info]))

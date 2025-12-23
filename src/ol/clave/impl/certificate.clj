@@ -36,9 +36,12 @@
 (defn parse-pem-chain
   "Parse a PEM-encoded certificate chain into structured data."
   [pem]
-  (let [certs (-> pem decode-pem-blocks parse-certificates)]
+  (let [certs (-> pem decode-pem-blocks parse-certificates)
+        ^java.security.cert.X509Certificate first-cert (first certs)]
     {::acme/pem pem
-     ::acme/certificates certs}))
+     ::acme/certificates certs
+     ::acme/der-first (.getEncoded first-cert)
+     ::acme/renewal-info nil}))
 
 (defn parse-pem-response
   "Validate and parse a PEM certificate response."

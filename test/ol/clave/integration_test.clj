@@ -169,3 +169,27 @@
           (is (<= retry-after-ms (apply max @sleeps))))
         (finally
           (stop-hanging-server hang-server))))))
+
+(deftest respond-challenge-empty-payload-reaches-valid
+  (testing "respond-challenge with no :payload option sends empty object and authorization becomes valid"
+    (let [chall-proc (util/challtestsrv-start)]
+      (try
+        (util/wait-for-challtestsrv)
+        (let [session (fresh-session)
+              identifiers [(order/create-identifier :dns "localhost")]
+              order-request (order/create identifiers)
+              [session order] (commands/new-order session order-request)
+              authz-url (first (order/authorizations order))
+              [session authz] (commands/get-authorization session authz-url)
+              http-challenge (challenge/find-by-type authz "http-01")
+              token (challenge/token http-challenge)
+              key-auth (challenge/key-authorization http-challenge (::specs/account-key session))]
+          (util/challtestsrv-add-http01 token key-auth)
+          (let [[session challenge-resp] (commands/respond-challenge session http-challenge)
+                [_session final-authz] (commands/poll-authorization session authz-url {:timeout-ms 15000
+                                                                                       :interval-ms 250})]
+            (is (some? challenge-resp) "respond-challenge should return challenge response")
+            (is (= "valid" (::specs/status final-authz))
+                "Authorization should reach valid status with empty payload")))
+        (finally
+          (util/challtestsrv-stop chall-proc))))))

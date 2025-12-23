@@ -67,6 +67,30 @@
   ([session opts]
    (impl/load-directory session opts)))
 
+(defn set-polling
+  "Update default polling parameters in the session.
+
+  Parameters:
+  - `session` — ACME session map.
+  - `opts` — map with optional polling configuration keys.
+
+  Options:
+
+  | key            | description                                  |
+  |----------------|----------------------------------------------|
+  | `:interval-ms` | Default poll interval fallback (ms).         |
+  | `:timeout-ms`  | Default overall poll timeout (ms).           |
+
+  Returns the updated session with new polling defaults.
+
+  Example:
+  ```clojure
+  (-> session
+      (commands/set-polling {:interval-ms 2000 :timeout-ms 120000}))
+  ```"
+  [session opts]
+  (impl/set-polling session opts))
+
 (defn create-session
   "Build a session and eagerly download the ACME directory.
 
@@ -293,11 +317,12 @@
 
   Options:
 
-  | key            | description                             |
-  |----------------|-----------------------------------------|
-  | `:interval-ms` | Poll interval fallback in milliseconds. |
-  | `:timeout-ms`  | Overall timeout in milliseconds.        |
-  | `:scope`       | Scope override for polling operations.  |
+  | key            | description                                              |
+  |----------------|----------------------------------------------------------|
+  | `:interval-ms` | Poll interval fallback in milliseconds.                  |
+  | `:timeout-ms`  | Overall timeout in milliseconds.                         |
+  | `:max-wait-ms` | Cap per-iteration sleep even when Retry-After is larger. |
+  | `:scope`       | Scope override for polling operations.                   |
 
   Returns `[updated-session order]` on success or throws on invalid/timeout."
   ([session order-url]
@@ -379,11 +404,12 @@
 
   Options:
 
-  | key            | description                             |
-  |----------------|-----------------------------------------|
-  | `:interval-ms` | Poll interval fallback in milliseconds. |
-  | `:timeout-ms`  | Overall timeout in milliseconds.        |
-  | `:scope`       | Scope override for polling operations.  |
+  | key              | description                                          |
+  |------------------|------------------------------------------------------|
+  | `:interval-ms`   | Poll interval fallback in milliseconds.              |
+  | `:timeout-ms`    | Overall timeout in milliseconds.                     |
+  | `:max-attempts`  | Cap number of polls; includes `:attempts` in ex-data.|
+  | `:scope`         | Scope override for polling operations.               |
 
   Returns `[updated-session authorization]` on success or throws when invalid,
   unusable, or timed out."

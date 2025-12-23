@@ -38,7 +38,7 @@
   (contains? #{"deactivated" "expired" "revoked"} (::acme/status authorization)))
 
 (defn authorization-problem
-  "Return the most relevant problem map from an authorization." 
+  "Return the most relevant problem map from an authorization."
   [authorization]
   (or (::acme/error authorization)
       (some ::acme/error (::acme/challenges authorization))))

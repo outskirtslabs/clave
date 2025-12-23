@@ -63,8 +63,8 @@
       (let [[session _challenge] (commands/respond-challenge session http-challenge)]
         (is (thrown-with-error-type? errors/authorization-invalid
                                      (commands/poll-authorization session authz-url
-                                                                 {:timeout-ms 15000
-                                                                  :interval-ms 250})))))))
+                                                                  {:timeout-ms 15000
+                                                                   :interval-ms 250})))))))
 
 (deftest poll-authorization-times-out
   (testing "poll-authorization times out when no challenge is fulfilled"
@@ -75,8 +75,8 @@
           authz-url (first (::specs/authorizations order))]
       (is (thrown-with-error-type? errors/authorization-timeout
                                    (commands/poll-authorization session authz-url
-                                                               {:timeout-ms 1000
-                                                                :interval-ms 100}))))))
+                                                                {:timeout-ms 1000
+                                                                 :interval-ms 100}))))))
 
 (deftest deactivate-authorization-sets-status
   (testing "deactivate-authorization transitions to deactivated"

@@ -1,19 +1,19 @@
 (ns user
   (:require
    #_[portal.api :as p]
-   [clj-reload.core :as clj-reload]
-   [ol.dev.portal :as my-portal]))
+   [clj-reload.core :as clj-reload]))
 
 ((requiring-resolve 'hashp.install/install!))
 
 (set! *warn-on-reflection* true)
-(set! *print-namespace-maps* false)
 
-;; Configure the paths containing clojure sources we want clj-reload to reload
 (clj-reload/init {:dirs      ["src" "dev" "test"]
                   :no-reload #{'user 'dev 'ol.dev.portal}})
 
-(defonce ps (my-portal/open-portals))
+(try
+  (defonce ps ((requiring-resolve 'ol.dev.portal/open-portals)))
+  (catch Throwable _))
+
 (comment
   (do
     (require '[ol.clave.scope :as scope])

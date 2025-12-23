@@ -9,6 +9,66 @@
 
 (set! *warn-on-reflection* true)
 
+(defn- normalize-identifier-type
+  [identifier-type]
+  (cond
+    (keyword? identifier-type) (name identifier-type)
+    (string? identifier-type) identifier-type
+    :else (throw (errors/ex errors/order-creation-failed
+                            "Identifier type must be a string or keyword"
+                            {:provided identifier-type}))))
+
+(defn create-identifier
+  "Return a normalized identifier map."
+  ([identifier]
+   (when-not (map? identifier)
+     (throw (errors/ex errors/order-creation-failed
+                       "Identifier must be a map"
+                       {:identifier identifier})))
+   (let [identifier (cond
+                      (and (contains? identifier :type)
+                           (contains? identifier :value))
+                      {:type (normalize-identifier-type (:type identifier))
+                       :value (:value identifier)}
+                      (and (contains? identifier ::acme/identifier-type)
+                           (contains? identifier ::acme/identifier-value))
+                      {:type (normalize-identifier-type (::acme/identifier-type identifier))
+                       :value (::acme/identifier-value identifier)}
+                      :else identifier)]
+     (when-not (s/valid? ::acme/identifier identifier)
+       (throw (errors/ex errors/order-creation-failed
+                         "Invalid identifier"
+                         {:identifier identifier
+                          :explain (s/explain-data ::acme/identifier identifier)})))
+     identifier))
+  ([identifier-type identifier-value]
+   (create-identifier {:type identifier-type :value identifier-value})))
+
+(defn create
+  "Construct an order map with qualified keys."
+  ([identifiers]
+   (create identifiers nil))
+  ([identifiers opts]
+   (let [identifiers (cond
+                       (vector? identifiers) identifiers
+                       (sequential? identifiers) (vec identifiers)
+                       :else (throw (errors/ex errors/order-creation-failed
+                                               "Order identifiers must be a vector"
+                                               {:identifiers identifiers})))
+         identifiers (mapv create-identifier identifiers)
+         _ (when-not (seq identifiers)
+             (throw (errors/ex errors/order-creation-failed
+                               "Order identifiers must be a non-empty vector"
+                               {:identifiers identifiers})))
+         not-before (or (:not-before opts) (:notBefore opts) (::acme/notBefore opts))
+         not-after (or (:not-after opts) (:notAfter opts) (::acme/notAfter opts))
+         profile (or (:profile opts) (::acme/profile opts))
+         order (cond-> {::acme/identifiers identifiers}
+                 not-before (assoc ::acme/notBefore not-before)
+                 not-after (assoc ::acme/notAfter not-after)
+                 profile (assoc ::acme/profile profile))]
+     order)))
+
 (defn- ->rfc3339
   [value]
   (cond

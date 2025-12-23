@@ -6,11 +6,12 @@
                                   cheshire/cheshire   {:mvn/version "6.1.0"}
                                   mvxcvi/alphabase    {:mvn/version "3.0.185"}}
                     :main-opts   ["-m" "kaocha.runner"]}
-           :dev    {:extra-paths ["dev"]
+           :dev    {:extra-paths ["dev" "examples"]
                     :extra-deps  {dev.weavejester/hashp                    {:mvn/version "0.5.1"}
                                   com.github.seancorfield/expectations     {:mvn/version "2.2.214"}
                                   org.babashka/http-client                 {:mvn/version "0.4.23"}
                                   com.cnuernber/charred                    {:mvn/version "1.037"}
+                                  ring/ring-jetty-adapter                  {:mvn/version "1.15.3"}
                                   io.github.tonsky/clj-reload              {:mvn/version "1.0.0"}
                                   babashka/process                         {:mvn/version "0.6.23"}
                                   org.bouncycastle/bcpkix-jdk18on          {:mvn/version "1.82"}
@@ -20,7 +21,7 @@
                                  slipset/deps-deploy           {:mvn/version "0.2.2"}}
                     :ns-default build}
 
-           :neil   {:project {:name        com.outskirtslabs/clave
-                              :license     {:id "EUPL-1.2"}
-                              :description ""
-                              :version     "0.0.0"}}}}
+           :neil {:project {:name        com.outskirtslabs/clave
+                            :license     {:id "EUPL-1.2"}
+                            :description ""
+                            :version     "0.0.0"}}}}

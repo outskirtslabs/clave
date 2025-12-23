@@ -328,10 +328,10 @@
    (impl/finalize-order session order csr opts)))
 
 (defn get-certificate
-  "Download a PEM certificate chain from the certificate URL.
+  "Download a PEM certificate chain from the certificate URL via POST-as-GET.
 
   Parameters:
-  - `session` — session carrying HTTP configuration.
+  - `session` — authenticated session carrying HTTP configuration.
   - `certificate-url` — certificate URL from an order.
   - `opts` — optional map with overrides.
 

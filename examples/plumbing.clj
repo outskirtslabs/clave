@@ -1,97 +1,189 @@
 (ns plumbing
   (:require
-   [ol.clave.impl.commands :as cmd]
+   [clojure.string :as str]
    [ol.clave.account :as account]
-   [ol.clave.order :as order]
    [ol.clave.challenge :as challenge]
-   [ol.clave.csr :as csr]))
+   [ol.clave.commands :as cmd]
+   [ol.clave.csr :as csr]
+   [ol.clave.example.http01 :as http01]
+   [ol.clave.order :as order]
+   [ol.clave.specs :as specs])
+  (:import
+   [java.io ByteArrayInputStream FileOutputStream]
+   [java.nio.charset StandardCharsets]
+   [java.security KeyPairGenerator KeyStore]
+   [java.security.cert CertificateFactory]
+   [java.security.spec ECGenParameterSpec]
+   [java.util Base64]))
 
-(let [;; prepare a new account by generating a keypair and creating a local map of account data
-      account-key (account/generate-keypair)
-      account (account/create "mailto:test@example.com" true)
+(defn- generate-cert-keypair
+  []
+  (let [generator (doto (KeyPairGenerator/getInstance "EC")
+                    (.initialize (ECGenParameterSpec. "secp256r1")))]
+    (.generateKeyPair generator)))
 
-      ;; create a new session, this opaque handle must be passed to every command
-      ;; they will always return a new session handle that you must use
-      ;; you must never re-use a session handle
-      [session _] (cmd/create-session "https://localhost:14000/dir"
-                                      {:http-client {:ssl-context {:trust-store-pass "changeit"
-                                                                   :trust-store "test/fixtures/pebble-truststore.p12"}}
-                                       :account-key account-key})
+(defn- private-key->pem
+  [private-key]
+  (let [bytes (.getEncoded private-key)
+        encoder (Base64/getMimeEncoder 64 (.getBytes "\n" StandardCharsets/UTF_8))
+        body (.encodeToString encoder bytes)
+        body (if (str/ends-with? body "\n") body (str body "\n"))]
+    (str "-----BEGIN PRIVATE KEY-----\n"
+         body
+         "-----END PRIVATE KEY-----\n")))
 
-      ;; register a new account with the server
-      [session account] (cmd/new-account session account)
+(defn- pem->cert-chain
+  [pem]
+  (with-open [stream (ByteArrayInputStream. (.getBytes pem StandardCharsets/UTF_8))]
+    (vec (.generateCertificates (CertificateFactory/getInstance "X.509") stream))))
 
-      ;; save the account at this stage for use later during renewals
-      _ (spit "./simple-account.edn" (account/serialize account account-key))
+(defn- write-keystore!
+  [private-key pem-chain]
+  (let [password "changeit"
+        keystore-path (.getAbsolutePath (java.io.File/createTempFile "clave-cert" ".p12"))
+        keystore (KeyStore/getInstance "PKCS12")
+        password-chars (.toCharArray password)
+        certificates (into-array java.security.cert.Certificate (pem->cert-chain pem-chain))]
+    (.load keystore nil password-chars)
+    (.setKeyEntry keystore "acme" private-key password-chars certificates)
+    (with-open [out (FileOutputStream. keystore-path)]
+      (.store keystore out password-chars))
+    {:path keystore-path
+     :password password}))
 
-      ;; first step in getting a cert is to prepare the order data
-      identifiers (map order/create-identifier [{:type "dns" :value "example.com"}])
-      order-request (order/create identifiers)
+(defn- hello-handler
+  [{:keys [request-method uri]}]
+  (if (and (= :get request-method) (= "/" uri))
+    {:status 200
+     :headers {"content-type" "text/plain"}
+     :body "hello world"}
+    {:status 404
+     :headers {"content-type" "text/plain"}
+     :body "Not Found"}))
 
-      ;; then submit the order to the server
-      [session order] (cmd/new-order session order-request)
+(defn- wait-for-order-ready
+  [session order]
+  (let [timeout-ms 60000
+        interval-ms 1000
+        deadline (+ (System/currentTimeMillis) timeout-ms)]
+    (loop [session session
+           order order]
+      (if (= "ready" (::specs/status order))
+        [session order]
+        (do
+          (when (>= (System/currentTimeMillis) deadline)
+            (throw (ex-info "Order did not become ready in time"
+                            {:status (::specs/status order)
+                             :order order})))
+          (Thread/sleep interval-ms)
+          (let [[session order] (cmd/get-order session order)]
+            (recur session order)))))))
 
-      ;; each identifier (see above) will be associated with an authorization record
-      ;; by solving the authorization challenges you will make the authorization's status
-      ;; "valid"
-      authz-urls (order/authorizations order)
+(defn -main [& _]
+  (let [http01-server (http01/start! {:port 5002})]
+    (try
+      (let [;; This example assumes Pebble is running at https://localhost:14000/dir
+            ;; and will validate HTTP-01 via http://localhost:5002.
 
-      ;; solve each authorization by completing its challenges
-      [session order] (loop [session session
-                             authz-urls authz-urls]
-                        (if-let [authz-url (first authz-urls)]
-                          (let [;; fetch the authorization details
-                                [session authz] (cmd/get-authorization session authz-url)
+            ;; prepare a new account by generating a keypair and creating a local map of account data
+            account-key (account/generate-keypair)
+            account     (account/create "mailto:test@example.com" true)
 
-                                ;; find an http-01 challenge to solve
-                                http-challenge (challenge/find-by-type authz "http-01")
+            ;; create a new session, this opaque handle must be passed to every ol.clave.command function
+            ;; they will always return a new session handle that you must use
+            ;; you _must_ never re-use a session handle
+            ;; for this demo we use pebble which has a self signed cert, so we have to pass an :http-client
+            ;; if you were doing this against a "real" acme server you probably wouldn't need to
+            [session _] (cmd/create-session "https://localhost:14000/dir"
+                                            {:http-client {:ssl-context {:trust-store-pass "changeit"
+                                                                         :trust-store      "test/fixtures/pebble-truststore.p12"}}
+                                             :account-key account-key})
 
-                                ;; compute the key authorization for this challenge
-                                key-auth (challenge/key-authorization http-challenge account-key)
+            ;; register a new account with the server
+            [session account] (cmd/new-account session account)
 
-                                ;; in a real scenario, you would now provision the challenge
-                                ;; response at the required HTTP endpoint:
-                                ;; http://example.com/.well-known/acme-challenge/<token>
-                                ;; for this example we just pretend it's done
-                                _ (println (str "Provision challenge at: "
-                                                "http://" (challenge/identifier authz)
-                                                "/.well-known/acme-challenge/"
-                                                (challenge/token http-challenge)))
-                                _ (println (str "Challenge content: " key-auth))
+            ;; save the account at this stage for use later during renewals
+            _ (spit "./demo-account.edn" (account/serialize account account-key))
 
-                                ;; notify the server that the challenge is ready to be validated
-                                [session _] (cmd/accept-challenge session http-challenge)
+            ;; the setup for the ceremony is complete, now on to the ceremony itself: getting a cert
+            ;; first step in getting a cert is to prepare the order data
+            ;; here we are requesting a cert for the domain "localhost", you might do "example.com"
+            identifiers   [(order/create-identifier :dns "localhost")]
+            order-request (order/create identifiers)
 
-                                ;; poll the authorization until it becomes valid
-                                [session authz] (cmd/poll-authorization session authz-url {:max-attempts 10
-                                                                                           :delay-ms 1000})]
-                            (recur session (rest authz-urls)))
-                          [session order]))
+            ;; then submit the order to the server
+            [session order] (cmd/new-order session order-request)
 
-      ;; once all authorizations are valid, we need to finalize the order
-      ;; by submitting a certificate signing request (CSR)
+            ;; each identifier (just 1 in this demo) will be associated with an authorization record
+            ;; by solving the authorization challenges you will make the authorization's status
+            ;; "valid"
+            authz-urls (order/authorizations order)
 
-      ;; first generate a certificate key pair
-      cert-key (csr/generate-keypair)
+            ;; solve each authorization by completing its challenges
+            [session order] (loop [session    session ;; we must always propagate the new session
+                                   authz-urls authz-urls]
+                              (if-let [authz-url (first authz-urls)]
+                                (let [;; fetch the authorization details
+                                      [session authz] (cmd/get-authorization session authz-url)
 
-      ;; create the CSR for our domains
-      domains (map :value identifiers)
-      csr-data (csr/create cert-key domains)
+                                      ;; find an http-01 challenge to solve
+                                      http-challenge (challenge/find-by-type authz "http-01")
 
-      ;; finalize the order by submitting the CSR
-      [session order] (cmd/finalize-order session order csr-data)
+                                      ;; compute the key authorization for this challenge
+                                      key-auth (challenge/key-authorization http-challenge account-key)
 
-      ;; poll the order until it's status becomes "valid" and certificate is ready
-      [session order] (cmd/poll-order session (order/url order) {:max-attempts 10
-                                                                 :delay-ms 1000})
+                                      ;; provision the HTTP-01 response via the local server
+                                      token (challenge/token http-challenge)
+                                      _     (http01/register! http01-server token key-auth)
 
-      ;; download the certificate chain
-      [session cert-chain] (cmd/get-certificate session (order/certificate-url order))
+                                      ;; notify the server that the challenge is ready to be validated
+                                      [session _] (cmd/respond-challenge session http-challenge)
 
-      ;; save the certificate and private key
-      _ (spit "./example.com.crt" cert-chain)
-      _ (spit "./example.com.key" (csr/serialize-key cert-key))]
+                                      ;; poll the authorization until it becomes valid
+                                      [session _authz] (cmd/poll-authorization session authz-url {:interval-ms 1000
+                                                                                                  :timeout-ms  60000})]
+                                  (recur session (rest authz-urls)))
+                                [session order]))
+            [session order] (wait-for-order-ready session order)
 
-  (println "Certificate issued successfully!")
-  (println "Certificate saved to: ./example.com.crt")
-  (println "Private key saved to: ./example.com.key"))
+            ;; once all authorizations are valid, we need to finalize the order
+            ;; by submitting a certificate signing request (CSR)
+
+            ;; first generate a certificate key pair
+            cert-key (generate-cert-keypair)
+
+            ;; create the CSR for our domains
+            domains  (mapv :value identifiers)
+            csr-data (csr/create-csr cert-key domains)
+
+            ;; finalize the order by submitting the CSR
+            [session order] (cmd/finalize-order session order csr-data)
+
+            ;; poll the order until it's status becomes "valid" and certificate is ready
+            [session order] (cmd/poll-order session (order/url order) {:interval-ms 1000
+                                                                       :timeout-ms  60000})
+
+            ;; download the certificate chain
+            [_ cert-result] (cmd/get-certificate session (order/certificate-url order))
+            preferred       (:preferred cert-result)
+            pem-chain       (::specs/pem preferred)
+
+            ;; save the certificate and private key
+            _ (spit "./localhost.crt" pem-chain)
+            _ (spit "./localhost.key" (private-key->pem (.getPrivate cert-key)))
+
+            ;; restart the server with TLS enabled using the fresh certificate
+            _                       (http01/stop! http01-server)
+            {:keys [path password]} (write-keystore! (.getPrivate cert-key) pem-chain)
+            https-server            (http01/start-https! hello-handler {:port         5003
+                                                                        :keystore     path
+                                                                        :key-password password})
+            server                  (:server https-server)]
+
+        (println "Certificate issued successfully!")
+        (println "Certificate saved to: ./localhost.crt")
+        (println "Private key saved to: ./localhost.key")
+        (println "HTTPS server running on https://localhost:5003")
+        (.join ^org.eclipse.jetty.server.Server server))
+      (finally
+        (http01/stop! http01-server)))))

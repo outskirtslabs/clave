@@ -1,36 +1,19 @@
 (ns user
   (:require
-   [ol.clave.account :as account]))
+   #_[portal.api :as p]
+   [clj-reload.core :as clj-reload]
+   [ol.dev.portal :as my-portal]))
+
 ((requiring-resolve 'hashp.install/install!))
 
-(comment
-  (do
-    (require
-     '[portal.colors]
-     '[portal.api :as p])
-    (p/open {:theme :portal.colors/gruvbox})
-    (add-tap p/submit)
-    (require '[clj-reload.core :as clj-reload])
-    (clj-reload/init {:dirs ["src" "dev" "test"]}))
+(set! *warn-on-reflection* true)
+(set! *print-namespace-maps* false)
 
-  (clj-reload/reload)
+;; Configure the paths containing clojure sources we want clj-reload to reload
+(clj-reload/init {:dirs      ["src" "dev" "test"]
+                  :no-reload #{'user 'dev 'ol.dev.portal}})
 
-  (clojure.repl.deps/sync-deps)
-  ;;
-
-  (require '[ol.clave.account :as account])
-  (require '[ol.clave.impl.commands :as commands])
-  (require '[ol.clave.impl.crypto :as crypto])
-  (account/generate-keypair)
-
-  (let [account (account/create "mailto:test@example.com" true)
-        key (account/generate-keypair)]
-    (spit "test/fixtures/test-account.edn" (account/serialize account key)))
-
-  (account/deserialize (slurp "test/fixtures/test-account.edn"))
-  (account/deserialize (slurp "test/fixtures/bad-account.edn"))
-;
-  )
+(defonce ps (my-portal/open-portals))
 (comment
   (do
     (require '[ol.clave.scope :as scope])
@@ -60,7 +43,7 @@
 ;;
   )
 (comment
-  (require '[ol.clave.scope :as scope])
+  #_(require '[ol.clave.scope :as scope])
   (import  '[java.time Duration])
 
   (defn fast []
@@ -86,7 +69,7 @@
 (comment
 
   (do
-    (require '[ol.clave.scope :as scope])
+    #_(require '[ol.clave.scope :as scope])
     (import  '[java.time Instant Duration])
 
     ;; Simulate an operation that takes ~500ms; we give it only 200ms.

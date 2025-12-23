@@ -528,15 +528,14 @@
   ([session certificate-url opts]
    (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
          accept "application/pem-certificate-chain"
+         [account-key account-kid] (ensure-authed-session session)
          fetch (fn fetch [session url visited]
                  (if (contains? visited url)
                    [session []]
-                   (let [req {:method :get
-                              :uri url
-                              :headers {:accept accept}}
-                         resp (http/http-req session req {:scope scope*
-                                                          :max-attempts 3
-                                                          :has-request-body? false})
+                   (let [[session resp]
+                         (http/http-post-jws session account-key account-kid url nil
+                                             {:scope scope*
+                                              :headers {:accept accept}})
                          chain (certificate/parse-pem-response resp url)
                          session' (http/push-nonce session (:nonce resp))
                          links (get chain ::acme/links)

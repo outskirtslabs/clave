@@ -428,11 +428,11 @@
    - kid: key ID (account URL) or nil
    - endpoint: URL
    - payload: clj data; will be JSON-encoded and JWS-signed
-   - {:keys [scope max-attempts max-5xx]} options
+   - {:keys [scope max-attempts max-5xx headers]} options
 
    Returns [updated-session {:status ... :nonce ...}] or throws."
   [session private-key kid endpoint payload
-   {:keys [scope max-attempts max-5xx]
+   {:keys [scope max-attempts max-5xx headers]
     :or {max-attempts 10
          max-5xx 3}
     :as opts}]
@@ -445,8 +445,8 @@
       (scope/active?! scope)
       (let [[session nonce] (get-nonce session {:scope scope})
             payload-bytes (jws-encode-json private-key kid nonce endpoint payload)
-            headers {:content-type "application/jose+json"}
-            req {:method :post :uri endpoint :headers headers :body payload-bytes}
+            request-headers (merge {:content-type "application/jose+json"} headers)
+            req {:method :post :uri endpoint :headers request-headers :body payload-bytes}
             result (try
                      (http-req session req {:scope scope
                                             :max-attempts 3

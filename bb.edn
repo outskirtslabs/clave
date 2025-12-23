@@ -25,10 +25,9 @@
 
          lint
          {:doc  "Run the clj-kondo linter on the clojure code"
-          :task (shell (str "clj-kondo" " --fail-level error"
-                            (if (seq *command-line-args*)
-                              (str " --lint " (first *command-line-args*))
-                              " --lint src")))}
+          :task (if (seq *command-line-args*)
+                  (apply shell "clj-kondo" "--lint" *command-line-args*)
+                  (apply shell "clj-kondo --lint" paths))}
 
          deps-tree
          {:doc  "Show dependency tree"

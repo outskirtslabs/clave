@@ -250,9 +250,10 @@
 
   Options:
 
-  | key      | description                          |
-  |----------|--------------------------------------|
+  | key      | description |
+  |----------|-------------|
   | `:scope` | Scope override for the HTTP request. |
+  | `:profile` | Optional profile name as a string when the directory advertises `:profiles`. |
 
   Returns `[updated-session order]` where `order` is the normalized order map
   including `::ol.clave.specs/order-location`."
@@ -346,3 +347,82 @@
    (impl/get-certificate session certificate-url))
   ([session certificate-url opts]
    (impl/get-certificate session certificate-url opts)))
+
+(defn get-authorization
+  "Fetch an authorization resource via POST-as-GET.
+
+  Parameters:
+  - `session` — authenticated session.
+  - `authorization-url` — authorization URL string, or an authorization map
+    containing `::ol.clave.specs/authorization-location`.
+  - `opts` — optional map with overrides.
+
+  Options:
+
+  | key      | description                          |
+  |----------|--------------------------------------|
+  | `:scope` | Scope override for the HTTP request. |
+
+  Returns `[updated-session authorization]`."
+  ([session authorization-url]
+   (impl/get-authorization session authorization-url))
+  ([session authorization-url opts]
+   (impl/get-authorization session authorization-url opts)))
+
+(defn poll-authorization
+  "Poll an authorization URL until it reaches a terminal status.
+
+  Parameters:
+  - `session` — authenticated session.
+  - `authorization-url` — authorization URL string.
+  - `opts` — optional map for polling controls.
+
+  Options:
+
+  | key            | description                             |
+  |----------------|-----------------------------------------|
+  | `:interval-ms` | Poll interval fallback in milliseconds. |
+  | `:timeout-ms`  | Overall timeout in milliseconds.        |
+  | `:scope`       | Scope override for polling operations.  |
+
+  Returns `[updated-session authorization]` on success or throws when invalid,
+  unusable, or timed out."
+  ([session authorization-url]
+   (impl/poll-authorization session authorization-url))
+  ([session authorization-url opts]
+   (impl/poll-authorization session authorization-url opts)))
+
+(defn deactivate-authorization
+  "Deactivate an authorization by sending a status update.
+
+  Parameters:
+  - `session` — authenticated session.
+  - `authorization-url` — authorization URL string, or authorization map.
+  - `opts` — optional map with `:scope`.
+
+  Returns `[updated-session authorization]`."
+  ([session authorization-url]
+   (impl/deactivate-authorization session authorization-url))
+  ([session authorization-url opts]
+   (impl/deactivate-authorization session authorization-url opts)))
+
+(defn respond-challenge
+  "Notify the ACME server that a challenge response is ready.
+
+  Parameters:
+  - `session` — authenticated session.
+  - `challenge` — challenge map containing `::ol.clave.specs/url`.
+  - `opts` — optional map with overrides.
+
+  Options:
+
+  | key        | description                          |
+  |------------|--------------------------------------|
+  | `:payload` | Override the default `{}` payload.   |
+  | `:scope`   | Scope override for the HTTP request. |
+
+  Returns `[updated-session challenge]`."
+  ([session challenge]
+   (impl/respond-challenge session challenge))
+  ([session challenge opts]
+   (impl/respond-challenge session challenge opts)))

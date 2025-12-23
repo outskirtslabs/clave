@@ -3,7 +3,9 @@
    [clojure.spec.alpha :as s]
    [ol.clave.errors :as errors]
    [ol.clave.impl.account :as account]
+   [ol.clave.impl.authorization :as authorization]
    [ol.clave.impl.certificate :as certificate]
+   [ol.clave.impl.challenge :as challenge]
    [ol.clave.impl.crypto :as crypto]
    [ol.clave.impl.http :as http]
    [ol.clave.impl.json :as json]
@@ -277,7 +279,10 @@
    (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
          [account-key account-kid] (ensure-authed-session session)
          endpoint (acme/new-order-url session)
-         payload (order/build-order-payload order)
+         profiles (get-in session [::acme/directory ::acme/meta ::acme/profiles])
+         profile (or (:profile opts) (::acme/profile order) (:profile order))
+         payload (cond-> (order/build-order-payload order)
+                   (and profile profiles) (assoc :profile profile))
          [session {:keys [status body-bytes nonce] :as resp}]
          (http/http-post-jws session account-key account-kid endpoint payload {:scope scope*})]
      (when-not (<= 200 status 299)
@@ -394,6 +399,128 @@
            normalized (order/normalize-order order-resp location)
            session' (http/push-nonce session nonce)]
        [session' normalized]))))
+
+(defn- fetch-authorization
+  [session authorization-url opts]
+  (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+        [account-key account-kid] (ensure-authed-session session)
+        [session {:keys [status body-bytes nonce] :as resp}]
+        (http/http-post-jws session account-key account-kid authorization-url nil {:scope scope*})]
+    (when-not (<= 200 status 299)
+      (let [problem (when body-bytes (http/parse-problem-json body-bytes))]
+        (throw (errors/ex errors/authorization-retrieval-failed
+                          "Authorization retrieval failed"
+                          {:status status
+                           :problem problem
+                           :url authorization-url}))))
+    (let [authz-resp (json/read-str (slurp body-bytes :encoding "UTF-8"))
+          location (or (http/get-header resp "Location") authorization-url)
+          normalized (authorization/normalize-authorization authz-resp account-key location)
+          session' (http/push-nonce session nonce)]
+      [session' normalized resp])))
+
+(defn get-authorization
+  ([session authorization-or-url]
+   (get-authorization session authorization-or-url nil))
+  ([session authorization-or-url opts]
+   (let [authorization-url (if (map? authorization-or-url)
+                             (or (::acme/authorization-location authorization-or-url)
+                                 (::acme/url authorization-or-url))
+                             authorization-or-url)
+         [session authorization _resp] (fetch-authorization session authorization-url opts)]
+     [session authorization])))
+
+(defn poll-authorization
+  ([session authorization-url]
+   (poll-authorization session authorization-url nil))
+  ([session authorization-url opts]
+   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+         interval-ms (long (or (:interval-ms opts) (::acme/poll-interval session) 5000))
+         timeout-ms (long (or (:timeout-ms opts) (::acme/poll-timeout session) 60000))
+         start (java.time.Instant/now)]
+     (loop [session session]
+       (scope/active?! scope*)
+       (let [[session authorization resp] (fetch-authorization session authorization-url opts)]
+         (cond
+           (authorization/authorization-valid? authorization)
+           [session authorization]
+
+           (authorization/authorization-invalid? authorization)
+           (throw (errors/ex errors/authorization-invalid
+                             "Authorization became invalid"
+                             {:authorization authorization
+                              :problem (authorization/authorization-problem authorization)
+                              :url authorization-url}))
+
+           (authorization/authorization-unusable? authorization)
+           (throw (errors/ex errors/authorization-unusable
+                             "Authorization became unusable"
+                             {:authorization authorization
+                              :problem (authorization/authorization-problem authorization)
+                              :url authorization-url}))
+
+           :else
+           (let [elapsed (java.time.Duration/between start (java.time.Instant/now))
+                 remaining (- timeout-ms (.toMillis elapsed))]
+             (when (<= remaining 0)
+               (throw (errors/ex errors/authorization-timeout
+                                 "Authorization polling timed out"
+                                 {:url authorization-url
+                                  :elapsed-ms (.toMillis elapsed)})))
+             (let [fallback (java.time.Duration/ofMillis interval-ms)
+                   ^java.time.Duration retry (http/retry-after resp fallback)
+                   delay-ms (min remaining (.toMillis retry))]
+               (when (pos? delay-ms)
+                 (scope/sleep scope* delay-ms))
+               (recur session)))))))))
+
+(defn deactivate-authorization
+  ([session authorization-or-url]
+   (deactivate-authorization session authorization-or-url nil))
+  ([session authorization-or-url opts]
+   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+         authorization-url (if (map? authorization-or-url)
+                             (or (::acme/authorization-location authorization-or-url)
+                                 (::acme/url authorization-or-url))
+                             authorization-or-url)
+         [account-key account-kid] (ensure-authed-session session)
+         payload {:status "deactivated"}
+         [session {:keys [status body-bytes nonce] :as resp}]
+         (http/http-post-jws session account-key account-kid authorization-url payload {:scope scope*})]
+     (when-not (<= 200 status 299)
+       (let [problem (when body-bytes (http/parse-problem-json body-bytes))]
+         (throw (errors/ex errors/authorization-retrieval-failed
+                           "Authorization deactivation failed"
+                           {:status status
+                            :problem problem
+                            :url authorization-url}))))
+     (let [authz-resp (json/read-str (slurp body-bytes :encoding "UTF-8"))
+           location (or (http/get-header resp "Location") authorization-url)
+           normalized (authorization/normalize-authorization authz-resp account-key location)]
+       [(http/push-nonce session nonce) normalized]))))
+
+(defn respond-challenge
+  ([session challenge]
+   (respond-challenge session challenge nil))
+  ([session challenge opts]
+   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+         [account-key account-kid] (ensure-authed-session session)
+         challenge-url (if (map? challenge)
+                         (or (::acme/url challenge) (:url challenge))
+                         challenge)
+         payload (if (contains? opts :payload) (:payload opts) {})
+         [session {:keys [status body-bytes nonce]}]
+         (http/http-post-jws session account-key account-kid challenge-url payload {:scope scope*})]
+     (when-not (<= 200 status 299)
+       (let [problem (when body-bytes (http/parse-problem-json body-bytes))]
+         (throw (errors/ex errors/challenge-rejected
+                           "Challenge response was rejected"
+                           {:status status
+                            :problem problem
+                            :url challenge-url}))))
+     (let [challenge-resp (json/read-str (slurp body-bytes :encoding "UTF-8"))
+           normalized (challenge/normalize-challenge challenge-resp account-key)]
+       [(http/push-nonce session nonce) normalized]))))
 
 (defn get-certificate
   ([session certificate-url]

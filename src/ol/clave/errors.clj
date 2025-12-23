@@ -60,6 +60,13 @@
 (def order-timeout ::order-timeout)
 (def order-inconsistent ::order-inconsistent)
 
+;; Authorization/challenge errors
+(def authorization-retrieval-failed ::authorization-retrieval-failed)
+(def authorization-invalid ::authorization-invalid)
+(def authorization-unusable ::authorization-unusable)
+(def authorization-timeout ::authorization-timeout)
+(def challenge-rejected ::challenge-rejected)
+
 ;; Certificate download errors
 (def certificate-download-failed ::certificate-download-failed)
 (def unexpected-content-type ::unexpected-content-type)

@@ -19,8 +19,9 @@
 (s/def ::website string?)
 (s/def ::caaIdentities (s/coll-of string?))
 (s/def ::externalAccountRequired boolean?)
+(s/def ::profiles map?)
 
-(s/def ::meta (s/keys :opt [::termsOfService ::website ::caaIdentities ::externalAccountRequired]))
+(s/def ::meta (s/keys :opt [::termsOfService ::website ::caaIdentities ::externalAccountRequired ::profiles]))
 
 (s/def ::directory
   (s/keys :req [::newNonce
@@ -67,8 +68,17 @@
 ;; Order status values (RFC 8555 Section 7.1.6)
 (s/def ::order-status #{"pending" "ready" "processing" "valid" "invalid"})
 
-;; Status values shared by account/order resources
-(s/def ::status (s/or :account ::account-status :order ::order-status))
+;; Authorization status values (RFC 8555 Section 7.1.6)
+(s/def ::authorization-status #{"pending" "valid" "invalid" "deactivated" "expired" "revoked"})
+
+;; Challenge status values (RFC 8555 Section 7.1.6)
+(s/def ::challenge-status #{"pending" "processing" "valid" "invalid"})
+
+;; Status values shared by account/order/authorization/challenge resources
+(s/def ::status (s/or :account ::account-status
+                      :order ::order-status
+                      :authorization ::authorization-status
+                      :challenge ::challenge-status))
 (s/def ::orders (s/nilable string?))
 (s/def ::externalAccountBinding (s/nilable map?))
 
@@ -144,6 +154,7 @@
 (s/def ::finalize string?)
 (s/def ::certificate (s/nilable string?))
 (s/def ::order-location string?)
+(s/def ::profile (s/and string? #(not (str/blank? %))))
 
 (s/def ::notBefore (s/nilable ::instant))
 (s/def ::notAfter (s/nilable ::instant))
@@ -151,13 +162,32 @@
 (s/def ::order
   (s/keys :req [::status ::identifiers ::authorizations ::finalize]
           :opt [::certificate ::order-expires ::notBefore ::notAfter
-                ::order-location ::error]))
+                ::order-location ::error ::profile]))
 
 (defn order-url [order]
   (::order-location order))
 
 (defn certificate-url [order]
-  (::order-certificate order))
+  (::certificate order))
+
+;; ---------------------------------------------------------------------------
+;; Authorizations & Challenges (RFC 8555 Section 7.1.4, 7.1.5)
+;; ---------------------------------------------------------------------------
+
+(s/def ::authorization-expires (s/nilable ::instant))
+(s/def ::authorization-location string?)
+(s/def ::wildcard boolean?)
+(s/def ::token (s/and string? #(not (str/blank? %))))
+(s/def ::key-authorization (s/and string? #(not (str/blank? %))))
+(s/def ::validated (s/nilable ::instant))
+(s/def ::challenge
+  (s/keys :req [::type ::url ::status]
+          :opt [::token ::key-authorization ::validated ::error]))
+(s/def ::challenges (s/and vector?
+                           (s/coll-of ::challenge :kind vector?)))
+(s/def ::authorization
+  (s/keys :req [::identifier ::status ::challenges]
+          :opt [::wildcard ::authorization-expires ::authorization-location ::error]))
 
 ;; ---------------------------------------------------------------------------
 ;; Certificates

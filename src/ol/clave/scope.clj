@@ -122,7 +122,7 @@
    [java.util UUID]
    [java.util.concurrent Callable StructuredTaskScope StructuredTaskScope$FailedException
     StructuredTaskScope$Joiner StructuredTaskScope$Subtask
-    StructuredTaskScope$Subtask$State StructuredTaskScope$TimeoutException]
+    StructuredTaskScope$Subtask$State]
    [java.util.function Predicate]))
 
 (set! *warn-on-reflection* true)
@@ -778,6 +778,7 @@
                        (reify Predicate
                          (test [_ _] false))))
              ^StructuredTaskScope structured (StructuredTaskScope/open joiner)
+             cancel-structured (on-cancel scope (fn [_ _] (.close structured)))
              prepared (mapv #(wrap-callable scope %) tasks)
              subtasks (mapv (fn [{:keys [callable]}]
                               (.fork structured ^Callable callable))
@@ -792,17 +793,11 @@
                (collect-results subtasks)))
            (catch StructuredTaskScope$FailedException e
              (throw (.getCause e)))
-           (catch StructuredTaskScope$TimeoutException e
-             (let [ex (timeout-ex
-                       "Structured task timed out"
-                       {:scope-id (:id scope)}
-                       e)]
-               (cancel! scope ex)
-               (throw ex)))
            (catch InterruptedException e
              (cancel! scope e)
              (throw e))
            (finally
              (doseq [{child-scope :scope} prepared]
                (cancel! child-scope))
+             (cancel-structured)
              (.close structured))))))))

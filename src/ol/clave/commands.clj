@@ -238,3 +238,111 @@
    (impl/rollover-account-key session account new-account-key))
   ([session account new-account-key opts]
    (impl/rollover-account-key session account new-account-key opts)))
+
+(defn new-order
+  "Create a new ACME order for the supplied identifiers.
+
+  Parameters:
+  - `session` — authenticated session with account key and KID.
+  - `order` — map containing `::ol.clave.specs/identifiers` and optional
+    `::ol.clave.specs/notBefore` / `::ol.clave.specs/notAfter`.
+  - `opts` — optional map with overrides.
+
+  Options:
+
+  | key      | description                          |
+  |----------|--------------------------------------|
+  | `:scope` | Scope override for the HTTP request. |
+
+  Returns `[updated-session order]` where `order` is the normalized order map
+  including `::ol.clave.specs/order-location`."
+  ([session order]
+   (impl/new-order session order))
+  ([session order opts]
+   (impl/new-order session order opts)))
+
+(defn get-order
+  "Retrieve the current state of an order via POST-as-GET.
+
+  Parameters:
+  - `session` — authenticated session.
+  - `order-url` — order URL string, or an order map that includes
+    `::ol.clave.specs/order-location`.
+  - `opts` — optional map with overrides.
+
+  Options:
+
+  | key      | description                          |
+  |----------|--------------------------------------|
+  | `:scope` | Scope override for the HTTP request. |
+
+  Returns `[updated-session order]` with the latest order data."
+  ([session order-url]
+   (impl/get-order session order-url))
+  ([session order-url opts]
+   (impl/get-order session order-url opts)))
+
+(defn poll-order
+  "Poll an order URL until it reaches a terminal status.
+
+  Parameters:
+  - `session` — authenticated session.
+  - `order-url` — order URL string.
+  - `opts` — optional map for polling controls.
+
+  Options:
+
+  | key            | description                             |
+  |----------------|-----------------------------------------|
+  | `:interval-ms` | Poll interval fallback in milliseconds. |
+  | `:timeout-ms`  | Overall timeout in milliseconds.        |
+  | `:scope`       | Scope override for polling operations.  |
+
+  Returns `[updated-session order]` on success or throws on invalid/timeout."
+  ([session order-url]
+   (impl/poll-order session order-url))
+  ([session order-url opts]
+   (impl/poll-order session order-url opts)))
+
+(defn finalize-order
+  "Finalize an order by submitting a CSR.
+
+  Parameters:
+  - `session` — authenticated session.
+  - `order` — normalized order map with `::ol.clave.specs/status` and
+    `::ol.clave.specs/finalize`.
+  - `csr` — map containing `:csr-b64url` from [[ol.clave.impl.csr/create-csr]].
+  - `opts` — optional map with overrides.
+
+  Options:
+
+  | key      | description                          |
+  |----------|--------------------------------------|
+  | `:scope` | Scope override for the HTTP request. |
+
+  Returns `[updated-session order]` with the updated order state."
+  ([session order csr]
+   (impl/finalize-order session order csr))
+  ([session order csr opts]
+   (impl/finalize-order session order csr opts)))
+
+(defn get-certificate
+  "Download a PEM certificate chain from the certificate URL.
+
+  Parameters:
+  - `session` — session carrying HTTP configuration.
+  - `certificate-url` — certificate URL from an order.
+  - `opts` — optional map with overrides.
+
+  Options:
+
+  | key      | description                          |
+  |----------|--------------------------------------|
+  | `:scope` | Scope override for the HTTP request. |
+
+  Returns `[updated-session result]` where `result` includes `:chains` and
+  `:preferred` entries with parsed PEM data."
+  ([session certificate-url]
+   (impl/get-certificate session certificate-url))
+  ([session certificate-url opts]
+   (impl/get-certificate session certificate-url opts)))

@@ -64,8 +64,11 @@
 ;; Account status values (RFC 8555 Section 7.3)
 (s/def ::account-status #{"valid" "deactivated" "revoked"})
 
-;; Account resource response from server (subset we consume)
-(s/def ::status ::account-status)
+;; Order status values (RFC 8555 Section 7.1.6)
+(s/def ::order-status #{"pending" "ready" "processing" "valid" "invalid"})
+
+;; Status values shared by account/order resources
+(s/def ::status (s/or :account ::account-status :order ::order-status))
 (s/def ::orders (s/nilable string?))
 (s/def ::externalAccountBinding (s/nilable map?))
 
@@ -84,6 +87,9 @@
 
 (defn new-account-url [session]
   (get-in session [::directory ::newAccount]))
+
+(defn new-order-url [session]
+  (get-in session [::directory ::newOrder]))
 
 (defn key-change-url [session]
   (get-in session [::directory ::keyChange]))
@@ -113,3 +119,57 @@
 
 (s/def ::account-artifact
   (s/keys :req [::registration ::private-key-pem ::public-key-pem]))
+
+;; ---------------------------------------------------------------------------
+;; Orders (RFC 8555 Section 7.1.3)
+;; ---------------------------------------------------------------------------
+
+(s/def ::identifier-type (s/and string? #(not (str/blank? %))))
+(s/def ::identifier-value (s/and string? #(not (str/blank? %))))
+(s/def ::type ::identifier-type)
+(s/def ::value ::identifier-value)
+(s/def ::identifier (s/keys :req-un [::type ::value]))
+(s/def ::identifiers (s/and vector?
+                            (s/coll-of ::identifier :kind vector?)))
+
+(defn identifier?
+  "Return true when `value` conforms to an ACME identifier map."
+  [value]
+  (s/valid? ::identifier value))
+
+(s/def ::instant (s/or :instant inst? :string string?))
+(s/def ::order-expires (s/nilable ::instant))
+(s/def ::authorizations (s/and vector?
+                               (s/coll-of string? :kind vector?)))
+(s/def ::finalize string?)
+(s/def ::certificate (s/nilable string?))
+(s/def ::order-location string?)
+
+(s/def ::notBefore (s/nilable ::instant))
+(s/def ::notAfter (s/nilable ::instant))
+
+(s/def ::order
+  (s/keys :req [::status ::identifiers ::authorizations ::finalize]
+          :opt [::certificate ::order-expires ::notBefore ::notAfter
+                ::order-location ::error]))
+
+(defn order-url [order]
+  (::order-location order))
+
+(defn certificate-url [order]
+  (::order-certificate order))
+
+;; ---------------------------------------------------------------------------
+;; Certificates
+;; ---------------------------------------------------------------------------
+
+(s/def ::url string?)
+(s/def ::pem string?)
+(s/def ::certificates (s/and vector? (s/coll-of #(instance? java.security.cert.X509Certificate %) :kind vector?)))
+(s/def ::alternate (s/and vector? (s/coll-of string? :kind vector?)))
+(s/def ::up (s/and vector? (s/coll-of string? :kind vector?)))
+(s/def ::links (s/keys :opt-un [::alternate ::up]))
+
+(s/def ::certificate-chain
+  (s/keys :req [::pem]
+          :opt [::certificates ::url ::links]))

@@ -1,7 +1,6 @@
 (ns ol.clave.errors
   "Shared error keyword definitions and helpers for ex-info payloads.")
 
-;; Primary error keywords reused across specs 001/002 and their implementations.
 (def unsupported-key ::unsupported-key)
 (def invalid-header ::invalid-header)
 (def invalid-eab ::invalid-eab)
@@ -26,7 +25,7 @@
 (def timeout ::timeout)
 (def invalid-scope ::invalid-scope)
 
-;; Account management errors (spec 006)
+;; Account management errors
 (def account-retrieval-failed ::account-retrieval-failed)
 (def account-update-failed ::account-update-failed)
 (def account-deactivation-failed ::account-deactivation-failed)
@@ -37,7 +36,7 @@
 (def account-key-rollover-failed ::account-key-rollover-failed)
 (def account-key-rollover-verification-failed ::account-key-rollover-verification-failed)
 
-;; CSR-related errors (spec 003)
+;; CSR-related errors
 (def invalid-san ::invalid-san)
 (def invalid-idna ::invalid-idna)
 (def invalid-ip ::invalid-ip)
@@ -52,6 +51,18 @@
 (def server-error ::server-error)
 
 (def value-too-large ::value-too-large)
+
+;; Order lifecycle errors
+(def order-creation-failed ::order-creation-failed)
+(def order-retrieval-failed ::order-retrieval-failed)
+(def order-not-ready ::order-not-ready)
+(def order-invalid ::order-invalid)
+(def order-timeout ::order-timeout)
+(def order-inconsistent ::order-inconsistent)
+
+;; Certificate download errors
+(def certificate-download-failed ::certificate-download-failed)
+(def unexpected-content-type ::unexpected-content-type)
 
 (defn ex
   "Convenience wrapper for ex-info that associates the shared :type key.

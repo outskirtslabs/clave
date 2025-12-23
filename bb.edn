@@ -3,7 +3,7 @@
  :tasks {:requires         ([babashka.fs :as fs]
                             [clojure.string :as str]
                             [babashka.tasks :refer [shell]])
-
+         :init             (do (def paths ["src" "test" "dev" "examples"]))
          dev               {:doc "Start a local development server" :task (apply clojure "-M:dev:repl/dev" *command-line-args*)}
 
          test

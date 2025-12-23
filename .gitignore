@@ -11,3 +11,4 @@ extra/
 example-project
 *.log
 prompts/PROMPTS.md
+.box*

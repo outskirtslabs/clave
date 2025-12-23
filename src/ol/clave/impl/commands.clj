@@ -3,10 +3,12 @@
    [clojure.spec.alpha :as s]
    [ol.clave.errors :as errors]
    [ol.clave.impl.account :as account]
+   [ol.clave.impl.certificate :as certificate]
    [ol.clave.impl.crypto :as crypto]
    [ol.clave.impl.http :as http]
    [ol.clave.impl.json :as json]
    [ol.clave.impl.jws :as jws]
+   [ol.clave.impl.order :as order]
    [ol.clave.impl.util :as util]
    [ol.clave.protocols :as proto]
    [ol.clave.scope :as scope]
@@ -267,3 +269,160 @@
                                  {:account account-kid
                                   :cause-type (:type cause-data)}
                                  ex))))))))))
+
+(defn new-order
+  ([session order]
+   (new-order session order nil))
+  ([session order opts]
+   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+         [account-key account-kid] (ensure-authed-session session)
+         endpoint (acme/new-order-url session)
+         payload (order/build-order-payload order)
+         [session {:keys [status body-bytes nonce] :as resp}]
+         (http/http-post-jws session account-key account-kid endpoint payload {:scope scope*})]
+     (when-not (<= 200 status 299)
+       (let [problem (when body-bytes (http/parse-problem-json body-bytes))]
+         (throw (errors/ex errors/order-creation-failed
+                           "Order creation failed"
+                           {:status status
+                            :problem problem}))))
+     (if-let [location (http/get-header resp "Location")]
+       (let [order-resp (json/read-str (slurp body-bytes :encoding "UTF-8"))
+             normalized (order/normalize-order order-resp location)
+             session' (http/push-nonce session nonce)]
+         [session' normalized])
+       (throw (errors/ex errors/order-creation-failed
+                         "Order creation response missing Location header"
+                         {:status status}))))))
+
+(defn- fetch-order
+  [session order-url opts]
+  (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+        [account-key account-kid] (ensure-authed-session session)
+        [session {:keys [status body-bytes nonce] :as resp}]
+        (http/http-post-jws session account-key account-kid order-url nil {:scope scope*})]
+    (when-not (<= 200 status 299)
+      (let [problem (when body-bytes (http/parse-problem-json body-bytes))]
+        (throw (errors/ex errors/order-retrieval-failed
+                          "Order retrieval failed"
+                          {:status status
+                           :problem problem
+                           :url order-url}))))
+    (let [order-resp (json/read-str (slurp body-bytes :encoding "UTF-8"))
+          location (or (http/get-header resp "Location") order-url)
+          normalized (order/normalize-order order-resp location)
+          session' (http/push-nonce session nonce)]
+      [session' normalized resp])))
+
+(defn get-order
+  ([session order-or-url]
+   (get-order session order-or-url nil))
+  ([session order-or-url opts]
+   (let [order-url (if (map? order-or-url)
+                     (::acme/order-location order-or-url)
+                     order-or-url)
+         expected (when (map? order-or-url)
+                    (::acme/identifiers order-or-url))
+         [session order _resp] (fetch-order session order-url opts)
+         order (order/ensure-identifiers-consistent expected order)]
+     [session (assoc order ::acme/order-location (or (::acme/order-location order) order-url))])))
+
+(defn poll-order
+  ([session order-url]
+   (poll-order session order-url nil))
+  ([session order-url opts]
+   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+         interval-ms (long (or (:interval-ms opts) (::acme/poll-interval session) 5000))
+         timeout-ms (long (or (:timeout-ms opts) (::acme/poll-timeout session) 60000))
+         start (java.time.Instant/now)]
+     (loop [session session]
+       (scope/active?! scope*)
+       (let [[session order resp] (fetch-order session order-url opts)]
+         (cond
+           (= "valid" (::acme/status order))
+           [session order]
+
+           (= "invalid" (::acme/status order))
+           (throw (errors/ex errors/order-invalid
+                             "Order became invalid"
+                             {:order order
+                              :url order-url}))
+
+           :else
+           (let [elapsed (java.time.Duration/between start (java.time.Instant/now))
+                 remaining (- timeout-ms (.toMillis elapsed))]
+             (when (<= remaining 0)
+               (throw (errors/ex errors/order-timeout
+                                 "Order polling timed out"
+                                 {:url order-url
+                                  :elapsed-ms (.toMillis elapsed)})))
+             (let [fallback (java.time.Duration/ofMillis interval-ms)
+                   ^java.time.Duration retry (http/retry-after resp fallback)
+                   delay-ms (min remaining (.toMillis retry))]
+               (when (pos? delay-ms)
+                 (scope/sleep scope* delay-ms))
+               (recur session)))))))))
+
+(defn finalize-order
+  ([session order csr]
+   (finalize-order session order csr nil))
+  ([session order csr opts]
+   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+         [account-key account-kid] (ensure-authed-session session)
+         csr-b64url (or (:csr-b64url csr) (::acme/csr-b64url csr))
+         _ (when-not (order/order-ready? order)
+             (throw (errors/ex errors/order-not-ready
+                               "Order is not ready for finalization"
+                               {:status (::acme/status order)})))
+         _ (when-not csr-b64url
+             (throw (errors/ex errors/encoding-failed
+                               "CSR payload missing :csr-b64url"
+                               {:csr csr})))
+         endpoint (::acme/finalize order)
+         payload {:csr csr-b64url}
+         [session {:keys [status body-bytes nonce] :as resp}]
+         (http/http-post-jws session account-key account-kid endpoint payload {:scope scope*})]
+     (when-not (<= 200 status 299)
+       (let [problem (when body-bytes (http/parse-problem-json body-bytes))]
+         (throw (errors/ex errors/order-not-ready
+                           "Finalize request rejected"
+                           {:status status
+                            :problem problem
+                            :order order}))))
+     (let [order-resp (json/read-str (slurp body-bytes :encoding "UTF-8"))
+           location (or (http/get-header resp "Location") (::acme/order-location order))
+           normalized (order/normalize-order order-resp location)
+           session' (http/push-nonce session nonce)]
+       [session' normalized]))))
+
+(defn get-certificate
+  ([session certificate-url]
+   (get-certificate session certificate-url nil))
+  ([session certificate-url opts]
+   (let [scope* (or (:scope opts) (::acme/scope session) (scope/root))
+         accept "application/pem-certificate-chain"
+         fetch (fn fetch [session url visited]
+                 (if (contains? visited url)
+                   [session []]
+                   (let [req {:method :get
+                              :uri url
+                              :headers {:accept accept}}
+                         resp (http/http-req session req {:scope scope*
+                                                          :max-attempts 3
+                                                          :has-request-body? false})
+                         chain (certificate/parse-pem-response resp url)
+                         session' (http/push-nonce session (:nonce resp))
+                         links (get chain ::acme/links)
+                         next-urls (distinct (concat (:alternate links) (:up links)))
+                         [session'' chains]
+                         (reduce (fn [[session acc] link]
+                                   (let [[session more] (fetch session link (conj visited url))]
+                                     [session (into acc more)]))
+                                 [session' []]
+                                 next-urls)]
+                     [session'' (into [chain] chains)])))
+         [session chains] (fetch session certificate-url #{})
+         preferred (first chains)]
+     [session {:chains chains
+               :preferred preferred
+               :links (get preferred ::acme/links)}])))

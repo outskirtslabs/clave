@@ -49,12 +49,38 @@
   [proc]
   (p/destroy proc))
 
+(defn wait-for-pebble
+  "Wait until Pebble responds to the directory endpoint.
+
+  Options:
+  - `:timeout-ms` total wait time (default 5000).
+  - `:interval-ms` delay between attempts (default 50)."
+  ([]
+   (wait-for-pebble nil))
+  ([{:keys [timeout-ms interval-ms]
+     :or {timeout-ms 5000
+          interval-ms 50}}]
+   (let [deadline (+ (System/currentTimeMillis) timeout-ms)]
+     (loop []
+       (let [resp (try
+                    (http/request {:client (http/client http-client-opts)
+                                   :uri "https://localhost:14000/dir"
+                                   :method :get
+                                   :as :json})
+                    (catch Exception _ nil))]
+         (cond
+           (and resp (<= 200 (:status resp) 299)) true
+           (>= (System/currentTimeMillis) deadline) false
+           :else (do
+                   (Thread/sleep interval-ms)
+                   (recur))))))))
+
 (defn pebble-fixture
   "Test fixture for starting and stopping Pebble ACME test server."
   [f]
   (let [proc (pebble-start)]
     (try
-      (Thread/sleep 100)
+      (wait-for-pebble)
       (f)
       (finally
         (pebble-stop proc)))))
@@ -64,7 +90,7 @@
   [[pebble# init-expr] & body]
   `(let [~pebble# ~init-expr]
      (try
-       (Thread/sleep 100)
+       (wait-for-pebble)
        ~@body
        (finally
          (pebble-stop ~pebble#)))))
@@ -74,7 +100,7 @@
   [& body]
   `(let [pebble# (pebble-start)]
      (try
-       (Thread/sleep 100)
+       (wait-for-pebble)
        ~@body
        (finally
          (pebble-stop pebble#)))))

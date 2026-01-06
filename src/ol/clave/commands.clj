@@ -211,6 +211,7 @@
    (impl/find-account-by-key session))
   ([session opts]
    (impl/find-account-by-key session opts)))
+
 (defn get-account
   "Retrieve the current state of an ACME account via POST-as-GET.
 

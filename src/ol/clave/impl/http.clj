@@ -395,25 +395,28 @@
     (.getBytes (jws/jws-encode-json payload-json keypair kid nonce endpoint)
                java.nio.charset.StandardCharsets/UTF_8)))
 
+(defn new-nonce
+  "Fetches a new ncone via the directory"
+  [session {:keys [scope]}]
+  (let [resp (http-req session {:method :head :uri (acme/new-nonce-url session)}
+                       {:scope (resolve-scope session scope)
+                        :max-attempts 3
+                        :traffic-calming-ms default-traffic-calming-ms
+                        :has-request-body? false})
+        fresh-nonce (:nonce resp)]
+    (if fresh-nonce
+      [session fresh-nonce]
+      (throw (errors/ex errors/invalid-header
+                        "No Replay-Nonce in newNonce response"
+                        {})))))
 (defn get-nonce
   "Pop a cached nonce or fetch a new one via HEAD to directory :newNonce.
   Returns [updated-session nonce]."
-  [session {:keys [scope] :as opts}]
-  (let [scope (resolve-scope session (or scope opts))
-        [nonce session*] (pop-nonce session)]
+  [session opts]
+  (let [[nonce session*] (pop-nonce session)]
     (if nonce
       [session* nonce]
-      (let [resp (http-req session {:method :head :uri (acme/new-nonce-url session)}
-                           {:scope scope
-                            :max-attempts 3
-                            :traffic-calming-ms default-traffic-calming-ms
-                            :has-request-body? false})
-            fresh-nonce (:nonce resp)]
-        (if fresh-nonce
-          [session* fresh-nonce]
-          (throw (errors/ex errors/invalid-header
-                            "No Replay-Nonce in newNonce response"
-                            {})))))))
+      (new-nonce session opts))))
 
 (defn http-post-jws
   "Perform ACME JWS POST robustly.

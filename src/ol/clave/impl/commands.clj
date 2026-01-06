@@ -8,6 +8,7 @@
    [ol.clave.impl.certificate :as certificate]
    [ol.clave.impl.challenge :as challenge]
    [ol.clave.impl.crypto :as crypto]
+   [ol.clave.impl.directory-cache :as dc]
    [ol.clave.impl.http :as http]
    [ol.clave.impl.json :as json]
    [ol.clave.impl.jws :as jws]
@@ -63,25 +64,31 @@
   ([session]
    (load-directory session nil))
   ([{::acme/keys [directory-url] :as session} opts]
-   (let [scope (resolve-scope session opts)
-         {:keys [body nonce]}
-         (http/http-req session {:method :get
-                                 :uri directory-url
-                                 :as :json}
-                        {:scope scope})
-         directory (util/qualify-keys 'ol.clave.specs body)
-         qualified (cond-> directory
-                     (::acme/meta directory)
-                     (update ::acme/meta #(util/qualify-keys 'ol.clave.specs %)))]
-     (when-not (s/valid? ::acme/directory qualified)
-       (throw (ex-info "Invalid directory response"
-                       {:type ::invalid-directory
-                        :explain-data (s/explain-data ::acme/directory qualified)
-                        :response body})))
-     (let [session' (-> session
-                        (assoc ::acme/directory qualified)
-                        (http/push-nonce nonce))]
-       [session' qualified]))))
+   (let [ttl-ms (or (:ttl-ms opts) dc/default-ttl-ms)
+         cached (when-not (:force opts)
+                  (dc/cache-get directory-url ttl-ms))]
+     (if cached
+       [(assoc session ::acme/directory cached) cached]
+       (let [scope (resolve-scope session opts)
+             {:keys [body nonce]}
+             (http/http-req session {:method :get
+                                     :uri directory-url
+                                     :as :json}
+                            {:scope scope})
+             directory (util/qualify-keys 'ol.clave.specs body)
+             qualified (cond-> directory
+                         (::acme/meta directory)
+                         (update ::acme/meta #(util/qualify-keys 'ol.clave.specs %)))]
+         (when-not (s/valid? ::acme/directory qualified)
+           (throw (ex-info "Invalid directory response"
+                           {:type ::invalid-directory
+                            :explain-data (s/explain-data ::acme/directory qualified)
+                            :response body})))
+         (dc/cache-put! directory-url qualified)
+         (let [session' (-> session
+                            (assoc ::acme/directory qualified)
+                            (http/push-nonce nonce))]
+           [session' qualified]))))))
 
 (defn create-session
   [directory-url opts]

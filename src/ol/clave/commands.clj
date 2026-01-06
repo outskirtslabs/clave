@@ -69,14 +69,27 @@
 (defn load-directory
   "Fetch the ACME directory document and attach it to `session`.
 
+  Uses a global cache with 12-hour TTL to avoid repeated fetches for
+  long-running servers managing multiple domains.
+
   Parameters:
   - `session` — session created by [[new-session]] or [[create-session]].
-  - `opts` — optional map; `:scope` overrides the scope used while performing
-    HTTP calls.
+  - `opts` — optional map with overrides.
+
+  Options:
+
+  | key       | description                                |
+  |-----------|------------------------------------------- |
+  | `:scope`  | Scope override for the HTTP request.       |
+  | `:force`  | Bypass cache, fetch fresh from CA.         |
+  | `:ttl-ms` | Custom cache TTL in milliseconds.          |
 
   Returns `[updated-session directory]`, where `directory` is the qualified map
   described by `::ol.clave.specs/directory` and `updated-session` has the
-  directory attached alongside the freshest replay nonce.
+  directory attached.
+
+  When loaded from cache, the session will not have a nonce from this call;
+  the first JWS operation will fetch one via HEAD to newNonce.
 
   Example:
   ```clojure
@@ -120,7 +133,8 @@
   Parameters:
   - `directory-url` — ACME directory URL.
   - `opts` — same options map accepted by [[new-session]], optionally extended
-    with `:scope` to control the initial HTTP request.
+    with `:scope` to control the initial HTTP request, `:force` to bypass the
+    directory cache, and `:ttl-ms` for custom cache TTL.
 
   Returns `[session directory]` with the directory hydrated and incorporated
   into `session`.

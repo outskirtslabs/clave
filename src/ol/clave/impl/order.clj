@@ -19,22 +19,17 @@
                             {:provided identifier-type}))))
 
 (defn create-identifier
-  "Return a normalized identifier map."
+  "Return a normalized identifier map.
+
+  Accepts either a map with `:type` and `:value` keys, or two arguments
+  for type and value directly."
   ([identifier]
    (when-not (map? identifier)
      (throw (errors/ex errors/order-creation-failed
                        "Identifier must be a map"
                        {:identifier identifier})))
-   (let [identifier (cond
-                      (and (contains? identifier :type)
-                           (contains? identifier :value))
-                      {:type (normalize-identifier-type (:type identifier))
-                       :value (:value identifier)}
-                      (and (contains? identifier ::acme/identifier-type)
-                           (contains? identifier ::acme/identifier-value))
-                      {:type (normalize-identifier-type (::acme/identifier-type identifier))
-                       :value (::acme/identifier-value identifier)}
-                      :else identifier)]
+   (let [identifier {:type (normalize-identifier-type (:type identifier))
+                     :value (:value identifier)}]
      (when-not (s/valid? ::acme/identifier identifier)
        (throw (errors/ex errors/order-creation-failed
                          "Invalid identifier"
@@ -45,7 +40,14 @@
    (create-identifier {:type identifier-type :value identifier-value})))
 
 (defn create
-  "Construct an order map with qualified keys."
+  "Construct an order map with qualified keys.
+
+  Options map supports:
+  | key         | description                              |
+  |-------------|------------------------------------------|
+  | `:notBefore`| earliest certificate validity start time |
+  | `:notAfter` | latest certificate expiry time           |
+  | `:profile`  | ACME profile name                        |"
   ([identifiers]
    (create identifiers nil))
   ([identifiers opts]
@@ -60,9 +62,9 @@
              (throw (errors/ex errors/order-creation-failed
                                "Order identifiers must be a non-empty vector"
                                {:identifiers identifiers})))
-         not-before (or (:not-before opts) (:notBefore opts) (::acme/notBefore opts))
-         not-after (or (:not-after opts) (:notAfter opts) (::acme/notAfter opts))
-         profile (or (:profile opts) (::acme/profile opts))
+         not-before (:notBefore opts)
+         not-after (:notAfter opts)
+         profile (:profile opts)
          order (cond-> {::acme/identifiers identifiers}
                  not-before (assoc ::acme/notBefore not-before)
                  not-after (assoc ::acme/notAfter not-after)
@@ -79,21 +81,6 @@
                             "Unsupported notBefore/notAfter value"
                             {:value-type (some-> value class str)}))))
 
-(defn- normalize-identifiers
-  [identifiers]
-  (mapv (fn [identifier]
-          (cond
-            (and (map? identifier)
-                 (contains? identifier :type)
-                 (contains? identifier :value)) identifier
-            (and (map? identifier)
-                 (contains? identifier ::acme/identifier-type)
-                 (contains? identifier ::acme/identifier-value))
-            {:type (::acme/identifier-type identifier)
-             :value (::acme/identifier-value identifier)}
-            :else identifier))
-        identifiers))
-
 (defn build-order-payload
   "Build an ACME newOrder payload from a qualified order map.
 
@@ -104,11 +91,10 @@
   The `replaces` field (RFC 9773) links a renewal order to its predecessor
   certificate using the ARI unique identifier format."
   [order]
-  (let [identifiers (or (::acme/identifiers order) (:identifiers order))
-        identifiers (normalize-identifiers identifiers)
-        not-before (or (::acme/notBefore order) (:notBefore order) (:not-before order))
-        not-after (or (::acme/notAfter order) (:notAfter order) (:not-after order))
-        replaces (or (::acme/replaces order) (:replaces order))]
+  (let [identifiers (::acme/identifiers order)
+        not-before (::acme/notBefore order)
+        not-after (::acme/notAfter order)
+        replaces (::acme/replaces order)]
     (when-not (and (vector? identifiers) (seq identifiers))
       (throw (errors/ex errors/order-creation-failed
                         "Order identifiers must be a non-empty vector"

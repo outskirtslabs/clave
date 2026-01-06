@@ -29,8 +29,8 @@
 (deftest create-order-helper
   (testing "builds order maps with optional dates and profile"
     (let [identifiers [(order/create-identifier :dns "example.com")]
-          order (order/create identifiers {:not-before "2025-01-01T00:00:00Z"
-                                           :not-after "2025-02-01T00:00:00Z"
+          order (order/create identifiers {:notBefore "2025-01-01T00:00:00Z"
+                                           :notAfter "2025-02-01T00:00:00Z"
                                            :profile "shortlived"})]
       (is (= identifiers (::specs/identifiers order)))
       (is (= "2025-01-01T00:00:00Z" (::specs/notBefore order)))
@@ -104,12 +104,6 @@
           payload (impl/build-order-payload order)]
       (is (= "abc123.def456" (:replaces payload)))
       (is (= [{:type "dns" :value "example.com"}] (:identifiers payload)))))
-
-  (testing "includes replaces field when provided via unqualified key"
-    (let [order {:identifiers [{:type "dns" :value "example.com"}]
-                 :replaces "xyz789"}
-          payload (impl/build-order-payload order)]
-      (is (= "xyz789" (:replaces payload)))))
 
   (testing "omits replaces when not provided"
     (let [order {::specs/identifiers [{:type "dns" :value "example.com"}]}

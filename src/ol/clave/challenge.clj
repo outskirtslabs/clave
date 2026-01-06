@@ -14,7 +14,7 @@
   [challenge account-key]
   (let [token (if (string? challenge)
                 challenge
-                (or (::acme/token challenge) (:token challenge)))]
+                (::acme/token challenge))]
     (impl/key-authorization token account-key)))
 
 (defn dns01-key-authorization
@@ -38,7 +38,7 @@
   [challenge]
   (let [token (if (string? challenge)
                 challenge
-                (or (::acme/token challenge) (:token challenge)))]
+                (::acme/token challenge))]
     (impl/http01-resource-path token)))
 
 (defn dns01-txt-name
@@ -70,7 +70,7 @@
 (defn token
   "Return the challenge token string."
   [challenge]
-  (or (::acme/token challenge) (:token challenge)))
+  (::acme/token challenge))
 
 (defn find-by-type
   "Return the first challenge in `authorization` matching `type`."

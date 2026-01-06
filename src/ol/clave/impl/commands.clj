@@ -365,7 +365,7 @@
          [account-key account-kid] (ensure-authed-session session)
          endpoint (acme/new-order-url session)
          profiles (get-in session [::acme/directory ::acme/meta ::acme/profiles])
-         profile (or (:profile opts) (::acme/profile order) (:profile order))
+         profile (or (:profile opts) (::acme/profile order))
          replaces-cert (:replaces-cert opts)
          replaces-id (when replaces-cert
                        (if (string? replaces-cert)
@@ -471,7 +471,7 @@
   ([session order csr opts]
    (let [scope* (resolve-scope session opts)
          [account-key account-kid] (ensure-authed-session session)
-         csr-b64url (or (:csr-b64url csr) (::acme/csr-b64url csr))
+         csr-b64url (:csr-b64url csr)
          _ (when-not (order/order-ready? order)
              (throw (errors/ex errors/order-not-ready
                                "Order is not ready for finalization"
@@ -628,7 +628,7 @@
    (let [scope* (resolve-scope session opts)
          [account-key account-kid] (ensure-authed-session session)
          challenge-url (if (map? challenge)
-                         (or (::acme/url challenge) (:url challenge))
+                         (::acme/url challenge)
                          challenge)
          payload (if (contains? opts :payload) (:payload opts) {})
          [session {:keys [status body-bytes nonce]}]

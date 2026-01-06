@@ -16,7 +16,7 @@
           jwk (crypto/public-jwk (proto/public account-key))
           thumbprint (crypto/jwk-thumbprint jwk)
           expected (str token "." thumbprint)]
-      (is (= expected (challenge/key-authorization {:token token} account-key))))))
+      (is (= expected (challenge/key-authorization {::specs/token token} account-key))))))
 
 (deftest http01-path-and-dns01-names
   (testing "http01-resource-path and dns01-txt-name helpers"

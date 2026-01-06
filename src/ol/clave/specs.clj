@@ -207,3 +207,43 @@
 (s/def ::certificate-chain
   (s/keys :req [::pem]
           :opt [::certificates ::url ::links ::der-first ::renewal-info]))
+
+;; ---------------------------------------------------------------------------
+;; Revocation (RFC 5280 Section 5.3.1)
+;; ---------------------------------------------------------------------------
+
+(def ^:private valid-revocation-reasons
+  "RFC 5280 CRLReason codes valid for ACME revocation.
+  Code 7 is unused/reserved in RFC 5280."
+  #{0 1 2 3 4 5 6 8 9 10})
+
+(s/def ::revocation-reason
+  (s/and int? valid-revocation-reasons))
+
+;; ---------------------------------------------------------------------------
+;; ARI Renewal Information (RFC 9773)
+;; ---------------------------------------------------------------------------
+
+(s/def ::start inst?)
+(s/def ::end inst?)
+
+(s/def ::suggested-window
+  (s/keys :req-un [::start ::end]))
+
+(s/def ::explanation-url string?)
+(s/def ::retry-after-ms int?)
+
+(s/def ::renewal-info-response
+  (s/keys :req-un [::suggested-window ::retry-after-ms]
+          :opt-un [::explanation-url]))
+
+;; ---------------------------------------------------------------------------
+;; Terms of Service Change Detection
+;; ---------------------------------------------------------------------------
+
+(s/def ::previous (s/nilable string?))
+(s/def ::current (s/nilable string?))
+(s/def ::changed? boolean?)
+
+(s/def ::tos-change
+  (s/keys :req-un [::changed? ::previous ::current]))

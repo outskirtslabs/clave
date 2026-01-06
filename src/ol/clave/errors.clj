@@ -71,6 +71,14 @@
 (def certificate-download-failed ::certificate-download-failed)
 (def unexpected-content-type ::unexpected-content-type)
 
+;; Revocation errors
+(def revocation-failed ::revocation-failed)
+(def invalid-certificate ::invalid-certificate)
+
+;; ARI (ACME Renewal Information) errors
+(def renewal-info-failed ::renewal-info-failed)
+(def renewal-info-invalid ::renewal-info-invalid)
+
 (defn ex
   "Convenience wrapper for ex-info that associates the shared :type key.
   Usage: (errors/ex errors/invalid-header \"message\" {:field :kid :reason \"missing\"})"

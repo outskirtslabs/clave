@@ -6,7 +6,30 @@
   nonces, account metadata, etc.). This keeps side effects explicit for callers.
 
   Use this namespace when you need precise control over ACME interactions:
-  TODO list summaries of the commands/operations here
+
+  Session management:
+  - [[new-session]], [[create-session]], [[load-directory]], [[set-polling]]
+
+  Account operations:
+  - [[new-account]], [[get-account]], [[update-account-contact]]
+  - [[deactivate-account]], [[rollover-account-key]]
+  - [[compute-eab-binding]]
+
+  Order lifecycle:
+  - [[new-order]], [[get-order]], [[poll-order]], [[finalize-order]]
+
+  Authorization and challenges:
+  - [[get-authorization]], [[poll-authorization]], [[deactivate-authorization]]
+  - [[respond-challenge]]
+
+  Certificate operations:
+  - [[get-certificate]], [[revoke-certificate]]
+
+  Renewal information (ARI per RFC 9773):
+  - [[get-renewal-info]]
+
+  Terms of Service:
+  - [[check-terms-of-service]]
 
   Pair these commands with `ol.clave.scope` to enforce timeouts and cancellation
   across long-running workflows such as account setup or certificate issuance."
@@ -452,3 +475,76 @@
    (impl/respond-challenge session challenge))
   ([session challenge opts]
    (impl/respond-challenge session challenge opts)))
+
+(defn revoke-certificate
+  "Revoke a certificate via the directory's revokeCert endpoint.
+
+  Parameters:
+  - `session` — authenticated session or session with directory loaded.
+  - `certificate` — `java.security.cert.X509Certificate` or DER bytes.
+  - `opts` — optional map with overrides.
+
+  Options:
+
+  | key            | description                                              |
+  |----------------|----------------------------------------------------------|
+  | `:reason`      | RFC 5280 reason code integer (0-6, 8-10).                |
+  | `:signing-key` | `AsymmetricKeyPair` for certificate-key authorization.   |
+  | `:scope`       | Scope override for the HTTP request.                     |
+
+  When `:signing-key` is provided, uses certificate-key authorization with
+  JWK-embedded JWS. Otherwise uses account-key authorization requiring an
+  authenticated session.
+
+  Returns `[updated-session nil]` on success.
+
+  Example:
+  ```clojure
+  (commands/revoke-certificate session cert {:reason 1})
+  ```"
+  ([session certificate]
+   (impl/revoke-certificate session certificate))
+  ([session certificate opts]
+   (impl/revoke-certificate session certificate opts)))
+
+(defn get-renewal-info
+  "Fetch ACME Renewal Information (ARI) for a certificate per RFC 9773.
+
+  Parameters:
+  - `session` - ACME session with directory loaded.
+  - `cert-or-id` - X509Certificate or precomputed renewal identifier string.
+  - `opts` - optional map with overrides.
+
+  | Key | Description |
+  | --- | --- |
+  | `:scope` | Scope override for the HTTP request. |
+
+  When `cert-or-id` is a certificate, the renewal identifier is derived from
+  the Authority Key Identifier extension and serial number.
+
+  Returns `[updated-session renewal-info]` where `renewal-info` contains
+  `:suggested-window` (map with `:start` and `:end` instants),
+  `:retry-after-ms`, and optional `:explanation-url`."
+  ([session cert-or-id]
+   (impl/get-renewal-info session cert-or-id))
+  ([session cert-or-id opts]
+   (impl/get-renewal-info session cert-or-id opts)))
+
+(defn check-terms-of-service
+  "Check for Terms of Service changes by comparing directory meta values.
+
+  Parameters:
+  - `session` - ACME session with directory already loaded.
+  - `opts` - optional map with `:scope` override.
+
+  Refreshes the directory from the server and compares the `termsOfService`
+  field in the meta section with the previously loaded value.
+
+  Returns `[updated-session tos-change]` where `tos-change` contains:
+  - `:changed?` - true if termsOfService URL changed
+  - `:previous` - previous termsOfService URL or nil
+  - `:current` - current termsOfService URL or nil"
+  ([session]
+   (impl/check-terms-of-service session))
+  ([session opts]
+   (impl/check-terms-of-service session opts)))

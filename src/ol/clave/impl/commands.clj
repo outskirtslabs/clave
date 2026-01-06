@@ -3,6 +3,7 @@
    [clojure.spec.alpha :as s]
    [ol.clave.errors :as errors]
    [ol.clave.impl.account :as account]
+   [ol.clave.impl.ari :as ari]
    [ol.clave.impl.authorization :as authorization]
    [ol.clave.impl.certificate :as certificate]
    [ol.clave.impl.challenge :as challenge]
@@ -11,10 +12,14 @@
    [ol.clave.impl.json :as json]
    [ol.clave.impl.jws :as jws]
    [ol.clave.impl.order :as order]
+   [ol.clave.impl.revocation :as revocation]
+   [ol.clave.impl.tos :as tos]
    [ol.clave.impl.util :as util]
    [ol.clave.protocols :as proto]
    [ol.clave.scope :as scope]
-   [ol.clave.specs :as acme]))
+   [ol.clave.specs :as acme])
+  (:import
+   [java.security.cert X509Certificate]))
 
 (set! *warn-on-reflection* true)
 
@@ -600,3 +605,149 @@
      [session {:chains chains
                :preferred preferred
                :links (get preferred ::acme/links)}])))
+
+(defn revoke-certificate
+  "Revoke a certificate via the directory's revokeCert endpoint.
+
+  Supports two authorization modes:
+  - Account-key authorization (default): Uses the session's account key and KID.
+  - Certificate-key authorization: When `:signing-key` is provided, uses
+    JWK-embedded JWS without requiring account context."
+  ([session certificate]
+   (revoke-certificate session certificate nil))
+  ([session certificate opts]
+   (let [scope* (resolve-scope session opts)
+         revoke-url (get-in session [::acme/directory ::acme/revokeCert])
+         _ (when-not revoke-url
+             (throw (errors/ex errors/revocation-failed
+                               "Directory does not advertise revokeCert endpoint"
+                               {:directory (::acme/directory session)})))
+         reason (:reason opts)
+         _ (when (and reason (not (revocation/valid-reason? reason)))
+             (throw (errors/ex errors/revocation-failed
+                               "Invalid revocation reason code"
+                               {:reason reason
+                                :valid-reasons #{0 1 2 3 4 5 6 8 9 10}})))
+         payload (revocation/payload certificate (when reason {:reason reason}))
+         signing-key (:signing-key opts)
+         use-cert-key? (some? signing-key)
+         [account-key kid] (if use-cert-key?
+                             [signing-key nil]
+                             (ensure-authed-session session))]
+     (try
+       (let [[session {:keys [status body-bytes nonce]}]
+             (http/http-post-jws session account-key kid revoke-url payload {:scope scope*})]
+         (cond
+           (<= 200 status 299)
+           [(http/push-nonce session nonce) nil]
+
+           :else
+           (let [problem (when body-bytes (http/parse-problem-json body-bytes))]
+             (throw (errors/ex errors/revocation-failed
+                               "Certificate revocation failed"
+                               {:status status
+                                :problem problem
+                                :url revoke-url})))))
+       (catch clojure.lang.ExceptionInfo ex
+         (let [data (ex-data ex)
+               problem-data (into {}
+                                  (comp (filter (fn [[k _]] (= "problem" (namespace k))))
+                                        (map (fn [[k v]] [k v])))
+                                  data)
+               status (:status data)]
+           (throw (errors/ex errors/revocation-failed
+                             "Certificate revocation failed"
+                             (cond-> (merge {:url revoke-url} problem-data)
+                               status (assoc :status status))
+                             ex))))))))
+
+(defn- parse-retry-after-ms
+  "Parse Retry-After header value to milliseconds.
+  Supports integer seconds and RFC 1123 date format (the preferred HTTP-date).
+  Returns nil for unsupported formats."
+  [retry-after]
+  (when retry-after
+    (try
+      (* 1000 (Long/parseLong retry-after))
+      (catch NumberFormatException _
+        (try
+          (let [formatter java.time.format.DateTimeFormatter/RFC_1123_DATE_TIME
+                date (java.time.ZonedDateTime/parse retry-after formatter)
+                now (java.time.Instant/now)
+                target (.toInstant date)]
+            (max 0 (- (.toEpochMilli target) (.toEpochMilli now))))
+          (catch Exception _
+            nil))))))
+
+(defn get-renewal-info
+  "Fetch ACME Renewal Information (ARI) for a certificate.
+
+  Parameters:
+  - `session` - ACME session with directory loaded.
+  - `cert-or-id` - X509Certificate or precomputed renewal identifier string.
+  - `opts` - optional map with `:scope` override.
+
+  Returns `[session' renewal-info]` where `renewal-info` contains:
+  - `:suggested-window` - map with `:start` and `:end` instants
+  - `:retry-after-ms` - time to wait before next check in milliseconds
+  - `:explanation-url` - optional URL explaining the renewal window"
+  ([session cert-or-id]
+   (get-renewal-info session cert-or-id nil))
+  ([session cert-or-id opts]
+   (let [scope* (resolve-scope session opts)
+         renewal-info-url (get-in session [::acme/directory ::acme/renewalInfo])
+         _ (when-not renewal-info-url
+             (throw (errors/ex errors/renewal-info-failed
+                               "Directory does not advertise renewalInfo endpoint"
+                               {:directory (::acme/directory session)})))
+         renewal-id (if (string? cert-or-id)
+                      cert-or-id
+                      (ari/renewal-id ^X509Certificate cert-or-id))
+         url (str renewal-info-url "/" renewal-id)]
+     (try
+       (let [{:keys [body-bytes headers]}
+             (http/http-req session {:method :get :uri url} {:scope scope*})
+             body (when body-bytes (json/read-str (String. ^bytes body-bytes "UTF-8")))
+             retry-after (get headers "retry-after")
+             retry-after-ms (parse-retry-after-ms retry-after)]
+         (when-not retry-after-ms
+           ;; RFC 9773 Section 4.3.3: missing Retry-After is a long-term error
+           ;; Clients MUST retry after 6 hours
+           (throw (errors/ex errors/renewal-info-invalid
+                             "RenewalInfo response missing Retry-After header"
+                             {:url url
+                              :headers headers
+                              :retry-after-ms (* 6 60 60 1000)})))
+         [session (ari/normalize-renewal-info body retry-after-ms)])
+       (catch clojure.lang.ExceptionInfo ex
+         (let [data (ex-data ex)
+               error-type (:type data)]
+           (if (#{::errors/problem ::errors/server-error} error-type)
+             (throw (errors/ex errors/renewal-info-failed
+                               "Failed to fetch renewal information"
+                               (assoc data :url url)
+                               ex))
+             (throw ex))))))))
+
+(defn check-terms-of-service
+  "Check for Terms of Service changes by comparing directory meta values.
+
+  Parameters:
+  - `session` - ACME session with directory already loaded.
+  - `opts` - optional map with `:scope` override.
+
+  Refreshes the directory from the server and compares the `termsOfService`
+  field in the meta section with the previously loaded value.
+
+  Returns `[session' tos-change]` where `tos-change` contains:
+  - `:changed?` - true if termsOfService URL changed
+  - `:previous` - previous termsOfService URL or nil
+  - `:current` - current termsOfService URL or nil"
+  ([session]
+   (check-terms-of-service session nil))
+  ([session opts]
+   (let [previous-meta (get-in session [::acme/directory ::acme/meta])
+         [session _directory] (load-directory session opts)
+         current-meta (get-in session [::acme/directory ::acme/meta])
+         change (tos/compare-terms previous-meta current-meta)]
+     [session change])))

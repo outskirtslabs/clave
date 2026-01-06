@@ -104,6 +104,9 @@
 (defn key-change-url [session]
   (get-in session [::directory ::keyChange]))
 
+(defn new-authz-url [session]
+  (get-in session [::directory ::newAuthz]))
+
 (s/def ::directory-url string?)
 (s/def ::nonces
   (s/and list?

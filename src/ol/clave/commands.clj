@@ -476,6 +476,35 @@
   ([session authorization-url opts]
    (impl/deactivate-authorization session authorization-url opts)))
 
+(defn new-authorization
+  "Create a pre-authorization for an identifier via the newAuthz endpoint.
+
+  Pre-authorization (RFC 8555 Section 7.4.1) allows clients to obtain
+  authorization proactively, outside the context of a specific order.
+  This is useful for hosting providers who want to authorize domains
+  before virtual servers are created.
+
+  Parameters:
+  - `session` — authenticated session.
+  - `identifier` — map with `:type` and `:value` keys.
+  - `opts` — optional map with `:scope`.
+
+  Pre-authorization cannot be used with wildcard identifiers.
+  Not all ACME servers support this endpoint.
+
+  Returns `[updated-session authorization]`.
+
+  Throws:
+  - `::ol.clave.errors/pre-authorization-unsupported` if server does not
+    advertise newAuthz endpoint.
+  - `::ol.clave.errors/wildcard-identifier-not-allowed` if identifier is
+    a wildcard.
+  - `::ol.clave.errors/pre-authorization-failed` if server rejects the request."
+  ([session identifier]
+   (impl/new-authorization session identifier))
+  ([session identifier opts]
+   (impl/new-authorization session identifier opts)))
+
 (defn respond-challenge
   "Notify the ACME server that a challenge response is ready.
 

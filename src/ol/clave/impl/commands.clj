@@ -621,6 +621,57 @@
            normalized (authorization/normalize-authorization authz-resp account-key location)]
        [(http/push-nonce session nonce) normalized]))))
 
+(defn new-authorization
+  "Create a pre-authorization for an identifier via the newAuthz endpoint.
+
+  Pre-authorization allows clients to obtain authorization proactively, outside
+  the context of a specific order (RFC 8555 Section 7.4.1).
+
+  Pre-authorization cannot be used with wildcard identifiers."
+  ([session identifier]
+   (new-authorization session identifier nil))
+  ([session identifier opts]
+   (let [scope*        (resolve-scope session opts)
+         new-authz-url (acme/new-authz-url session)]
+     (when-not new-authz-url
+       (throw (errors/ex errors/pre-authorization-unsupported
+                         "Server does not support pre-authorization (newAuthz not in directory)"
+                         {:directory-url (::acme/directory-url session)})))
+     (when (authorization/wildcard-identifier? identifier)
+       (throw (errors/ex errors/wildcard-identifier-not-allowed
+                         "Pre-authorization cannot be used with wildcard identifiers"
+                         {:identifier identifier})))
+     (let [[account-key account-kid]         (ensure-authed-session session)
+           payload                           {:identifier identifier}
+           [session resp]                    (http/http-post-jws session account-key account-kid new-authz-url payload {:scope scope*})
+           {:keys [status body-bytes nonce]} resp]
+       (cond
+         (= 201 status)
+         (if-let [location (http/get-header resp "Location")]
+           (let [authz-resp (json/read-str (slurp body-bytes :encoding "UTF-8"))
+                 normalized (authorization/normalize-authorization authz-resp account-key location)
+                 session'   (http/push-nonce session nonce)]
+             [session' normalized])
+           (throw (errors/ex errors/missing-location-header
+                             "Pre-authorization response missing Location header"
+                             {:status status})))
+
+         (= 403 status)
+         (let [problem (when body-bytes (http/parse-problem-json body-bytes))]
+           (throw (errors/ex errors/pre-authorization-failed
+                             "Server rejected pre-authorization request"
+                             {:status     status
+                              :identifier identifier
+                              :problem    problem})))
+
+         :else
+         (let [problem (when body-bytes (http/parse-problem-json body-bytes))]
+           (throw (errors/ex errors/pre-authorization-failed
+                             "Pre-authorization request failed"
+                             {:status     status
+                              :identifier identifier
+                              :problem    problem}))))))))
+
 (defn respond-challenge
   ([session challenge]
    (respond-challenge session challenge nil))

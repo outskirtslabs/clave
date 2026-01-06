@@ -1,6 +1,7 @@
 (ns ol.clave.impl.authorization
   (:require
    [clojure.spec.alpha :as s]
+   [clojure.string :as str]
    [ol.clave.errors :as errors]
    [ol.clave.impl.challenge :as challenge]
    [ol.clave.impl.util :as util]
@@ -42,3 +43,10 @@
   [authorization]
   (or (::acme/error authorization)
       (some ::acme/error (::acme/challenges authorization))))
+
+(defn wildcard-identifier?
+  "Return true when `identifier` is a wildcard (value starts with *.)."
+  [identifier]
+  (let [value (:value identifier)]
+    (and (string? value)
+         (str/starts-with? value "*."))))

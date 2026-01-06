@@ -96,3 +96,32 @@
                  ::specs/status "pending"}]
       (is (thrown-with-error-type? errors/order-inconsistent
                                    (impl/ensure-identifiers-consistent expected order))))))
+
+(deftest build-order-payload-includes-replaces
+  (testing "includes replaces field when provided via qualified key"
+    (let [order {::specs/identifiers [{:type "dns" :value "example.com"}]
+                 ::specs/replaces "abc123.def456"}
+          payload (impl/build-order-payload order)]
+      (is (= "abc123.def456" (:replaces payload)))
+      (is (= [{:type "dns" :value "example.com"}] (:identifiers payload)))))
+
+  (testing "includes replaces field when provided via unqualified key"
+    (let [order {:identifiers [{:type "dns" :value "example.com"}]
+                 :replaces "xyz789"}
+          payload (impl/build-order-payload order)]
+      (is (= "xyz789" (:replaces payload)))))
+
+  (testing "omits replaces when not provided"
+    (let [order {::specs/identifiers [{:type "dns" :value "example.com"}]}
+          payload (impl/build-order-payload order)]
+      (is (not (contains? payload :replaces)))))
+
+  (testing "combines replaces with other optional fields"
+    (let [order {::specs/identifiers [{:type "dns" :value "example.com"}]
+                 ::specs/notBefore "2025-01-01T00:00:00Z"
+                 ::specs/notAfter "2025-02-01T00:00:00Z"
+                 ::specs/replaces "renewal-id-123"}
+          payload (impl/build-order-payload order)]
+      (is (= "renewal-id-123" (:replaces payload)))
+      (is (= "2025-01-01T00:00:00Z" (:notBefore payload)))
+      (is (= "2025-02-01T00:00:00Z" (:notAfter payload))))))

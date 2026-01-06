@@ -35,6 +35,7 @@
 (def invalid-account-key ::invalid-account-key)
 (def account-key-rollover-failed ::account-key-rollover-failed)
 (def account-key-rollover-verification-failed ::account-key-rollover-verification-failed)
+(def account-not-found ::account-not-found)
 
 ;; CSR-related errors
 (def invalid-san ::invalid-san)

@@ -159,10 +159,13 @@
 (s/def ::notBefore (s/nilable ::instant))
 (s/def ::notAfter (s/nilable ::instant))
 
+;; RFC 9773 ARI replaces field - certificate identifier for renewal linkage
+(s/def ::replaces (s/nilable (s/and string? #(not (str/blank? %)))))
+
 (s/def ::order
   (s/keys :req [::status ::identifiers ::authorizations ::finalize]
           :opt [::certificate ::order-expires ::notBefore ::notAfter
-                ::order-location ::error ::profile]))
+                ::order-location ::error ::profile ::replaces]))
 
 (defn order-url [order]
   (::order-location order))

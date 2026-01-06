@@ -155,6 +155,55 @@
                          "No Location header in account creation response"
                          {}))))))
 
+(defn find-account-by-key
+  "Look up an existing ACME account by its public key.
+
+  Uses the newAccount endpoint with `onlyReturnExisting: true` to find an
+  account without creating one. This is useful for key recovery scenarios
+  where you have the account key but lost the account URL.
+
+  Parameters:
+  - `session` - Session with account key set
+  - `opts` - Options map:
+    - `:scope` - Structured concurrency scope
+
+  Returns `[session account-kid]` if account exists.
+  Throws `::errors/account-not-found` if no account exists for the key."
+  ([session]
+   (find-account-by-key session nil))
+  ([session opts]
+   (let [scope*      (resolve-scope session opts)
+         account-key (::acme/account-key session)]
+     (when-not account-key
+       (throw (errors/ex errors/invalid-account-key
+                         "Session must have account-key set"
+                         {})))
+     (try
+       (let [endpoint (acme/new-account-url session)
+             payload  {:onlyReturnExisting true}
+             [session {:keys [status nonce] :as resp}]
+             (http/http-post-jws session account-key nil endpoint payload {:scope scope*})]
+         (if (= 200 status)
+           (if-let [account-url (http/get-header resp "Location")]
+             (let [session' (-> session
+                                (assoc ::acme/account-kid account-url)
+                                (http/push-nonce nonce))]
+               [session' account-url])
+             (throw (errors/ex errors/missing-location-header
+                               "No Location header in account lookup response"
+                               {})))
+           (throw (errors/ex errors/account-retrieval-failed
+                             "Account lookup failed"
+                             {:status status}))))
+       (catch clojure.lang.ExceptionInfo ex
+         (let [data         (ex-data ex)
+               problem-type (:problem/type data)]
+           (if (= problem-type errors/pt-account-does-not-exist)
+             (throw (errors/ex errors/account-not-found
+                               "No account exists for this key"
+                               {:problem-type problem-type}))
+             (throw ex))))))))
+
 (defn- ensure-authed-session
   "Ensures account-key and account-kid are present in session.
   Throws if either is missing, instructing caller to recover KID first."
@@ -296,6 +345,19 @@
                                  ex))))))))))
 
 (defn new-order
+  "Create a new ACME order for certificate issuance.
+
+  Parameters:
+  - `session` - Authenticated session
+  - `order` - Order map with identifiers
+  - `opts` - Options map:
+    - `:profile` - ACME profile name
+    - `:replaces-cert` - Certificate being renewed (X509Certificate or ARI id string)
+    - `:scope` - Structured concurrency scope
+
+  The `:replaces-cert` option (RFC 9773) links this renewal order to the
+  predecessor certificate. Pass either an X509Certificate object or a
+  pre-computed ARI identifier string."
   ([session order]
    (new-order session order nil))
   ([session order opts]
@@ -304,7 +366,14 @@
          endpoint (acme/new-order-url session)
          profiles (get-in session [::acme/directory ::acme/meta ::acme/profiles])
          profile (or (:profile opts) (::acme/profile order) (:profile order))
-         payload (cond-> (order/build-order-payload order)
+         replaces-cert (:replaces-cert opts)
+         replaces-id (when replaces-cert
+                       (if (string? replaces-cert)
+                         replaces-cert
+                         (ari/renewal-id ^X509Certificate replaces-cert)))
+         order-with-replaces (cond-> order
+                               replaces-id (assoc ::acme/replaces replaces-id))
+         payload (cond-> (order/build-order-payload order-with-replaces)
                    (and profile profiles) (assoc :profile profile))
          [session {:keys [status body-bytes nonce] :as resp}]
          (http/http-post-jws session account-key account-kid endpoint payload {:scope scope*})]

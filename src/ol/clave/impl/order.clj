@@ -95,12 +95,20 @@
         identifiers))
 
 (defn build-order-payload
-  "Build an ACME newOrder payload from a qualified order map."
+  "Build an ACME newOrder payload from a qualified order map.
+
+  Parameters:
+  - `order` - Order map with `::acme/identifiers` (required) and optional
+              `::acme/notBefore`, `::acme/notAfter`, `::acme/replaces`.
+
+  The `replaces` field (RFC 9773) links a renewal order to its predecessor
+  certificate using the ARI unique identifier format."
   [order]
   (let [identifiers (or (::acme/identifiers order) (:identifiers order))
         identifiers (normalize-identifiers identifiers)
         not-before (or (::acme/notBefore order) (:notBefore order) (:not-before order))
-        not-after (or (::acme/notAfter order) (:notAfter order) (:not-after order))]
+        not-after (or (::acme/notAfter order) (:notAfter order) (:not-after order))
+        replaces (or (::acme/replaces order) (:replaces order))]
     (when-not (and (vector? identifiers) (seq identifiers))
       (throw (errors/ex errors/order-creation-failed
                         "Order identifiers must be a non-empty vector"
@@ -113,7 +121,8 @@
                            :explain (s/explain-data ::acme/identifier identifier)}))))
     (cond-> {:identifiers identifiers}
       not-before (assoc :notBefore (->rfc3339 not-before))
-      not-after (assoc :notAfter (->rfc3339 not-after)))))
+      not-after (assoc :notAfter (->rfc3339 not-after))
+      replaces (assoc :replaces replaces))))
 
 (defn normalize-order
   [order location]

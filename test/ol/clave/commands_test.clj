@@ -199,3 +199,34 @@
         "updates only timeout when interval not provided")
     (is (= session (commands/set-polling session {}))
         "empty opts returns session unchanged")))
+
+(deftest find-account-by-key-finds-existing-account
+  (testing "find-account-by-key returns account URL for registered key"
+    (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
+          [session _] (commands/create-session "https://localhost:14000/dir"
+                                               {:http-client util/http-client-opts
+                                                :account-key account-key})
+          [_ created-account] (commands/new-account session account)
+          [found-session found-kid] (commands/find-account-by-key session)]
+      (is (= (::specs/account-kid created-account) found-kid))
+      (is (= found-kid (::specs/account-kid found-session))))))
+
+(deftest find-account-by-key-throws-for-unknown-key
+  (testing "find-account-by-key throws account-not-found for unregistered key"
+    (let [new-key (account/generate-keypair)
+          [session _directory] (commands/create-session "https://localhost:14000/dir"
+                                                        {:http-client util/http-client-opts
+                                                         :account-key new-key})]
+      (is (thrown-with-error-type? errors/account-not-found
+                                   (commands/find-account-by-key session))))))
+
+(deftest find-account-by-key-requires-account-key
+  (testing "find-account-by-key throws when session has no account key"
+    (let [session {::specs/directory-url "https://localhost:14000/dir"
+                   ::specs/nonces '()
+                   ::specs/http {}
+                   ::specs/directory {::specs/newAccount "https://localhost:14000/sign-me-up"}
+                   ::specs/poll-interval 5000
+                   ::specs/poll-timeout 60000}]
+      (is (thrown-with-error-type? errors/invalid-account-key
+                                   (commands/find-account-by-key session))))))

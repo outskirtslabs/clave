@@ -191,6 +191,26 @@
   ([session account opts]
    (impl/new-account session account opts)))
 
+(defn find-account-by-key
+  "Look up an existing ACME account by its public key.
+
+  Uses the newAccount endpoint with `onlyReturnExisting: true` to find an
+  account without creating one. This is useful for key recovery scenarios
+  where you have the account key but lost the account URL.
+
+  Parameters:
+  - `session` - Session with account key set (via `:account-key` option).
+  - `opts` - Optional map with `:scope` override.
+
+  Returns `[updated-session account-kid]` where `account-kid` is the account
+  URL string. The session is updated with the account KID.
+
+  Throws `::ol.clave.errors/account-not-found` if no account exists for the key.
+  Throws `::ol.clave.errors/invalid-account-key` if session has no account key."
+  ([session]
+   (impl/find-account-by-key session))
+  ([session opts]
+   (impl/find-account-by-key session opts)))
 (defn get-account
   "Retrieve the current state of an ACME account via POST-as-GET.
 

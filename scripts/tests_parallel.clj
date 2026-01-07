@@ -59,16 +59,21 @@
                 :err :string
                 :shutdown p/destroy-tree})))
 
-(defn wait [promises]
-  (let [start (System/currentTimeMillis)]
-    (doseq [[idx p] (map-indexed vector promises)]
-      (let [{:keys [exit out err]} @p]
-        (println "\n=== Group" idx "===")
-        (println out)
-        (when (not= exit 0)
-          (println "Error:\n" err)
-          (println "Process exited with code" exit))))
-    (println "\nTotal wall-clock time:" (/ (- (System/currentTimeMillis) start) 1000.0) "seconds")))
+(defn wait
+  "Wait for all processes to complete. Returns true if all passed, false if any failed."
+  [promises]
+  (let [start (System/currentTimeMillis)
+        results (doall
+                 (for [[idx p] (map-indexed vector promises)]
+                   (let [{:keys [exit out err]} @p]
+                     (println "\n=== Group" idx "===")
+                     (println out)
+                     (when (not= exit 0)
+                       (println "Error:\n" err)
+                       (println "Process exited with code" exit))
+                     (zero? exit))))]
+    (println "\nTotal wall-clock time:" (/ (- (System/currentTimeMillis) start) 1000.0) "seconds")
+    (every? true? results)))
 
 (defn- warn-missing-timings
   "Warn about test namespaces not in the timings file."
@@ -90,11 +95,12 @@
         _ (println "Found" (count test-ids) "test namespaces")
         _ (warn-missing-timings test-ids timings)
         _ (println "Splitting into" num-groups "groups")
-        test-groups (split-tests test-ids timings num-groups)]
-    (println "\nStarting parallel test run...")
-    (->> test-groups
-         (map-indexed run-subset)
-         (doall)
-         (wait))))
+        test-groups (split-tests test-ids timings num-groups)
+        _ (println "\nStarting parallel test run...")
+        all-passed? (->> test-groups
+                         (map-indexed run-subset)
+                         (doall)
+                         (wait))]
+    (System/exit (if all-passed? 0 1))))
 
 (apply run *command-line-args*)

@@ -1,14 +1,19 @@
 {:deps  {}
  :paths ["resources" "scripts"]
- :tasks {:requires         ([babashka.fs :as fs]
-                            [clojure.string :as str]
-                            [babashka.tasks :refer [shell]])
-         :init             (do (def paths #_["src" "test" "dev" "examples"] ["src" "test"]))
-         dev               {:doc "Start a local development server" :task (apply clojure "-M:dev:repl/dev" *command-line-args*)}
+ :tasks {:requires ([babashka.fs :as fs]
+                    [clojure.string :as str]
+                    [babashka.tasks :refer [shell]])
+         :init     (do (def paths #_["src" "test" "dev" "examples"] ["src" "test"]))
+         dev       {:doc "Start a local development server" :task (apply clojure "-M:dev:repl/dev" *command-line-args*)}
 
          test
          {:doc  "Run tests"
           :task (apply clojure "-M:dev:test:kaocha" *command-line-args*)}
+
+         test:parallel
+         {:doc  "Run tests in parallel groups (default 4)"
+          :task (let [groups (or (first *command-line-args*) "4")]
+                  (clojure "-M:dev" "scripts/tests_parallel.clj" groups))}
 
          fmt
          {:doc  "Format code with cljfmt"
@@ -43,14 +48,14 @@
                        "--platform" "linux/amd64"
                        "docker.io/cljdoc/cljdoc:latest")}
 
-         jar     {:override-builtin true
-                  :depends          [clean]
-                  :doc              "Build an jar"
-                  :task             (shell "clojure -T:build jar")}
+         jar {:override-builtin true
+              :depends          [clean]
+              :doc              "Build an jar"
+              :task             (shell "clojure -T:build jar")}
 
-         clean   {:override-builtin true
-                  :doc              "Clean build artifacts"
-                  :task             (shell "clojure -T:build clean")}
+         clean {:override-builtin true
+                :doc              "Clean build artifacts"
+                :task             (shell "clojure -T:build clean")}
 
          publish {:doc     "Publish the clojure sdk libs to clojars"
                   :depends [jar]

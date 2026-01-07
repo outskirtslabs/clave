@@ -1,14 +1,13 @@
 {:paths   ["src"]
  :deps    {com.taoensso/trove {:mvn/version "1.1.0"}
            org.babashka/json  {:mvn/version "0.1.6"}}
- :aliases {:kaocha {:extra-paths ["test"]
-                    :extra-deps  {lambdaisland/kaocha {:mvn/version "1.91.1392"}
-                                  cheshire/cheshire   {:mvn/version "6.1.0"}
-                                  mvxcvi/alphabase    {:mvn/version "3.0.185"}}
-                    :main-opts   ["-m" "kaocha.runner"]}
-           :dev    {:extra-paths ["dev" "examples"]
-                    :extra-deps  {dev.weavejester/hashp                    {:mvn/version "0.5.1"}
-                                  org.slf4j/slf4j-nop {:mvn/version "2.0.17"}
+ :aliases {:kaocha {:extra-deps {cheshire/cheshire   {:mvn/version "6.1.0"}
+                                 mvxcvi/alphabase    {:mvn/version "3.0.185"}}
+                    :main-opts  ["-m" "kaocha.runner"]}
+           :dev    {:extra-paths ["test" "dev" "examples"]
+                    :extra-deps  {lambdaisland/kaocha                      {:mvn/version "1.91.1392"}
+                                  dev.weavejester/hashp                    {:mvn/version "0.5.1"}
+                                  org.slf4j/slf4j-nop                      {:mvn/version "2.0.17"}
                                   com.github.seancorfield/expectations     {:mvn/version "2.2.214"}
                                   org.babashka/http-client                 {:mvn/version "0.4.23"}
                                   com.cnuernber/charred                    {:mvn/version "1.037"}

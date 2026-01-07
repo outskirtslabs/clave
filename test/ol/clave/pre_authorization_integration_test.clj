@@ -13,7 +13,7 @@
 (defn- fresh-session
   []
   (let [[acct key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-        [session _directory] (commands/create-session "https://localhost:14000/dir"
+        [session _directory] (commands/create-session (pebble/uri)
                                                       {:http-client pebble/http-client-opts
                                                        :account-key key})
         [session _account] (commands/new-account session acct)]
@@ -44,7 +44,7 @@
   ;; We mock the directory to include newAuthz
   (let [session (-> (fresh-session)
                     (assoc-in [::specs/directory ::specs/newAuthz]
-                              "https://localhost:14000/new-authz"))]
+                              (pebble/uri "/new-authz")))]
 
     (testing "throws wildcard-identifier-not-allowed for simple wildcard"
       (is (thrown-with-error-type? errors/wildcard-identifier-not-allowed
@@ -64,7 +64,7 @@
   ;; The key assertion is that they DON'T throw wildcard-identifier-not-allowed
   (let [session (-> (fresh-session)
                     (assoc-in [::specs/directory ::specs/newAuthz]
-                              "https://localhost:14000/new-authz"))]
+                              (pebble/uri "/new-authz")))]
 
     (testing "dns identifier passes validation (fails at server, not at wildcard check)"
       ;; This should NOT throw wildcard-identifier-not-allowed

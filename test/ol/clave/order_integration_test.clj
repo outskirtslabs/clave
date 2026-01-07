@@ -15,7 +15,7 @@
 (defn- fresh-session
   []
   (let [[acct key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-        [session _directory] (commands/create-session "https://localhost:14000/dir"
+        [session _directory] (commands/create-session (pebble/uri)
                                                       {:http-client pebble/http-client-opts
                                                        :account-key key})
         [session _account] (commands/new-account session acct)]

@@ -61,7 +61,7 @@
   (let [account-key (account/generate-keypair)
         account {::specs/contact ["mailto:test@example.com"]
                  ::specs/termsOfServiceAgreed true}
-        [session _directory] (commands/create-session "https://localhost:14000/dir"
+        [session _directory] (commands/create-session (pebble/uri)
                                                       {:http-client pebble/http-client-opts
                                                        :account-key account-key})
         [session _account] (commands/new-account session account)]

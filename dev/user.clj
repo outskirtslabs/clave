@@ -14,6 +14,7 @@
   (catch Throwable _))
 
 (comment
+  (clj-reload/reload)
   (do
     (require '[ol.clave.scope :as scope])
     (import  '[java.time Duration])

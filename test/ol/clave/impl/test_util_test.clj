@@ -4,9 +4,7 @@
    [ol.clave.impl.pebble-harness :as pebble]))
 
 (deftest wait-for-pebble-ready
-  (let [proc (pebble/pebble-start)]
-    (try
+  (pebble/with-pebble
+    (fn []
       (is (true? (pebble/wait-for-pebble {:timeout-ms 5000
-                                          :interval-ms 50})))
-      (finally
-        (pebble/pebble-stop proc)))))
+                                          :interval-ms 50}))))))

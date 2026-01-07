@@ -1,6 +1,6 @@
 (ns ol.clave.retry-after-integration-test
   "Integration test for Retry-After header handling.
-  This test uses a hanging server on port 5002, so it cannot share the
+  This test uses a hanging server on the http-port, so it cannot share the
   pebble-challenge-fixture which also uses that port for challtestsrv."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
@@ -17,19 +17,15 @@
 (defn- pebble-no-sleep-fixture
   "Starts only Pebble (no challtestsrv) for retry-after testing."
   [f]
-  (let [proc (pebble/pebble-start "test/fixtures/pebble-config.json"
-                                  {:env {"PEBBLE_VA_NOSLEEP" "1"}})]
-    (try
-      (pebble/wait-for-pebble)
-      (f)
-      (finally
-        (pebble/pebble-stop proc)))))
+  (pebble/with-pebble {:env {"PEBBLE_VA_NOSLEEP" "1"}} f))
 
 (use-fixtures :once pebble-no-sleep-fixture)
 
 (defn- start-hanging-server
+  "Starts a hanging server on the configured http-port."
   []
-  (let [server (doto (ServerSocket. 5002)
+  (let [port (:http-port pebble/*pebble-ports*)
+        server (doto (ServerSocket. port)
                  (.setReuseAddress true))
         running (atom true)
         accepted (atom 0)

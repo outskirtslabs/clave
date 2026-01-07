@@ -12,7 +12,7 @@
 
 (deftest check-terms-of-service-unchanged-test
   (testing "returns unchanged when ToS hasn't changed"
-    (let [[session _] (commands/create-session "https://localhost:14000/dir"
+    (let [[session _] (commands/create-session (pebble/uri)
                                                {:http-client pebble/http-client-opts})
           [session' tos-change] (commands/check-terms-of-service session)]
       (is (some? session'))
@@ -23,7 +23,7 @@
 
 (deftest check-terms-of-service-detects-change-test
   (testing "detects when termsOfService changes"
-    (let [[session _] (commands/create-session "https://localhost:14000/dir"
+    (let [[session _] (commands/create-session (pebble/uri)
                                                {:http-client pebble/http-client-opts})
           old-tos "https://example.com/old-tos-v1"
           modified-session (assoc-in session
@@ -37,7 +37,7 @@
 
 (deftest check-terms-of-service-detects-addition-test
   (testing "detects when termsOfService is added"
-    (let [[session _] (commands/create-session "https://localhost:14000/dir"
+    (let [[session _] (commands/create-session (pebble/uri)
                                                {:http-client pebble/http-client-opts})
           modified-session (update-in session
                                       [::specs/directory ::specs/meta]

@@ -15,21 +15,21 @@
 (deftest new-account-returns-session-and-response
   (testing "new-account successfully registers with pebble test server"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-          [session _directory] (commands/create-session "https://localhost:14000/dir"
+          [session _directory] (commands/create-session (pebble/uri)
                                                         {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           [updated-session normalized-account] (commands/new-account session account)]
       (expect {::specs/account-key account-key
-               ::specs/directory {::specs/keyChange "https://localhost:14000/rollover-account-key",
-                                  ::specs/meta {::specs/externalAccountRequired false,
-                                                ::specs/termsOfService "data:text/plain,Do%20what%20thou%20wilt"},
-                                  ::specs/newAccount "https://localhost:14000/sign-me-up",
-                                  ::specs/newNonce "https://localhost:14000/nonce-plz",
-                                  ::specs/newOrder "https://localhost:14000/order-plz",
-                                  ::specs/renewalInfo "https://localhost:14000/draft-ietf-acme-ari-03/renewalInfo",
-                                  ::specs/revokeCert "https://localhost:14000/revoke-cert"},
-               ::specs/directory-url "https://localhost:14000/dir",
-               ::specs/poll-interval 5000,
+               ::specs/directory {::specs/keyChange (pebble/uri "/rollover-account-key")
+                                  ::specs/meta {::specs/externalAccountRequired false
+                                                ::specs/termsOfService "data:text/plain,Do%20what%20thou%20wilt"}
+                                  ::specs/newAccount (pebble/uri "/sign-me-up")
+                                  ::specs/newNonce (pebble/uri "/nonce-plz")
+                                  ::specs/newOrder (pebble/uri "/order-plz")
+                                  ::specs/renewalInfo (pebble/uri "/draft-ietf-acme-ari-03/renewalInfo")
+                                  ::specs/revokeCert (pebble/uri "/revoke-cert")}
+               ::specs/directory-url (pebble/uri)
+               ::specs/poll-interval 5000
                ::specs/poll-timeout 60000}
               (in updated-session))
       (is (string? (-> updated-session ::specs/account-kid)))
@@ -42,7 +42,7 @@
 (deftest get-account-retrieves-account-resource
   (testing "get-account performs POST-as-GET and returns account with KID"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-          [session _directory] (commands/create-session "https://localhost:14000/dir"
+          [session _directory] (commands/create-session (pebble/uri)
                                                         {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           [session account] (commands/new-account session account)
@@ -57,7 +57,7 @@
 (deftest update-account-contact-updates-contacts
   (testing "update-account-contact changes contact information"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-          [session _directory] (commands/create-session "https://localhost:14000/dir"
+          [session _directory] (commands/create-session (pebble/uri)
                                                         {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           [session account] (commands/new-account session account)
@@ -73,7 +73,7 @@
 (deftest update-account-contact-validates-contacts
   (testing "update-account-contact rejects malformed contacts"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-          [session _directory] (commands/create-session "https://localhost:14000/dir"
+          [session _directory] (commands/create-session (pebble/uri)
                                                         {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           [session account] (commands/new-account session account)]
@@ -83,7 +83,7 @@
 (deftest deactivate-account-marks-account-deactivated
   (testing "deactivate-account sets status to deactivated"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-          [session _directory] (commands/create-session "https://localhost:14000/dir"
+          [session _directory] (commands/create-session (pebble/uri)
                                                         {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           [session account] (commands/new-account session account)
@@ -96,7 +96,7 @@
 (deftest rollover-account-key-updates-session-key
   (testing "rollover-account-key swaps the stored key and verifies with Pebble"
     (let [[account original-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-          [session _directory] (commands/create-session "https://localhost:14000/dir"
+          [session _directory] (commands/create-session (pebble/uri)
                                                         {:http-client pebble/http-client-opts
                                                          :account-key original-key})
           [session account] (commands/new-account session account)
@@ -117,7 +117,7 @@
 (deftest rollover-account-key-rejects-invalid-pair
   (testing "rollover-account-key requires a valid AsymmetricKeyPair"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-          [session _directory] (commands/create-session "https://localhost:14000/dir"
+          [session _directory] (commands/create-session (pebble/uri)
                                                         {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           [session account] (commands/new-account session account)]
@@ -127,7 +127,7 @@
 (deftest eab-with-invalid-base64-fails
   (testing "EAB with invalid base64 MAC key throws error"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-          [session _directory] (commands/create-session "https://localhost:14000/dir"
+          [session _directory] (commands/create-session (pebble/uri)
                                                         {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           eab-opts {:external-account {:kid "test-kid-1"
@@ -138,7 +138,7 @@
 (deftest eab-with-valid-binding-succeeds
   (testing "Account creation with valid EAB succeeds"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-          [session _directory] (commands/create-session "https://localhost:14000/dir"
+          [session _directory] (commands/create-session (pebble/uri)
                                                         {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           eab-opts {:external-account {:kid "test-kid-1"
@@ -151,7 +151,7 @@
 (deftest eab-with-unknown-kid-fails
   (testing "Account creation with unknown EAB kid fails"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-          [session _directory] (commands/create-session "https://localhost:14000/dir"
+          [session _directory] (commands/create-session (pebble/uri)
                                                         {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           eab-opts {:external-account {:kid "unknown-kid-not-in-pebble-config"
@@ -162,7 +162,7 @@
 (deftest find-account-by-key-finds-existing-account
   (testing "find-account-by-key returns account URL for registered key"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-          [session _] (commands/create-session "https://localhost:14000/dir"
+          [session _] (commands/create-session (pebble/uri)
                                                {:http-client pebble/http-client-opts
                                                 :account-key account-key})
           [_ created-account] (commands/new-account session account)
@@ -173,7 +173,7 @@
 (deftest find-account-by-key-throws-for-unknown-key
   (testing "find-account-by-key throws account-not-found for unregistered key"
     (let [new-key (account/generate-keypair)
-          [session _directory] (commands/create-session "https://localhost:14000/dir"
+          [session _directory] (commands/create-session (pebble/uri)
                                                         {:http-client pebble/http-client-opts
                                                          :account-key new-key})]
       (is (thrown-with-error-type? errors/account-not-found

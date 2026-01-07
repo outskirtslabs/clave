@@ -8,7 +8,10 @@
 
          test
          {:doc  "Run tests"
-          :task (apply clojure "-M:dev:test:kaocha" *command-line-args*)}
+          :task
+          (if (seq *command-line-args*)
+            (apply clojure "-M:dev:test:kaocha" "--timing-edn-file" "scripts/test-timings.edn")
+            (apply clojure "-M:dev:test:kaocha" *command-line-args*))}
 
          test:parallel
          {:doc  "Run tests in parallel groups (default 4)"

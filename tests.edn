@@ -9,7 +9,6 @@
             :kaocha.plugin/profiling
             :kaocha.plugin/timing-edn
             :kaocha.plugin/print-invocations]
-  :kaocha.plugin.timing-edn/target-file "scripts/test-timings.edn"
   :tests
   [{:id         :clave
     :test-paths ["test"]}]}

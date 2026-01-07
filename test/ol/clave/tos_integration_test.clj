@@ -6,7 +6,7 @@
    [ol.clave.impl.test-util :as util]
    [ol.clave.specs :as specs]))
 
-(use-fixtures :each util/pebble-fixture)
+(use-fixtures :once util/pebble-fixture)
 
 (def ^:private pebble-tos "data:text/plain,Do%20what%20thou%20wilt")
 

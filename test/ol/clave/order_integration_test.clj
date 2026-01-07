@@ -1,4 +1,4 @@
-(ns ol.clave.order-test
+(ns ol.clave.order-integration-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.account :as account]
@@ -10,7 +10,7 @@
    [ol.clave.protocols :as proto]
    [ol.clave.specs :as specs]))
 
-(use-fixtures :each util/pebble-fixture)
+(use-fixtures :once util/pebble-fixture)
 
 (defn- fresh-session
   []

@@ -1,4 +1,4 @@
-(ns ol.clave.authorization-test
+(ns ol.clave.authorization-integration-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.account :as account]

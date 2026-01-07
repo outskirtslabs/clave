@@ -1,4 +1,4 @@
-(ns ol.clave.integration-test
+(ns ol.clave.certificate-integration-test
   (:require
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]

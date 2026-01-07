@@ -13,7 +13,7 @@
    [java.security KeyPairGenerator]
    [java.security.spec ECGenParameterSpec]))
 
-(use-fixtures :each util/pebble-alternate-roots-fixture)
+(use-fixtures :once util/pebble-alternate-roots-fixture)
 
 (defn- fresh-session
   []

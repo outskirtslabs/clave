@@ -1,21 +1,8 @@
 (ns ol.clave.impl.http-test
   (:require
-   [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.errors :as errors]
-   [ol.clave.impl.commands :as commands]
-   [ol.clave.impl.http :as http]
-   [ol.clave.impl.test-util :refer [http-client-opts] :as util]
-   [ol.clave.scope :as scope]
-   [ol.clave.specs :as acme])
+   [clojure.test :refer [deftest is testing]]
+   [ol.clave.impl.http :as http])
   (:import [java.time Duration Instant]))
-
-(use-fixtures :once util/pebble-fixture)
-
-(deftest get-nonce-test
-  (let [[session _] (commands/new-session "https://localhost:14000/dir" {:http-client http-client-opts})
-        [session _] (commands/load-directory session)
-        [_ nonce] (http/get-nonce session {})]
-    (is (string? nonce))))
 
 (deftest header-normalization-case-insensitive
   (testing "normalize-headers lowercases keys"
@@ -113,14 +100,3 @@
       (with-redefs [http/now (fn [] future-now)]
         (is (= fallback
                (http/retry-after {:headers {"retry-after" "soon"}} fallback)))))))
-
-(deftest http-request-respects-scope-cancellation
-  (let [[session _] (commands/new-session "https://localhost:14000/dir" {:http-client http-client-opts})
-        [session _] (commands/load-directory session)
-        scope (scope/derive (scope/root) {})
-        _ (scope/cancel! scope)
-        ex (try
-             (http/http-req session {:method :head :uri (acme/new-nonce-url session)} {:scope scope})
-             (catch clojure.lang.ExceptionInfo e e))]
-    (is (instance? clojure.lang.ExceptionInfo ex))
-    (is (= errors/cancelled (:type (ex-data ex))))))

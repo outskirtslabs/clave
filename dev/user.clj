@@ -1,6 +1,7 @@
 (ns user
   (:require
-   [clj-reload.core :as clj-reload]))
+   [clj-reload.core :as clj-reload]
+   [ol.clave.storage.file :as sf]))
 
 ((requiring-resolve 'hashp.install/install!))
 
@@ -16,7 +17,12 @@
 (comment
   (clj-reload/reload)
 
-  ;; Lease usage examples
+  (require '[ol.clave.storage.file :as sf])
+  (sf/home-dir)
+  (sf/state-dir)
+  (sf/config-dir "fun")
+
+;; Lease usage examples
   (require '[ol.clave.lease :as lease])
 
   ;; Create a background lease (never expires)

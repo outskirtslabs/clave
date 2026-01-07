@@ -1,12 +1,13 @@
 (ns basic
   (:require
-   [ol.clave.client :as clave]
-   [ol.clave.solver.http01 :as http01]   ;; or dns01/tlsalpn01, depending on your env
+   [clojure.java.io :as io]
    [ol.clave.account :as acct]
+   [ol.clave.client :as clave]
+   [ol.clave.csr :as csr]
    [ol.clave.order :as order]
    [ol.clave.pem :as pem]
-   [ol.clave.csr :as csr]
-   [clojure.java.io :as io]))
+   [ol.clave.solver.http01 :as http01] ;; or dns01/tlsalpn01, depending on your env
+))
 
 (def default-config
   {:directory :letsencrypt-staging     ;; or :letsencrypt, or explicit URL

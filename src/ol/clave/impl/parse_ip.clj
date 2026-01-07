@@ -23,8 +23,10 @@
 
   The main entry point is `parse-ip`, which takes a string and returns an
   InetAddress instance or nil if the input is an invalid ip address literal."
-  (:require [clojure.string :as str])
-  (:import [java.net InetAddress Inet6Address NetworkInterface]))
+  (:require
+   [clojure.string :as str])
+  (:import
+   [java.net Inet6Address InetAddress NetworkInterface]))
 
 (def ^:private ipv4-part-count 4)
 (def ^:private ipv6-part-count 8)

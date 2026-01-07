@@ -11,7 +11,11 @@
    [java.security.spec ECGenParameterSpec]
    [java.util Base64]
    [org.bouncycastle.asn1.pkcs PKCSObjectIdentifiers]
-   [org.bouncycastle.asn1.x509 Extension Extensions GeneralName GeneralNames]
+   [org.bouncycastle.asn1.x509
+    Extension
+    Extensions
+    GeneralName
+    GeneralNames]
    [org.bouncycastle.pkcs PKCS10CertificationRequest]))
 
 ;; -------------------------

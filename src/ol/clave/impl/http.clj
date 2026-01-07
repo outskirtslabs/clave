@@ -9,7 +9,11 @@
    [ol.clave.scope :as scope]
    [ol.clave.specs :as acme])
   (:import
-   [java.time Duration Instant ZoneOffset ZonedDateTime]
+   [java.time
+    Duration
+    Instant
+    ZoneOffset
+    ZonedDateTime]
    [java.time.format DateTimeFormatter DateTimeFormatterBuilder DateTimeParseException]
    [java.time.temporal ChronoField]
    [java.util Locale]))

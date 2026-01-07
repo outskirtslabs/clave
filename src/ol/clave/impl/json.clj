@@ -1,5 +1,6 @@
 (ns ol.clave.impl.json
-  (:require [babashka.json :as j]))
+  (:require
+   [babashka.json :as j]))
 
 (defn read-str
   "Returns a Clojure value from the JSON string.

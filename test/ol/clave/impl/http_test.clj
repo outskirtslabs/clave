@@ -2,7 +2,8 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [ol.clave.impl.http :as http])
-  (:import [java.time Duration Instant]))
+  (:import
+   [java.time Duration Instant]))
 
 (deftest header-normalization-case-insensitive
   (testing "normalize-headers lowercases keys"

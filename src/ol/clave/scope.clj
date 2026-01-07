@@ -120,8 +120,12 @@
    [java.lang.ref WeakReference]
    [java.time Duration Instant]
    [java.util UUID]
-   [java.util.concurrent Callable StructuredTaskScope StructuredTaskScope$FailedException
-    StructuredTaskScope$Joiner StructuredTaskScope$Subtask
+   [java.util.concurrent
+    Callable
+    StructuredTaskScope
+    StructuredTaskScope$FailedException
+    StructuredTaskScope$Joiner
+    StructuredTaskScope$Subtask
     StructuredTaskScope$Subtask$State]
    [java.util.function Predicate]))
 

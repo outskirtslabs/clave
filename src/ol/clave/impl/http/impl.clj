@@ -39,13 +39,17 @@
     HttpRequest$Builder
     HttpResponse
     HttpResponse$BodyHandlers]
-   [java.security.cert X509Certificate]
    [java.security KeyStore SecureRandom]
-   [javax.net.ssl KeyManagerFactory TrustManagerFactory SSLContext TrustManager]
+   [java.security.cert X509Certificate]
    [java.time Duration]
    [java.util.concurrent CompletableFuture Executor Executors]
    [java.util.function Function Supplier]
-   [java.util.function Supplier]))
+   [java.util.function Supplier]
+   [javax.net.ssl
+    KeyManagerFactory
+    SSLContext
+    TrustManager
+    TrustManagerFactory]))
 
 (set! *warn-on-reflection* true)
 

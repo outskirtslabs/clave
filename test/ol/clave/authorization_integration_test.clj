@@ -1,27 +1,17 @@
 (ns ol.clave.authorization-integration-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.account :as account]
    [ol.clave.challenge :as challenge]
    [ol.clave.commands :as commands]
    [ol.clave.errors :as errors]
    [ol.clave.impl.test-util :as util]
    [ol.clave.specs :as specs]))
 
-(use-fixtures :each util/pebble-challenge-fixture)
-
-(defn- fresh-session
-  []
-  (let [[acct key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-        [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                      {:http-client util/http-client-opts
-                                                       :account-key key})
-        [session _account] (commands/new-account session acct)]
-    session))
+(use-fixtures :once util/pebble-challenge-fixture)
 
 (deftest get-authorization-includes-key-authorization
   (testing "get-authorization returns challenges with key authorization"
-    (let [session (fresh-session)
+    (let [session (util/fresh-session)
           identifiers [{:type "dns" :value "localhost"}]
           order-request {::specs/identifiers identifiers}
           [session order] (commands/new-order session order-request)
@@ -33,7 +23,7 @@
 
 (deftest respond-challenge-validates-authorization
   (testing "respond-challenge triggers validation and poll-authorization returns valid"
-    (let [session (fresh-session)
+    (let [session (util/fresh-session)
           identifiers [{:type "dns" :value "localhost"}]
           order-request {::specs/identifiers identifiers}
           [session order] (commands/new-order session order-request)
@@ -51,7 +41,7 @@
 
 (deftest respond-challenge-invalidates-authorization
   (testing "poll-authorization reports invalid when key authorization is wrong"
-    (let [session (fresh-session)
+    (let [session (util/fresh-session)
           identifiers [{:type "dns" :value "localhost"}]
           order-request {::specs/identifiers identifiers}
           [session order] (commands/new-order session order-request)
@@ -68,7 +58,7 @@
 
 (deftest poll-authorization-times-out
   (testing "poll-authorization times out when no challenge is fulfilled"
-    (let [session (fresh-session)
+    (let [session (util/fresh-session)
           identifiers [{:type "dns" :value "localhost"}]
           order-request {::specs/identifiers identifiers}
           [session order] (commands/new-order session order-request)
@@ -80,7 +70,7 @@
 
 (deftest poll-authorization-honors-max-attempts
   (testing "poll-authorization throws after max-attempts with :attempts in ex-data"
-    (let [session (fresh-session)
+    (let [session (util/fresh-session)
           identifiers [{:type "dns" :value "localhost"}]
           order-request {::specs/identifiers identifiers}
           [session order] (commands/new-order session order-request)
@@ -97,7 +87,7 @@
           "ex-data should include :attempts equal to max-attempts")))
 
   (testing "poll-authorization with max-attempts=3 makes exactly 3 attempts"
-    (let [session (fresh-session)
+    (let [session (util/fresh-session)
           identifiers [{:type "dns" :value "localhost"}]
           order-request {::specs/identifiers identifiers}
           [session order] (commands/new-order session order-request)
@@ -115,7 +105,7 @@
 
 (deftest deactivate-authorization-sets-status
   (testing "deactivate-authorization transitions to deactivated"
-    (let [session (fresh-session)
+    (let [session (util/fresh-session)
           identifiers [{:type "dns" :value "localhost"}]
           order-request {::specs/identifiers identifiers}
           [session order] (commands/new-order session order-request)

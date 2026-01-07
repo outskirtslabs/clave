@@ -7,7 +7,7 @@
    [ol.clave.commands :as commands]
    [ol.clave.errors :as errors]
    [ol.clave.impl.crypto :as crypto]
-   [ol.clave.impl.test-util :as util]
+   [ol.clave.impl.test-util]
    [ol.clave.protocols :as proto]
    [ol.clave.specs :as acme]))
 

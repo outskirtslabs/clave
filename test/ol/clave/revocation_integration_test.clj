@@ -2,113 +2,69 @@
   "Integration tests for certificate revocation against Pebble."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.account :as account]
-   [ol.clave.challenge :as challenge]
    [ol.clave.commands :as commands]
-   [ol.clave.csr :as csr]
    [ol.clave.errors :as errors]
-   [ol.clave.impl.crypto :as crypto]
-   [ol.clave.impl.test-util :as util]
-   [ol.clave.order :as order]
-   [ol.clave.protocols :as proto]
-   [ol.clave.specs :as specs]))
+   [ol.clave.impl.test-util :as util]))
 
-(use-fixtures :each util/pebble-challenge-fixture)
+;; Shared certificates to reduce issuance overhead
+;; Each test gets its own cert to be order-independent
+(def ^:private shared-certs (atom nil))
 
-(defn- fresh-session
-  []
-  (let [[acct key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
-        [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                      {:http-client util/http-client-opts
-                                                       :account-key key})
-        [session _account] (commands/new-account session acct)]
-    session))
+(defn- revocation-fixture
+  "Issues certificates for revocation tests.
+  Each test that modifies state gets its own certificate."
+  [f]
+  (let [;; cert-a: for bad-reason test (read-only, will fail with error)
+        session-a (util/fresh-session)
+        [session-a cert-a _] (util/issue-certificate session-a)
+        ;; cert-b: for account-key revocation test
+        session-b (util/fresh-session)
+        [session-b cert-b _] (util/issue-certificate session-b)
+        ;; cert-c: for already-revoked test (pre-revoke it here)
+        session-c (util/fresh-session)
+        [session-c cert-c _] (util/issue-certificate session-c)
+        [session-c _] (commands/revoke-certificate session-c cert-c)
+        ;; cert-d: for certificate-key test (needs keypair)
+        session-d (util/fresh-session)
+        [session-d cert-d keypair-d] (util/issue-certificate session-d)]
+    (reset! shared-certs {:session-a session-a :cert-a cert-a
+                          :session-b session-b :cert-b cert-b
+                          :session-c session-c :cert-c cert-c
+                          :session-d session-d :cert-d cert-d :keypair-d keypair-d})
+    (try
+      (f)
+      (finally
+        (reset! shared-certs nil)))))
 
-(defn- generate-cert-keypair
-  "Generate a certificate keypair as both KeyPairAlgo and raw KeyPair."
-  []
-  (let [algo (crypto/generate-keypair :ol.clave.algo/es256)]
-    {:asymmetric-keypair algo
-     :keypair (proto/keypair algo)}))
+(use-fixtures :once util/pebble-challenge-fixture revocation-fixture)
 
-(defn- wait-for-order-ready
-  [session order]
-  (let [timeout-ms 60000
-        interval-ms 250
-        deadline (+ (System/currentTimeMillis) timeout-ms)]
-    (loop [session session
-           order order]
-      (if (= "ready" (::specs/status order))
-        [session order]
-        (do
-          (when (>= (System/currentTimeMillis) deadline)
-            (throw (ex-info "Order did not become ready in time"
-                            {:status (::specs/status order)
-                             :order order})))
-          (Thread/sleep interval-ms)
-          (let [[session order] (commands/get-order session order)]
-            (recur session order)))))))
-
-(defn- issue-certificate
-  "Issue a certificate for localhost using the given session.
-  Returns [session certificate-chain cert-keypair]."
-  [session]
-  (let [identifiers [(order/create-identifier :dns "localhost")]
-        order-request (order/create identifiers)
-        [session order] (commands/new-order session order-request)
-        authz-url (first (order/authorizations order))
-        [session authz] (commands/get-authorization session authz-url)
-        http-challenge (challenge/find-by-type authz "http-01")
-        token (challenge/token http-challenge)
-        key-auth (challenge/key-authorization http-challenge (::specs/account-key session))
-        _ (util/challtestsrv-add-http01 token key-auth)
-        [session _challenge] (commands/respond-challenge session http-challenge)
-        [session _authz] (commands/poll-authorization session authz-url {:timeout-ms 15000
-                                                                         :interval-ms 250})
-        [session order] (wait-for-order-ready session order)
-        cert-keypair (generate-cert-keypair)
-        domains (mapv :value identifiers)
-        csr-data (csr/create-csr (:keypair cert-keypair) domains)
-        [session order] (commands/finalize-order session order csr-data)
-        [session order] (commands/poll-order session (order/url order) {:timeout-ms 60000
-                                                                        :interval-ms 500})
-        [session cert-result] (commands/get-certificate session (order/certificate-url order))
-        cert-chain (:preferred cert-result)
-        certs (::specs/certificates cert-chain)]
-    [session (first certs) cert-keypair]))
+(deftest revoke-certificate-with-bad-reason-test
+  (testing "revoke-certificate with invalid reason code returns badRevocationReason"
+    (let [{:keys [session-a cert-a]} @shared-certs]
+      ;; Reason code 99 is not valid for ACME revocation
+      (is (thrown-with-error-type? ::errors/revocation-failed
+                                   (commands/revoke-certificate session-a cert-a {:reason 99}))
+          "Invalid reason code should fail with revocation-failed"))))
 
 (deftest revoke-certificate-with-account-key-test
   (testing "revoke-certificate successfully revokes a Pebble-issued certificate using account key"
-    (let [session (fresh-session)
-          [session cert _cert-keypair] (issue-certificate session)
-          [session' result] (commands/revoke-certificate session cert)]
+    (let [{:keys [session-b cert-b]} @shared-certs
+          [session' result] (commands/revoke-certificate session-b cert-b)]
       (is (some? session') "Should return updated session")
       (is (nil? result) "Should return nil on success"))))
 
 (deftest revoke-certificate-already-revoked-test
   (testing "revoke-certificate returns alreadyRevoked error on second attempt"
-    (let [session (fresh-session)
-          [session cert _cert-keypair] (issue-certificate session)
-          [session _result] (commands/revoke-certificate session cert)]
+    (let [{:keys [session-c cert-c]} @shared-certs]
+      ;; cert-c was pre-revoked in fixture
       (is (thrown-with-error-type? ::errors/revocation-failed
-                                   (commands/revoke-certificate session cert))
+                                   (commands/revoke-certificate session-c cert-c))
           "Second revocation should fail with revocation-failed"))))
 
 (deftest revoke-certificate-with-certificate-key-test
   (testing "revoke-certificate with certificate keypair uses JWK-embedded JWS"
-    (let [session (fresh-session)
-          [session cert cert-keypair] (issue-certificate session)
-          ;; Use the certificate keypair's AsymmetricKeyPair for signing
-          signing-key (:asymmetric-keypair cert-keypair)
-          [session' result] (commands/revoke-certificate session cert {:signing-key signing-key})]
+    (let [{:keys [session-d cert-d keypair-d]} @shared-certs
+          signing-key (:asymmetric-keypair keypair-d)
+          [session' result] (commands/revoke-certificate session-d cert-d {:signing-key signing-key})]
       (is (some? session') "Should return updated session")
       (is (nil? result) "Should return nil on success"))))
-
-(deftest revoke-certificate-with-bad-reason-test
-  (testing "revoke-certificate with invalid reason code returns badRevocationReason"
-    (let [session (fresh-session)
-          [session cert _cert-keypair] (issue-certificate session)]
-      ;; Reason code 7 is not valid for ACME revocation
-      (is (thrown-with-error-type? ::errors/revocation-failed
-                                   (commands/revoke-certificate session cert {:reason 99}))
-          "Invalid reason code should fail with revocation-failed"))))

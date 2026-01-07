@@ -43,6 +43,9 @@
 (def invalid-ip ::invalid-ip)
 (def encoding-failed ::encoding-failed)
 
+;; TLS-ALPN-01 errors
+(def unsupported-identifier ::unsupported-identifier)
+
 (def malformed-pem ::malformed-pem)
 (def key-mismatch ::key-mismatch)
 

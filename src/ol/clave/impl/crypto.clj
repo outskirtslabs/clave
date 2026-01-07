@@ -134,7 +134,12 @@
   (key-algorithm key)
   key)
 
-(defn- pem-encode [type ^bytes der]
+(defn pem-encode
+  "Encode DER bytes as PEM format.
+
+  Wraps the DER-encoded bytes in PEM armor with the specified type label.
+  Uses Base64 MIME encoding with 64-character line wrapping."
+  [type ^bytes der]
   (format "-----BEGIN %s-----\n%s\n-----END %s-----\n"
           type
           (.encodeToString mime-encoder der)

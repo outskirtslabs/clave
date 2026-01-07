@@ -5,7 +5,8 @@
    [clojure.java.shell :as shell]
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.impl.csr :as csr])
+   [ol.clave.impl.csr :as csr]
+   [ol.clave.impl.der :as der])
   (:import
    [java.security KeyPairGenerator]
    [java.security.spec ECGenParameterSpec]
@@ -165,56 +166,56 @@
 
 (deftest test-der-sequence
   (testing "Empty sequence"
-    (let [result (csr/der-sequence)]
+    (let [result (der/der-sequence)]
       (is (= [0x30 0x00] (vec result)))))
 
   (testing "Sequence with content"
-    (let [result (csr/der-sequence (csr/der-integer 0))]
+    (let [result (der/der-sequence (der/der-integer 0))]
       (is (= 0x30 (aget result 0)))
       (is (= 3 (aget result 1))))) ; length of INTEGER 0
 
   (testing "Nested sequences"
-    (let [inner (csr/der-sequence (csr/der-integer 1))
-          outer (csr/der-sequence inner (csr/der-null))]
+    (let [inner (der/der-sequence (der/der-integer 1))
+          outer (der/der-sequence inner (byte-array [0x05 0x00]))]
       (is (= 0x30 (aget outer 0))))))
 
 (deftest test-der-integer
   (testing "Zero"
-    (let [result (csr/der-integer 0)]
+    (let [result (der/der-integer 0)]
       (is (= [0x02 0x01 0x00] (vec result)))))
 
   (testing "Positive integer"
-    (let [result (csr/der-integer 127)]
+    (let [result (der/der-integer 127)]
       (is (= 0x02 (aget result 0)))
       (is (pos? (aget result 1))))))
 
 (deftest test-der-oid
   (testing "Common OIDs"
     ;; CN attribute
-    (let [result (csr/der-oid "2.5.4.3")]
+    (let [result (der/der-oid "2.5.4.3")]
       (is (= 0x06 (aget result 0))))
 
     ;; SHA256withRSA
-    (let [result (csr/der-oid "1.2.840.113549.1.1.11")]
+    (let [result (der/der-oid "1.2.840.113549.1.1.11")]
       (is (= 0x06 (aget result 0)))))
 
   (testing "Invalid OID"
-    (is (thrown? Exception (csr/der-oid "1")))))
+    (is (thrown? Exception (der/der-oid "1")))))
 
 (deftest test-der-utf8-string
   (testing "ASCII strings"
-    (let [result (csr/der-utf8-string "example.com")]
+    (let [result (der/der-utf8-string "example.com")]
       (is (= 0x0C (aget result 0)))))
 
   (testing "Unicode strings"
-    (let [result (csr/der-utf8-string "münchen")]
+    (let [result (der/der-utf8-string "münchen")]
       (is (= 0x0C (aget result 0)))
       (is (> (alength result) (+ 2 (count "münchen")))))))
 
 (deftest test-der-bit-string
   (testing "BIT STRING encoding"
     (let [data (byte-array [0x01 0x02 0x03])
-          result (csr/der-bit-string data)]
+          result (der/der-bit-string data)]
       (is (= 0x03 (aget result 0))) ; BIT STRING tag
       (is (= 0x00 (aget result 2))))))
 
@@ -222,12 +223,12 @@
   (testing "DER SET sorts elements lexicographically"
     ;; Create three different elements with different first bytes
     ;; After sorting: 0x02 (INTEGER) < 0x05 (NULL) < 0x0C (UTF8String)
-    (let [int-elem (csr/der-integer 1) ; starts with 0x02
-          null-elem (csr/der-null) ; starts with 0x05
-          str-elem (csr/der-utf8-string "a") ; starts with 0x0C
+    (let [int-elem (der/der-integer 1) ; starts with 0x02
+          null-elem (byte-array [0x05 0x00]) ; starts with 0x05
+          str-elem (der/der-utf8-string "a") ; starts with 0x0C
 
           ;; Pass in reverse order to verify sorting
-          result (csr/der-set str-elem null-elem int-elem)]
+          result (der/der-set str-elem null-elem int-elem)]
 
       (is (= 0x31 (aget result 0)) "Should be SET tag")
 
@@ -245,12 +246,12 @@
         (is (= 0x0C third-elem-tag) "Third should be UTF8String"))))
 
   (testing "Single element SET (no sorting needed)"
-    (let [result (csr/der-set (csr/der-integer 42))]
+    (let [result (der/der-set (der/der-integer 42))]
       (is (= 0x31 (aget result 0)))
       (is (= 0x02 (aget result 2))))) ; INTEGER tag after SET header
 
   (testing "Empty SET"
-    (let [result (csr/der-set)]
+    (let [result (der/der-set)]
       (is (= [0x31 0x00] (vec result)))))) ; unused bits
 
 ;; -------------------------

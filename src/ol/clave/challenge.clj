@@ -3,6 +3,7 @@
   (:require
    [clojure.string :as str]
    [ol.clave.impl.challenge :as impl]
+   [ol.clave.impl.tls-alpn :as tls-alpn]
    [ol.clave.specs :as acme]))
 
 (set! *warn-on-reflection* true)
@@ -76,3 +77,62 @@
   "Return the first challenge in `authorization` matching `type`."
   [authorization type]
   (some #(when (= type (::acme/type %)) %) (::acme/challenges authorization)))
+
+(def acme-tls-1-protocol
+  "ALPN protocol identifier for TLS-ALPN-01 challenges.
+
+  Use this value to detect ACME challenge handshakes in your TLS server's
+  ALPN negotiation callback.
+  See RFC 8737 Section 6.2."
+  tls-alpn/acme-tls-1-protocol)
+
+(defn tlsalpn01-challenge-cert
+  "Build a TLS-ALPN-01 challenge certificate.
+
+  This function has two arities:
+
+  Low-level arity `[identifier key-authorization]`:
+    - `identifier` - Map with `:type` (\"dns\" or \"ip\") and `:value`
+    - `key-authorization` - The computed key authorization string
+
+  Convenience arity `[authorization challenge account-key]`:
+    - `authorization` - Authorization map with `::acme/identifier`
+    - `challenge` - Challenge map with `::acme/token`
+    - `account-key` - Account keypair for computing key authorization
+
+  Returns a map with:
+
+  | key                | description                                 |
+  |--------------------|---------------------------------------------|
+  | `:certificate-der` | DER-encoded certificate bytes               |
+  | `:certificate-pem` | PEM-encoded certificate string              |
+  | `:private-key-der` | DER-encoded private key bytes (PKCS#8)      |
+  | `:private-key-pem` | PEM-encoded private key string (PKCS#8)     |
+  | `:x509`            | Parsed `java.security.cert.X509Certificate` |
+  | `:keypair`         | The generated `java.security.KeyPair`       |
+  | `:identifier-type` | The identifier type from input              |
+  | `:identifier-value`| The identifier value from input             |
+
+  The certificate contains:
+  - Subject and Issuer: CN=ACME challenge
+  - SubjectAltName with the identifier (DNS name or IP address)
+  - Critical acmeValidationV1 extension (OID 1.3.6.1.5.5.7.1.31) containing
+    the SHA-256 digest of the key authorization
+
+  ```clojure
+  ;; Low-level usage with pre-computed key authorization
+  (tlsalpn01-challenge-cert {:type \"dns\" :value \"example.com\"}
+                            \"token.thumbprint\")
+
+  ;; Convenience usage with authorization and challenge maps
+  (tlsalpn01-challenge-cert authorization challenge account-key)
+  ```
+
+  See RFC 8737 for TLS-ALPN-01 challenge specification."
+  ([identifier key-authorization]
+   (tls-alpn/tlsalpn01-challenge-cert identifier key-authorization))
+  ([authorization challenge account-key]
+   (let [id (::acme/identifier authorization)
+         token (::acme/token challenge)
+         key-auth (key-authorization token account-key)]
+     (tls-alpn/tlsalpn01-challenge-cert id key-auth))))

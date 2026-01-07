@@ -7,6 +7,7 @@
    [ol.clave.csr :as csr]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]
+   [ol.clave.lease :as lease]
    [ol.clave.order :as order]
    [ol.clave.specs :as specs])
   (:import
@@ -22,7 +23,7 @@
     (.generateKeyPair generator)))
 
 (defn- wait-for-order-ready
-  [session order]
+  [lease session order]
   (let [timeout-ms 60000
         interval-ms 250
         deadline (+ (System/currentTimeMillis) timeout-ms)]
@@ -36,32 +37,33 @@
                             {:status (::specs/status order)
                              :order order})))
           (Thread/sleep interval-ms)
-          (let [[session order] (commands/get-order session order)]
+          (let [[session order] (commands/get-order lease session order)]
             (recur session order)))))))
 
 (deftest get-certificate-downloads-chain
   (testing "get-certificate uses POST-as-GET and returns PEM"
-    (let [session (util/fresh-session)
+    (let [bg-lease (lease/background)
+          session (util/fresh-session)
           identifiers [(order/create-identifier :dns "localhost")]
           order-request (order/create identifiers)
-          [session order] (commands/new-order session order-request)
+          [session order] (commands/new-order bg-lease session order-request)
           authz-url (first (order/authorizations order))
-          [session authz] (commands/get-authorization session authz-url)
+          [session authz] (commands/get-authorization bg-lease session authz-url)
           http-challenge (challenge/find-by-type authz "http-01")
           token (challenge/token http-challenge)
           key-auth (challenge/key-authorization http-challenge (::specs/account-key session))]
       (pebble/challtestsrv-add-http01 token key-auth)
-      (let [[session _challenge] (commands/respond-challenge session http-challenge)
-            [session _authz] (commands/poll-authorization session authz-url {:timeout-ms 15000
-                                                                             :interval-ms 250})
-            [session order] (wait-for-order-ready session order)
+      (let [[session _challenge] (commands/respond-challenge bg-lease session http-challenge)
+            [session _authz] (commands/poll-authorization bg-lease session authz-url {:timeout-ms 15000
+                                                                                      :interval-ms 250})
+            [session order] (wait-for-order-ready bg-lease session order)
             cert-key (generate-cert-keypair)
             domains (mapv :value identifiers)
             csr-data (csr/create-csr cert-key domains)
-            [session order] (commands/finalize-order session order csr-data)
-            [session order] (commands/poll-order session (order/url order) {:timeout-ms 60000
-                                                                            :interval-ms 500})
-            [_session cert-result] (commands/get-certificate session (order/certificate-url order))
+            [session order] (commands/finalize-order bg-lease session order csr-data)
+            [session order] (commands/poll-order bg-lease session (order/url order) {:timeout-ms 60000
+                                                                                     :interval-ms 500})
+            [_session cert-result] (commands/get-certificate bg-lease session (order/certificate-url order))
             preferred (:preferred cert-result)
             pem (::specs/pem preferred)]
         (is (string? pem))
@@ -69,19 +71,20 @@
 
 (deftest respond-challenge-empty-payload-reaches-valid
   (testing "respond-challenge with no :payload option sends empty object and authorization becomes valid"
-    (let [session (util/fresh-session)
+    (let [bg-lease (lease/background)
+          session (util/fresh-session)
           identifiers [(order/create-identifier :dns "localhost")]
           order-request (order/create identifiers)
-          [session order] (commands/new-order session order-request)
+          [session order] (commands/new-order bg-lease session order-request)
           authz-url (first (order/authorizations order))
-          [session authz] (commands/get-authorization session authz-url)
+          [session authz] (commands/get-authorization bg-lease session authz-url)
           http-challenge (challenge/find-by-type authz "http-01")
           token (challenge/token http-challenge)
           key-auth (challenge/key-authorization http-challenge (::specs/account-key session))]
       (pebble/challtestsrv-add-http01 token key-auth)
-      (let [[session challenge-resp] (commands/respond-challenge session http-challenge)
-            [_session final-authz] (commands/poll-authorization session authz-url {:timeout-ms 15000
-                                                                                   :interval-ms 250})]
+      (let [[session challenge-resp] (commands/respond-challenge bg-lease session http-challenge)
+            [_session final-authz] (commands/poll-authorization bg-lease session authz-url {:timeout-ms 15000
+                                                                                            :interval-ms 250})]
         (is (some? challenge-resp) "respond-challenge should return challenge response")
         (is (= "valid" (::specs/status final-authz))
             "Authorization should reach valid status with empty payload")))))

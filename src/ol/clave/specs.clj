@@ -2,8 +2,7 @@
   (:require
    [clojure.spec.alpha :as s]
    [clojure.string :as str]
-   [ol.clave.protocols :as proto]
-   [ol.clave.scope :as scope]))
+   [ol.clave.protocols :as proto]))
 
 ;; Directory resource URLs (RFC 8555 Section 7.1.1)
 (s/def ::newNonce string?)
@@ -115,14 +114,11 @@
 
 (s/def ::poll-interval int?)
 (s/def ::poll-timeout int?)
-(s/def ::scope scope/scope?)
 
-(s/def ::session (s/keys :req [::directory-url ::nonces ::http ::poll-interval ::poll-timeout]
-                         :opt [::scope]))
+(s/def ::session (s/keys :req [::directory-url ::nonces ::http ::poll-interval ::poll-timeout]))
 (s/def ::authed-session
   (s/keys :req [::directory-url ::nonces ::http ::poll-interval ::poll-timeout
-                ::account-key ::account-kid]
-          :opt [::scope]))
+                ::account-key ::account-kid]))
 
 (s/def ::registration
   (s/keys :req [::contact ::termsOfServiceAgreed]

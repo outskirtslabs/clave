@@ -7,11 +7,11 @@
          dev       {:doc "Start a local development server" :task (apply clojure "-M:dev:repl/dev" *command-line-args*)}
 
          test
-         {:doc  "Run tests"
+         {:doc "Run tests"
           :task
           (if (seq *command-line-args*)
-            (apply clojure "-M:dev:test:kaocha" "--timing-edn-file" "scripts/test-timings.edn")
-            (apply clojure "-M:dev:test:kaocha" *command-line-args*))}
+            (apply clojure "-M:dev:test:kaocha" *command-line-args*)
+            (clojure "-M:dev:test:kaocha" "--timing-edn-file" "scripts/test-timings.edn"))}
 
          test:parallel
          {:doc  "Run tests in parallel groups (default 4)"

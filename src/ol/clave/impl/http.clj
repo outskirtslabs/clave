@@ -6,7 +6,7 @@
    [ol.clave.impl.json :as json]
    [ol.clave.impl.jws :as jws]
    [ol.clave.impl.util :as util]
-   [ol.clave.scope :as scope]
+   [ol.clave.lease :as lease]
    [ol.clave.specs :as acme])
   (:import
    [java.time
@@ -99,26 +99,25 @@
          vec)))
 
 ;; -----------------------------------------------------------------------------
-;; Scope helpers
+;; Lease helpers
 ;; -----------------------------------------------------------------------------
 
-(defn- resolve-scope
-  "Return an active scope derived from `session` and optional scope overrides.
-  Accepts either a scope instance, an options map containing `:scope`, or nil."
-  ([session]
-   (resolve-scope session nil))
-  ([session opts]
-   (let [candidate (cond
-                     (scope/scope? opts) opts
-                     (map? opts) (:scope opts)
-                     :else opts)]
-     (when (and candidate (not (scope/scope? candidate)))
-       (throw (errors/ex errors/invalid-scope
-                         "Provided :scope option is not a scope"
-                         {:provided-type (some-> candidate class str)})))
-     (let [resolved (or candidate (::acme/scope session) (scope/root))]
-       (scope/active?! resolved)
-       resolved))))
+(defn lease-sleep
+  "Cooperatively wait for `ms` milliseconds or until `lease` ends.
+
+  Returns `:slept` if the full duration elapsed, or `:lease-ended` if the
+  lease was cancelled or timed out during the wait.
+
+  This function is designed for testability - tests can `with-redefs` it to
+  spy on sleep durations (e.g., verifying Retry-After delays).
+  Note: No type hint on ms to allow with-redefs to work."
+  [lease ms]
+  (if (pos? ms)
+    (let [result (deref (lease/done-signal lease) ms :still-active)]
+      (if (= result :still-active)
+        :slept
+        :lease-ended))
+    :slept))
 
 ;; -----------------------------------------------------------------------------
 ;; Retry-After parsing (seconds or HTTP-date)
@@ -267,55 +266,40 @@
 ;; -----------------------------------------------------------------------------
 
 (defn do-http-request
-  "Perform a single request under a scope. Drain body into bytes. Decide if safe to retry.
-   Returns {:resp :headers :status :body-bytes :nonce :retry? :err}."
-  [session req opts]
-  (let [scope (resolve-scope session opts)
-        req' (cond-> req
+  "Perform a single HTTP request.
+
+  Returns `{:resp :headers :status :body-bytes :nonce :retry? :err}`."
+  [lease session req]
+  (let [req' (cond-> req
                (not (get-in req [:headers :user-agent])) (update :headers assoc :user-agent default-user-agent))
         request (-> req'
                     (dissoc :as)
                     (assoc :client (::acme/http session)
                            :throw false
-                           :as :bytes))
-        thread (Thread/currentThread)
-        release (scope/on-cancel scope (fn [_ _] (.interrupt thread)))]
+                           :as :bytes))]
     (try
-      (scope/active?! scope)
+      (lease/active?! lease)
       (let [raw-resp (http/request request)
             headers (normalize-headers (:headers raw-resp))
             resp (assoc raw-resp :headers headers)
             {:keys [status body]} resp
             nonce (get-header resp replay-nonce-header)]
-        (try
-          {:resp resp
-           :headers headers
-           :status status
-           :body-bytes body
-           :nonce nonce
-           :retry? false
-           :err nil}
-          (catch Throwable e
-            (let [retry? (and (number? status)
-                              (>= (long status) 400)
-                              (nil? (:body req)))]
-              {:resp (assoc resp :body nil)
-               :headers headers
-               :status status
-               :body-bytes body
-               :nonce nonce
-               :retry? retry?
-               :err e}))))
-      (catch InterruptedException ie
-        (.interrupt (Thread/currentThread))
-        (throw (errors/ex errors/cancelled
-                          "HTTP request interrupted by scope"
-                          {:request (:uri req)}
-                          ie)))
+        {:resp resp
+         :headers headers
+         :status status
+         :body-bytes body
+         :nonce nonce
+         :retry? false
+         :err nil})
+      (catch clojure.lang.ExceptionInfo e
+        (if (#{:lease/cancelled :lease/deadline-exceeded} (:type (ex-data e)))
+          (throw (errors/ex errors/cancelled
+                            "HTTP request cancelled by lease"
+                            {:request (:uri req)}
+                            e))
+          {:resp nil :headers nil :status 0 :body-bytes nil :nonce nil :retry? true :err e}))
       (catch Throwable e
-        {:resp nil :headers nil :status 0 :body-bytes nil :nonce nil :retry? true :err e})
-      (finally
-        (release)))))
+        {:resp nil :headers nil :status 0 :body-bytes nil :nonce nil :retry? true :err e}))))
 
 ;; -----------------------------------------------------------------------------
 ;; http-req: robust request w/ retries + problem+json handling
@@ -323,68 +307,71 @@
 
 (defn http-req
   "Robust HTTP request with limited retries and careful replay rules.
-   Args:
-   - session: ACME session map
-   - req: {:method :uri :headers :body ...}
-   - {:keys [max-attempts traffic-calming-ms scope has-request-body?]} options.
-     has-request-body? is important for replay-safety; set true for JWS posts.
 
-   Returns {:status :headers :body-bytes :body :nonce} or throws on failure."
-  [session req
-   {:keys [max-attempts traffic-calming-ms scope has-request-body?]
+  Args:
+  - `lease` - Lease for cancellation
+  - `session` - ACME session map
+  - `req` - `{:method :uri :headers :body ...}`
+  - `opts` - Options map:
+    - `:max-attempts` - Maximum retry attempts (default 3)
+    - `:traffic-calming-ms` - Delay between retries (default 250)
+    - `:has-request-body?` - Set true for JWS posts (affects replay safety)
+
+  Returns `{:status :headers :body-bytes :body :nonce}` or throws on failure."
+  [lease session req
+   {:keys [max-attempts traffic-calming-ms has-request-body?]
     :or {max-attempts default-max-attempts
-         traffic-calming-ms default-traffic-calming-ms}
-    :as opts}]
-  (let [scope (resolve-scope session (or scope opts))]
-    (loop [i 0]
-      (when (> i 0)
-        (scope/sleep scope traffic-calming-ms))
-      (let [as (:as req)
-            {:keys [status headers body-bytes retry? err nonce] :as res}
-            (do-http-request session (dissoc req :as) {:scope scope})]
-        (cond
-          (and err retry? (< (inc i) max-attempts))
-          (recur (inc i))
+         traffic-calming-ms default-traffic-calming-ms}}]
+  (loop [i 0]
+    (when (> i 0)
+      (lease-sleep lease traffic-calming-ms))
+    (lease/active?! lease)
+    (let [as (:as req)
+          {:keys [status headers body-bytes retry? err nonce] :as res}
+          (do-http-request lease session (dissoc req :as))]
+      (cond
+        (and err retry? (< (inc i) max-attempts))
+        (recur (inc i))
 
-          err
-          (throw (errors/ex errors/server-error
-                            "HTTP request failed"
-                            {:attempt (inc i)}
-                            err))
+        err
+        (throw (errors/ex errors/server-error
+                          "HTTP request failed"
+                          {:attempt (inc i)}
+                          err))
 
-          (and (<= 200 status) (< status 300))
-          (let [cs (charset res)
-                body (case (or as :bytes)
-                       :json (json/read-str (slurp body-bytes :encoding cs))
-                       :string (slurp body-bytes :encoding cs)
-                       :bytes body-bytes
-                       nil)]
-            {:status status
-             :headers headers
-             :body-bytes body-bytes
-             :body body
-             :nonce nonce})
+        (and (<= 200 status) (< status 300))
+        (let [cs (charset res)
+              body (case (or as :bytes)
+                     :json (json/read-str (slurp body-bytes :encoding cs))
+                     :string (slurp body-bytes :encoding cs)
+                     :bytes body-bytes
+                     nil)]
+          {:status status
+           :headers headers
+           :body-bytes body-bytes
+           :body body
+           :nonce nonce})
 
-          (and (<= 400 status) (< status 600))
-          (let [mt (parse-media-type res)]
-            (if (= mt "application/problem+json")
-              (let [problem (parse-problem-json body-bytes)
-                    problem-data (util/qualify-keys 'problem problem)
-                    data (merge {:status status} problem-data)]
-                (if (and (<= 500 status) (< status 600) (not has-request-body?) (< (inc i) max-attempts))
-                  (recur (inc i))
-                  (throw (errors/ex errors/problem (or (:problem/title data)
-                                                       (str "Acme Server Error " (:problem/type data)))
-                                    data))))
-              (let [b (slurp body-bytes :encoding "UTF-8")
-                    error-body (if (= mt "application/json") (json/read-str b) b)]
-                (throw (errors/ex errors/server-error (str "HTTP " status " error")
-                                  {:status status :body error-body})))))
+        (and (<= 400 status) (< status 600))
+        (let [mt (parse-media-type res)]
+          (if (= mt "application/problem+json")
+            (let [problem (parse-problem-json body-bytes)
+                  problem-data (util/qualify-keys 'problem problem)
+                  data (merge {:status status} problem-data)]
+              (if (and (<= 500 status) (< status 600) (not has-request-body?) (< (inc i) max-attempts))
+                (recur (inc i))
+                (throw (errors/ex errors/problem (or (:problem/title data)
+                                                     (str "Acme Server Error " (:problem/type data)))
+                                  data))))
+            (let [b (slurp body-bytes :encoding "UTF-8")
+                  error-body (if (= mt "application/json") (json/read-str b) b)]
+              (throw (errors/ex errors/server-error (str "HTTP " status " error")
+                                {:status status :body error-body})))))
 
-          :else
-          (throw (errors/ex errors/server-error
-                            (str "Unexpected HTTP status " status)
-                            {:status status})))))))
+        :else
+        (throw (errors/ex errors/server-error
+                          (str "Unexpected HTTP status " status)
+                          {:status status}))))))
 
 ;; -----------------------------------------------------------------------------
 ;; http-post-jws: JWS POST + nonce handling + robust retries + badNonce handling
@@ -400,11 +387,10 @@
                java.nio.charset.StandardCharsets/UTF_8)))
 
 (defn new-nonce
-  "Fetches a new ncone via the directory"
-  [session {:keys [scope]}]
-  (let [resp (http-req session {:method :head :uri (acme/new-nonce-url session)}
-                       {:scope (resolve-scope session scope)
-                        :max-attempts 3
+  "Fetches a new nonce via the directory."
+  [lease session]
+  (let [resp (http-req lease session {:method :head :uri (acme/new-nonce-url session)}
+                       {:max-attempts 3
                         :traffic-calming-ms default-traffic-calming-ms
                         :has-request-body? false})
         fresh-nonce (:nonce resp)]
@@ -413,77 +399,81 @@
       (throw (errors/ex errors/invalid-header
                         "No Replay-Nonce in newNonce response"
                         {})))))
+
 (defn get-nonce
   "Pop a cached nonce or fetch a new one via HEAD to directory :newNonce.
-  Returns [updated-session nonce]."
-  [session opts]
+
+  Returns `[updated-session nonce]`."
+  [lease session]
   (let [[nonce session*] (pop-nonce session)]
     (if nonce
       [session* nonce]
-      (new-nonce session opts))))
+      (new-nonce lease session))))
 
 (defn http-post-jws
   "Perform ACME JWS POST robustly.
-   Retries:
-   - badNonce: retry with fresh nonce
-   - internal server 5xx: retry up to 3 within overall cap of 10
-   - traffic calming 250ms between attempts
 
-   Args:
-   - session: ACME session map
-   - private-key: signer
-   - kid: key ID (account URL) or nil
-   - endpoint: URL
-   - payload: clj data; will be JSON-encoded and JWS-signed
-   - {:keys [scope max-attempts max-5xx headers]} options
+  Retries:
+  - badNonce: retry with fresh nonce
+  - internal server 5xx: retry up to 3 within overall cap of 10
+  - traffic calming 250ms between attempts
 
-   Returns [updated-session {:status ... :nonce ...}] or throws."
-  [session private-key kid endpoint payload
-   {:keys [scope max-attempts max-5xx headers]
+  Args:
+  - `lease` - Lease for cancellation
+  - `session` - ACME session map
+  - `private-key` - signer
+  - `kid` - key ID (account URL) or nil
+  - `endpoint` - URL
+  - `payload` - clj data; will be JSON-encoded and JWS-signed
+  - `opts` - Options map:
+    - `:max-attempts` - Maximum retry attempts (default 10)
+    - `:max-5xx` - Maximum 5xx retries (default 3)
+    - `:headers` - Additional headers
+
+  Returns `[updated-session {:status ... :nonce ...}]` or throws."
+  [lease session private-key kid endpoint payload
+   {:keys [max-attempts max-5xx headers]
     :or {max-attempts 10
-         max-5xx 3}
-    :as opts}]
-  (let [scope (resolve-scope session (or scope opts))]
-    (loop [session session
-           attempt 1
-           fivexx 0]
-      (when (> attempt 1)
-        (scope/sleep scope default-traffic-calming-ms))
-      (scope/active?! scope)
-      (let [[session nonce] (get-nonce session {:scope scope})
-            payload-bytes (jws-encode-json private-key kid nonce endpoint payload)
-            request-headers (merge {:content-type "application/jose+json"} headers)
-            req {:method :post :uri endpoint :headers request-headers :body payload-bytes}
-            result (try
-                     (http-req session req {:scope scope
-                                            :max-attempts 3
-                                            :has-request-body? true})
-                     (catch clojure.lang.ExceptionInfo ex
-                       (let [data (ex-data ex)
-                             status (:status data)
-                             ptype (:problem/type data)]
-                         (cond
-                           (= ptype "urn:ietf:params:acme:error:badNonce") ::bad-nonce
-                           (and status (<= 500 status) (< status 600)) ::server-5xx
-                           :else (throw ex)))))]
-        (cond
-          (= result ::bad-nonce)
-          (if (< attempt max-attempts)
-            (recur session (inc attempt) fivexx)
-            (throw (errors/ex errors/server-error
-                              "Too many badNonce retries"
-                              {:attempts attempt})))
+         max-5xx 3}}]
+  (loop [session session
+         attempt 1
+         fivexx 0]
+    (when (> attempt 1)
+      (lease-sleep lease default-traffic-calming-ms))
+    (lease/active?! lease)
+    (let [[session nonce] (get-nonce lease session)
+          payload-bytes (jws-encode-json private-key kid nonce endpoint payload)
+          request-headers (merge {:content-type "application/jose+json"} headers)
+          req {:method :post :uri endpoint :headers request-headers :body payload-bytes}
+          result (try
+                   (http-req lease session req {:max-attempts 3
+                                                :has-request-body? true})
+                   (catch clojure.lang.ExceptionInfo ex
+                     (let [data (ex-data ex)
+                           status (:status data)
+                           ptype (:problem/type data)]
+                       (cond
+                         (= ptype "urn:ietf:params:acme:error:badNonce") ::bad-nonce
+                         (and status (<= 500 status) (< status 600)) ::server-5xx
+                         :else (throw ex)))))]
+      (cond
+        (= result ::bad-nonce)
+        (if (< attempt max-attempts)
+          (recur session (inc attempt) fivexx)
+          (throw (errors/ex errors/server-error
+                            "Too many badNonce retries"
+                            {:attempts attempt})))
 
-          (= result ::server-5xx)
-          (if (and (< fivexx max-5xx) (< attempt max-attempts))
-            (recur session (inc attempt) (inc fivexx))
-            (throw (errors/ex errors/server-error
-                              "Too many 5xx retries"
-                              {:attempts attempt
-                               :five-x-retries fivexx})))
+        (= result ::server-5xx)
+        (if (and (< fivexx max-5xx) (< attempt max-attempts))
+          (recur session (inc attempt) (inc fivexx))
+          (throw (errors/ex errors/server-error
+                            "Too many 5xx retries"
+                            {:attempts attempt
+                             :five-x-retries fivexx})))
 
-          :else
-          [session result])))))
+        :else
+        [session result]))))
 
 (defn http-client [opts]
   (http/client (merge http/default-client-opts opts)))

@@ -25,7 +25,8 @@
   (:require
    [clojure.java.io :as io]
    [clojure.string :as str]
-   [ol.clave.impl.http.interceptors :as interceptors])
+   [ol.clave.impl.http.interceptors :as interceptors]
+   [ol.clave.lease :as lease])
   (:import
    [java.net URI]
    [java.net.http
@@ -42,7 +43,7 @@
    [java.security KeyStore SecureRandom]
    [java.security.cert X509Certificate]
    [java.time Duration]
-   [java.util.concurrent CompletableFuture Executor Executors]
+   [java.util.concurrent CancellationException CompletableFuture ExecutionException Executor Executors]
    [java.util.function Function Supplier]
    [java.util.function Supplier]
    [javax.net.ssl
@@ -58,7 +59,7 @@
     (Executors/newVirtualThreadPerTaskExecutor)))
 
 (defn coerce-key
-  "Coerces a key to str"
+
   [k]
   (if (keyword? k)
     (-> k str (subs 1))
@@ -315,9 +316,9 @@
 
   Options:
 
-  * `:uri` - the uri to request (required).
-     May be a string or map of `:scheme` (required), `:host` (required), `:port`, `:path` and `:query`
-  * `:client` - (required) a client as produced by `client` or a clojure function. If not provided a default client will be used.
+  * `:uri` - the uri to request.
+     May be a string or map of `:scheme`, `:host`, `:port`, `:path` and `:query`
+  * `:client` - a client as produced by `client` or a clojure function. If not provided a default client will be used.
                 When providing :client with a a clojure function, it will be called with the Clojure representation of
                 the request which can be useful for testing.
   * `:headers` - a map of headers
@@ -379,3 +380,45 @@
                                            :ex-message (ex-message (or cause e))
                                            :request req})))))))
             resp)))))
+
+(defn request-with-lease
+  "Execute HTTP request.
+
+  Uses `sendAsync` to get a `CompletableFuture`, then spawns a virtual thread
+  that monitors the lease's done-signal. If the lease ends (cancelled or
+  timed out), the HTTP future is cancelled.
+
+  The request timeout is set from `lease/remaining` to propagate the deadline
+  to the transport layer.
+
+  Returns the response map or throws:
+  - The lease cause if cancelled/timed out
+  - `CancellationException` wrapped in the lease cause if request was cancelled
+
+  Parameters:
+  - `client` - `java.net.http.HttpClient` instance
+  - `request-builder` - `HttpRequest$Builder` (timeout will be set from lease)
+  - `lease` - Active lease for cancellation tracking"
+  [^HttpClient client ^HttpRequest$Builder request-builder lease]
+  (lease/active?! lease)
+  (let [request-builder (if-let [remaining (lease/remaining lease)]
+                          (.timeout request-builder remaining)
+                          request-builder)
+        request (.build request-builder)
+        http-future (.sendAsync client request (HttpResponse$BodyHandlers/ofInputStream))
+        watcher (CompletableFuture/runAsync
+                 (reify Runnable
+                   (run [_]
+                     (when (deref (lease/done-signal lease))
+                       (.cancel http-future true))))
+                 @shared-virtual-executor)]
+    (try
+      (let [response (.get http-future)]
+        (.cancel watcher true)
+        (response->map response))
+      (catch CancellationException _
+        (throw (or (lease/cause lease)
+                   (ex-info "HTTP request cancelled" {:type :lease/cancelled}))))
+      (catch ExecutionException e
+        (.cancel watcher true)
+        (throw (or (.getCause e) e))))))

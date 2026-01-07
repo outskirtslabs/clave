@@ -85,7 +85,7 @@
   "Build an ACME newOrder payload from a qualified order map.
 
   Parameters:
-  - `order` - Order map with `::acme/identifiers` (required) and optional
+  - `order` - Order map with `::acme/identifiers` and optional
               `::acme/notBefore`, `::acme/notAfter`, `::acme/replaces`.
 
   The `replaces` field (RFC 9773) links a renewal order to its predecessor

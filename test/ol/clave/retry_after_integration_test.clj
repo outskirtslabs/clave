@@ -7,10 +7,11 @@
    [ol.clave.challenge :as challenge]
    [ol.clave.commands :as commands]
    [ol.clave.errors :as errors]
+   [ol.clave.impl.http :as http]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]
-   [ol.clave.order :as order]
-   [ol.clave.scope :as scope])
+   [ol.clave.lease :as lease]
+   [ol.clave.order :as order])
   (:import
    [java.net ServerSocket]))
 
@@ -61,35 +62,32 @@
 (deftest poll-authorization-honors-retry-after
   ;; This test forces Pebble to keep an authz in "processing" by hanging the VA HTTP-01 request.
   ;; We assert the VA actually connected to the hanging server to confirm the challenge is in processing.
-  ;; We wrap scope/sleep with a spy to record every polling sleep while using a 50ms interval.
+  ;; We wrap http/lease-sleep with a spy to record every polling sleep while using a 50ms interval.
   ;; We then assert the max sleep is >= ~3s (Pebble Retry-After) rather than 50ms.
   ;; That proves the polling delay comes from Pebble's Retry-After header in a real E2E flow.
   (testing "poll-authorization uses Retry-After delay from Pebble"
     (let [hang-server (start-hanging-server)]
       (try
-        (let [session (util/fresh-session)
+        (let [bg-lease (lease/background)
+              session (util/fresh-session)
               identifiers [(order/create-identifier :dns "localhost")]
               order-request (order/create identifiers)
-              [session order] (commands/new-order session order-request)
+              [session order] (commands/new-order bg-lease session order-request)
               authz-url (first (order/authorizations order))
-              [session authz] (commands/get-authorization session authz-url)
+              [session authz] (commands/get-authorization bg-lease session authz-url)
               http-challenge (challenge/find-by-type authz "http-01")
               sleeps (atom [])
               retry-after-ms 2900
               accepted (:accepted hang-server)
-              ^clojure.lang.IFn$OLO original-sleep scope/sleep
-              sleep-spy (proxy [clojure.lang.AFn clojure.lang.IFn$OLO] []
-                          (invokePrim [scope ms]
-                            (swap! sleeps conj ms)
-                            (.invokePrim original-sleep scope ms))
-                          (invoke [scope ms]
-                            (swap! sleeps conj ms)
-                            (original-sleep scope ms)))
-              [session _challenge] (commands/respond-challenge session http-challenge)
-              ex (with-redefs [scope/sleep sleep-spy]
+              original-sleep http/lease-sleep
+              sleep-spy (fn [lease ms]
+                          (swap! sleeps conj ms)
+                          (original-sleep lease ms))
+              [session _challenge] (commands/respond-challenge bg-lease session http-challenge)
+              ex (with-redefs [http/lease-sleep sleep-spy]
                    (try
-                     (commands/poll-authorization session authz-url {:timeout-ms 6000
-                                                                     :interval-ms 50})
+                     (commands/poll-authorization bg-lease session authz-url {:timeout-ms 6000
+                                                                              :interval-ms 50})
                      nil
                      (catch clojure.lang.ExceptionInfo e e)))]
           (is (= errors/authorization-timeout (:type (ex-data ex))))

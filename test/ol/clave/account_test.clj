@@ -8,6 +8,7 @@
    [ol.clave.errors :as errors]
    [ol.clave.impl.crypto :as crypto]
    [ol.clave.impl.test-util]
+   [ol.clave.lease :as lease]
    [ol.clave.protocols :as proto]
    [ol.clave.specs :as acme]))
 
@@ -147,7 +148,8 @@
 
 (deftest require-account-context-validates-session
   (testing "account operations require account-key in session"
-    (let [session {::acme/directory-url "https://localhost:14000/dir"
+    (let [bg-lease (lease/background)
+          session {::acme/directory-url "https://localhost:14000/dir"
                    ::acme/nonces '()
                    ::acme/http {}
                    ::acme/directory {}
@@ -157,10 +159,11 @@
           account {::acme/contact ["mailto:test@example.com"]
                    ::acme/termsOfServiceAgreed true}]
       (is (thrown-with-error-type? errors/missing-account-context
-                                   (commands/get-account session account)))))
+                                   (commands/get-account bg-lease session account)))))
 
   (testing "account operations require account-kid in session"
-    (let [[_account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
+    (let [bg-lease (lease/background)
+          [_account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           session {::acme/directory-url "https://localhost:14000/dir"
                    ::acme/nonces '()
                    ::acme/http {}
@@ -171,7 +174,7 @@
           account {::acme/contact ["mailto:test@example.com"]
                    ::acme/termsOfServiceAgreed true}]
       (is (thrown-with-error-type? errors/missing-account-context
-                                   (commands/get-account session account))))))
+                                   (commands/get-account bg-lease session account))))))
 
 (deftest set-polling-updates-session-defaults
   (let [session {::acme/poll-interval 5000 ::acme/poll-timeout 60000}]
@@ -189,11 +192,12 @@
 
 (deftest find-account-by-key-requires-account-key
   (testing "find-account-by-key throws when session has no account key"
-    (let [session {::acme/directory-url "https://localhost:14000/dir"
+    (let [bg-lease (lease/background)
+          session {::acme/directory-url "https://localhost:14000/dir"
                    ::acme/nonces '()
                    ::acme/http {}
                    ::acme/directory {::acme/newAccount "https://localhost:14000/sign-me-up"}
                    ::acme/poll-interval 5000
                    ::acme/poll-timeout 60000}]
       (is (thrown-with-error-type? errors/invalid-account-key
-                                   (commands/find-account-by-key session))))))
+                                   (commands/find-account-by-key bg-lease session))))))

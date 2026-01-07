@@ -7,6 +7,7 @@
    [ol.clave.csr :as csr]
    [ol.clave.impl.crypto :as crypto]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.lease :as lease]
    [ol.clave.order :as order]
    [ol.clave.protocols :as proto]
    [ol.clave.specs :as specs]))
@@ -56,15 +57,18 @@
 (defn fresh-session
   "Creates a fresh ACME session with a newly generated account key.
   Each call generates a unique account, allowing tests to share a Pebble instance
-  without authorization conflicts."
+  without authorization conflicts.
+
+  Uses a background lease for setup operations."
   []
-  (let [account-key (account/generate-keypair)
+  (let [bg-lease (lease/background)
+        account-key (account/generate-keypair)
         account {::specs/contact ["mailto:test@example.com"]
                  ::specs/termsOfServiceAgreed true}
-        [session _directory] (commands/create-session (pebble/uri)
+        [session _directory] (commands/create-session bg-lease (pebble/uri)
                                                       {:http-client pebble/http-client-opts
                                                        :account-key account-key})
-        [session _account] (commands/new-account session account)]
+        [session _account] (commands/new-account bg-lease session account)]
     session))
 
 (defn- generate-cert-keypair
@@ -75,7 +79,7 @@
      :keypair (proto/keypair algo)}))
 
 (defn- wait-for-order-ready
-  [session order]
+  [lease session order]
   (let [timeout-ms 60000
         interval-ms 250
         deadline (+ (System/currentTimeMillis) timeout-ms)]
@@ -89,33 +93,36 @@
                             {:status (::specs/status order)
                              :order order})))
           (Thread/sleep interval-ms)
-          (let [[session order] (commands/get-order session order)]
+          (let [[session order] (commands/get-order lease session order)]
             (recur session order)))))))
 
 (defn issue-certificate
   "Issue a certificate for localhost using the given session.
-  Returns [session certificate cert-keypair]."
+  Returns [session certificate cert-keypair].
+
+  Uses a background lease for all operations."
   [session]
-  (let [identifiers [(order/create-identifier :dns "localhost")]
+  (let [bg-lease (lease/background)
+        identifiers [(order/create-identifier :dns "localhost")]
         order-request (order/create identifiers)
-        [session order] (commands/new-order session order-request)
+        [session order] (commands/new-order bg-lease session order-request)
         authz-url (first (order/authorizations order))
-        [session authz] (commands/get-authorization session authz-url)
+        [session authz] (commands/get-authorization bg-lease session authz-url)
         http-challenge (challenge/find-by-type authz "http-01")
         token (challenge/token http-challenge)
         key-auth (challenge/key-authorization http-challenge (::specs/account-key session))
         _ (pebble/challtestsrv-add-http01 token key-auth)
-        [session _challenge] (commands/respond-challenge session http-challenge)
-        [session _authz] (commands/poll-authorization session authz-url {:timeout-ms 15000
-                                                                         :interval-ms 250})
-        [session order] (wait-for-order-ready session order)
+        [session _challenge] (commands/respond-challenge bg-lease session http-challenge)
+        [session _authz] (commands/poll-authorization bg-lease session authz-url {:timeout-ms 15000
+                                                                                  :interval-ms 250})
+        [session order] (wait-for-order-ready bg-lease session order)
         cert-keypair (generate-cert-keypair)
         domains (mapv :value identifiers)
         csr-data (csr/create-csr (:keypair cert-keypair) domains)
-        [session order] (commands/finalize-order session order csr-data)
-        [session order] (commands/poll-order session (order/url order) {:timeout-ms 60000
-                                                                        :interval-ms 500})
-        [session cert-result] (commands/get-certificate session (order/certificate-url order))
+        [session order] (commands/finalize-order bg-lease session order csr-data)
+        [session order] (commands/poll-order bg-lease session (order/url order) {:timeout-ms 60000
+                                                                                 :interval-ms 500})
+        [session cert-result] (commands/get-certificate bg-lease session (order/certificate-url order))
         cert-chain (:preferred cert-result)
         certs (::specs/certificates cert-chain)]
     [session (first certs) cert-keypair]))

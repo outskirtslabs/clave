@@ -5,11 +5,11 @@
    [ol.clave.impl.commands :as commands]
    [ol.clave.impl.http :as http]
    [ol.clave.impl.http.impl :as http-impl]
-   [ol.clave.impl.test-util :refer [http-client-opts] :as util]
+   [ol.clave.impl.pebble-harness :as pebble :refer [http-client-opts]]
    [ol.clave.scope :as scope]
    [ol.clave.specs :as acme]))
 
-(use-fixtures :once util/pebble-fixture)
+(use-fixtures :once pebble/pebble-fixture)
 
 (deftest get-nonce-test
   (let [[session _] (commands/new-session "https://localhost:14000/dir" {:http-client http-client-opts})

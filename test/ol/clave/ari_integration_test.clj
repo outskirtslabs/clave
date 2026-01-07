@@ -5,6 +5,7 @@
    [ol.clave.commands :as commands]
    [ol.clave.errors :as errors]
    [ol.clave.impl.ari :as ari]
+   [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]))
 
 ;; Shared certificate for tests that only read renewal info
@@ -20,7 +21,7 @@
       (finally
         (reset! shared-cert nil)))))
 
-(use-fixtures :once util/pebble-challenge-fixture ari-fixture)
+(use-fixtures :once pebble/pebble-challenge-fixture ari-fixture)
 
 (deftest get-renewal-info-test
   (testing "get-renewal-info returns suggested window and retry-after for valid certificate"

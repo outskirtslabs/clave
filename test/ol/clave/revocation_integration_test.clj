@@ -4,6 +4,7 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.commands :as commands]
    [ol.clave.errors :as errors]
+   [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]))
 
 ;; Shared certificates to reduce issuance overhead
@@ -36,7 +37,7 @@
       (finally
         (reset! shared-certs nil)))))
 
-(use-fixtures :once util/pebble-challenge-fixture revocation-fixture)
+(use-fixtures :once pebble/pebble-challenge-fixture revocation-fixture)
 
 (deftest revoke-certificate-with-bad-reason-test
   (testing "revoke-certificate with invalid reason code returns badRevocationReason"

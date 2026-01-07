@@ -1,12 +1,12 @@
 (ns ol.clave.impl.test-util-test
   (:require
    [clojure.test :refer [deftest is]]
-   [ol.clave.impl.test-util :as util]))
+   [ol.clave.impl.pebble-harness :as pebble]))
 
 (deftest wait-for-pebble-ready
-  (let [proc (util/pebble-start)]
+  (let [proc (pebble/pebble-start)]
     (try
-      (is (true? (util/wait-for-pebble {:timeout-ms 5000
-                                        :interval-ms 50})))
+      (is (true? (pebble/wait-for-pebble {:timeout-ms 5000
+                                          :interval-ms 50})))
       (finally
-        (util/pebble-stop proc)))))
+        (pebble/pebble-stop proc)))))

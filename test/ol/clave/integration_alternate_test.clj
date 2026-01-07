@@ -6,20 +6,20 @@
    [ol.clave.challenge :as challenge]
    [ol.clave.commands :as commands]
    [ol.clave.csr :as csr]
-   [ol.clave.impl.test-util :as util]
+   [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.order :as order]
    [ol.clave.specs :as specs])
   (:import
    [java.security KeyPairGenerator]
    [java.security.spec ECGenParameterSpec]))
 
-(use-fixtures :once util/pebble-alternate-roots-fixture)
+(use-fixtures :once pebble/pebble-alternate-roots-fixture)
 
 (defn- fresh-session
   []
   (let [[acct key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
         [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                      {:http-client util/http-client-opts
+                                                      {:http-client pebble/http-client-opts
                                                        :account-key key})
         [session _account] (commands/new-account session acct)]
     session))
@@ -59,7 +59,7 @@
           http-challenge (challenge/find-by-type authz "http-01")
           token (challenge/token http-challenge)
           key-auth (challenge/key-authorization http-challenge (::specs/account-key session))]
-      (util/challtestsrv-add-http01 token key-auth)
+      (pebble/challtestsrv-add-http01 token key-auth)
       (let [[session _challenge] (commands/respond-challenge session http-challenge)
             [session _authz] (commands/poll-authorization session authz-url {:timeout-ms 15000
                                                                              :interval-ms 250})

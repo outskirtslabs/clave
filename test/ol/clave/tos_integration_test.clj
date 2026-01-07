@@ -3,17 +3,17 @@
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.commands :as commands]
-   [ol.clave.impl.test-util :as util]
+   [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.specs :as specs]))
 
-(use-fixtures :once util/pebble-fixture)
+(use-fixtures :once pebble/pebble-fixture)
 
 (def ^:private pebble-tos "data:text/plain,Do%20what%20thou%20wilt")
 
 (deftest check-terms-of-service-unchanged-test
   (testing "returns unchanged when ToS hasn't changed"
     (let [[session _] (commands/create-session "https://localhost:14000/dir"
-                                               {:http-client util/http-client-opts})
+                                               {:http-client pebble/http-client-opts})
           [session' tos-change] (commands/check-terms-of-service session)]
       (is (some? session'))
       (is (= {:changed? false
@@ -24,7 +24,7 @@
 (deftest check-terms-of-service-detects-change-test
   (testing "detects when termsOfService changes"
     (let [[session _] (commands/create-session "https://localhost:14000/dir"
-                                               {:http-client util/http-client-opts})
+                                               {:http-client pebble/http-client-opts})
           old-tos "https://example.com/old-tos-v1"
           modified-session (assoc-in session
                                      [::specs/directory ::specs/meta ::specs/termsOfService]
@@ -38,7 +38,7 @@
 (deftest check-terms-of-service-detects-addition-test
   (testing "detects when termsOfService is added"
     (let [[session _] (commands/create-session "https://localhost:14000/dir"
-                                               {:http-client util/http-client-opts})
+                                               {:http-client pebble/http-client-opts})
           modified-session (update-in session
                                       [::specs/directory ::specs/meta]
                                       dissoc ::specs/termsOfService)

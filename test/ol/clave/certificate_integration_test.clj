@@ -5,6 +5,7 @@
    [ol.clave.challenge :as challenge]
    [ol.clave.commands :as commands]
    [ol.clave.csr :as csr]
+   [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]
    [ol.clave.order :as order]
    [ol.clave.specs :as specs])
@@ -12,7 +13,7 @@
    [java.security KeyPairGenerator]
    [java.security.spec ECGenParameterSpec]))
 
-(use-fixtures :once util/pebble-challenge-fixture)
+(use-fixtures :once pebble/pebble-challenge-fixture)
 
 (defn- generate-cert-keypair
   []
@@ -49,7 +50,7 @@
           http-challenge (challenge/find-by-type authz "http-01")
           token (challenge/token http-challenge)
           key-auth (challenge/key-authorization http-challenge (::specs/account-key session))]
-      (util/challtestsrv-add-http01 token key-auth)
+      (pebble/challtestsrv-add-http01 token key-auth)
       (let [[session _challenge] (commands/respond-challenge session http-challenge)
             [session _authz] (commands/poll-authorization session authz-url {:timeout-ms 15000
                                                                              :interval-ms 250})
@@ -77,7 +78,7 @@
           http-challenge (challenge/find-by-type authz "http-01")
           token (challenge/token http-challenge)
           key-auth (challenge/key-authorization http-challenge (::specs/account-key session))]
-      (util/challtestsrv-add-http01 token key-auth)
+      (pebble/challtestsrv-add-http01 token key-auth)
       (let [[session challenge-resp] (commands/respond-challenge session http-challenge)
             [_session final-authz] (commands/poll-authorization session authz-url {:timeout-ms 15000
                                                                                    :interval-ms 250})]

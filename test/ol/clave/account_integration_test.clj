@@ -5,17 +5,18 @@
    [ol.clave.account :as account]
    [ol.clave.commands :as commands]
    [ol.clave.errors :as errors]
-   [ol.clave.impl.test-util :as util]
+   [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util]
    [ol.clave.protocols :as proto]
    [ol.clave.specs :as specs]))
 
-(use-fixtures :each util/pebble-fixture)
+(use-fixtures :each pebble/pebble-fixture)
 
 (deftest new-account-returns-session-and-response
   (testing "new-account successfully registers with pebble test server"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                        {:http-client util/http-client-opts
+                                                        {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           [updated-session normalized-account] (commands/new-account session account)]
       (expect {::specs/account-key account-key
@@ -42,7 +43,7 @@
   (testing "get-account performs POST-as-GET and returns account with KID"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                        {:http-client util/http-client-opts
+                                                        {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           [session account] (commands/new-account session account)
           account-kid (::specs/account-kid account)
@@ -57,7 +58,7 @@
   (testing "update-account-contact changes contact information"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                        {:http-client util/http-client-opts
+                                                        {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           [session account] (commands/new-account session account)
           new-contacts ["mailto:updated@example.com" "mailto:admin@example.com"]
@@ -73,7 +74,7 @@
   (testing "update-account-contact rejects malformed contacts"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                        {:http-client util/http-client-opts
+                                                        {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           [session account] (commands/new-account session account)]
       (is (thrown-with-error-type? ::errors/invalid-contact-uri
@@ -83,7 +84,7 @@
   (testing "deactivate-account sets status to deactivated"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                        {:http-client util/http-client-opts
+                                                        {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           [session account] (commands/new-account session account)
           [session deactivated-account] (commands/deactivate-account session account)]
@@ -96,7 +97,7 @@
   (testing "rollover-account-key swaps the stored key and verifies with Pebble"
     (let [[account original-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                        {:http-client util/http-client-opts
+                                                        {:http-client pebble/http-client-opts
                                                          :account-key original-key})
           [session account] (commands/new-account session account)
           new-key (account/generate-keypair)
@@ -117,7 +118,7 @@
   (testing "rollover-account-key requires a valid AsymmetricKeyPair"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                        {:http-client util/http-client-opts
+                                                        {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           [session account] (commands/new-account session account)]
       (is (thrown-with-error-type? ::errors/invalid-account-key
@@ -127,7 +128,7 @@
   (testing "EAB with invalid base64 MAC key throws error"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                        {:http-client util/http-client-opts
+                                                        {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           eab-opts {:external-account {:kid "test-kid-1"
                                        :mac-key "not-valid-base64!!!"}}]
@@ -138,7 +139,7 @@
   (testing "Account creation with valid EAB succeeds"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                        {:http-client util/http-client-opts
+                                                        {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           eab-opts {:external-account {:kid "test-kid-1"
                                        :mac-key "zWNDZM6eQGHWpSRTPal5eIUYFTu7EajVIoguysqZ9wG44nMEtx3MUAsUDkMTQ12W"}}
@@ -151,7 +152,7 @@
   (testing "Account creation with unknown EAB kid fails"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                        {:http-client util/http-client-opts
+                                                        {:http-client pebble/http-client-opts
                                                          :account-key account-key})
           eab-opts {:external-account {:kid "unknown-kid-not-in-pebble-config"
                                        :mac-key "zWNDZM6eQGHWpSRTPal5eIUYFTu7EajVIoguysqZ9wG44nMEtx3MUAsUDkMTQ12W"}}]
@@ -162,7 +163,7 @@
   (testing "find-account-by-key returns account URL for registered key"
     (let [[account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           [session _] (commands/create-session "https://localhost:14000/dir"
-                                               {:http-client util/http-client-opts
+                                               {:http-client pebble/http-client-opts
                                                 :account-key account-key})
           [_ created-account] (commands/new-account session account)
           [found-session found-kid] (commands/find-account-by-key session)]
@@ -173,7 +174,7 @@
   (testing "find-account-by-key throws account-not-found for unregistered key"
     (let [new-key (account/generate-keypair)
           [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                        {:http-client util/http-client-opts
+                                                        {:http-client pebble/http-client-opts
                                                          :account-key new-key})]
       (is (thrown-with-error-type? errors/account-not-found
                                    (commands/find-account-by-key session))))))

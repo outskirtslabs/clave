@@ -7,6 +7,7 @@
    [ol.clave.challenge :as challenge]
    [ol.clave.commands :as commands]
    [ol.clave.errors :as errors]
+   [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]
    [ol.clave.order :as order]
    [ol.clave.scope :as scope])
@@ -16,13 +17,13 @@
 (defn- pebble-no-sleep-fixture
   "Starts only Pebble (no challtestsrv) for retry-after testing."
   [f]
-  (let [proc (util/pebble-start "test/fixtures/pebble-config.json"
-                                {:env {"PEBBLE_VA_NOSLEEP" "1"}})]
+  (let [proc (pebble/pebble-start "test/fixtures/pebble-config.json"
+                                  {:env {"PEBBLE_VA_NOSLEEP" "1"}})]
     (try
-      (util/wait-for-pebble)
+      (pebble/wait-for-pebble)
       (f)
       (finally
-        (util/pebble-stop proc)))))
+        (pebble/pebble-stop proc)))))
 
 (use-fixtures :once pebble-no-sleep-fixture)
 

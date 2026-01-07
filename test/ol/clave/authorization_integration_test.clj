@@ -4,10 +4,11 @@
    [ol.clave.challenge :as challenge]
    [ol.clave.commands :as commands]
    [ol.clave.errors :as errors]
+   [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]
    [ol.clave.specs :as specs]))
 
-(use-fixtures :once util/pebble-challenge-fixture)
+(use-fixtures :once pebble/pebble-challenge-fixture)
 
 (deftest get-authorization-includes-key-authorization
   (testing "get-authorization returns challenges with key authorization"
@@ -32,7 +33,7 @@
           http-challenge (challenge/find-by-type authz "http-01")
           token (challenge/token http-challenge)
           key-auth (challenge/key-authorization http-challenge (::specs/account-key session))]
-      (util/challtestsrv-add-http01 token key-auth)
+      (pebble/challtestsrv-add-http01 token key-auth)
       (let [[session _challenge] (commands/respond-challenge session http-challenge)
             [_session updated] (commands/poll-authorization session authz-url
                                                             {:timeout-ms 15000
@@ -49,7 +50,7 @@
           [session authz] (commands/get-authorization session authz-url)
           http-challenge (challenge/find-by-type authz "http-01")
           token (challenge/token http-challenge)]
-      (util/challtestsrv-add-http01 token "bad-key-authorization")
+      (pebble/challtestsrv-add-http01 token "bad-key-authorization")
       (let [[session _challenge] (commands/respond-challenge session http-challenge)]
         (is (thrown-with-error-type? errors/authorization-invalid
                                      (commands/poll-authorization session authz-url

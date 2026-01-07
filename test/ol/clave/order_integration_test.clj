@@ -6,17 +6,17 @@
    [ol.clave.errors :as errors]
    [ol.clave.impl.crypto :as crypto]
    [ol.clave.impl.csr :as csr]
-   [ol.clave.impl.test-util :as util]
+   [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.protocols :as proto]
    [ol.clave.specs :as specs]))
 
-(use-fixtures :once util/pebble-fixture)
+(use-fixtures :once pebble/pebble-fixture)
 
 (defn- fresh-session
   []
   (let [[acct key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
         [session _directory] (commands/create-session "https://localhost:14000/dir"
-                                                      {:http-client util/http-client-opts
+                                                      {:http-client pebble/http-client-opts
                                                        :account-key key})
         [session _account] (commands/new-account session acct)]
     session))

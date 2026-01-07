@@ -5,7 +5,9 @@
   :plugins [:kaocha.plugin.alpha/info
             :kaocha.plugin/randomize
             :kaocha.plugin/filter
-            :kaocha.plugin/capture-output]
+            :kaocha.plugin/capture-output
+            :kaocha.plugin/profiling
+            :kaocha.plugin/print-invocations]
   :tests
   [{:id         :clave
     :test-paths ["test"]}]}

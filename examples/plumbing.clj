@@ -6,6 +6,7 @@
    [ol.clave.commands :as cmd]
    [ol.clave.csr :as csr]
    [ol.clave.example.http01 :as http01]
+   [ol.clave.lease :as lease]
    [ol.clave.order :as order]
    [ol.clave.specs :as specs])
   (:import
@@ -61,29 +62,14 @@
      :headers {"content-type" "text/plain"}
      :body "Not Found"}))
 
-(defn- wait-for-order-ready
-  [session order]
-  (let [timeout-ms 60000
-        interval-ms 1000
-        deadline (+ (System/currentTimeMillis) timeout-ms)]
-    (loop [session session
-           order order]
-      (if (= "ready" (::specs/status order))
-        [session order]
-        (do
-          (when (>= (System/currentTimeMillis) deadline)
-            (throw (ex-info "Order did not become ready in time"
-                            {:status (::specs/status order)
-                             :order order})))
-          (Thread/sleep interval-ms)
-          (let [[session order] (cmd/get-order session order)]
-            (recur session order)))))))
-
 (defn -main [& _]
   (let [http01-server (http01/start! {:port 5002})]
     (try
       (let [;; This example assumes Pebble is running at https://localhost:14000/dir
             ;; and will validate HTTP-01 via http://localhost:5002.
+
+            ;; create a lease for cancellation/timeout control
+            bg-lease (lease/background)
 
             ;; prepare a new account by generating a keypair and creating a local map of account data
             account-key (account/generate-keypair)
@@ -94,13 +80,13 @@
             ;; you _must_ never re-use a session handle
             ;; for this demo we use pebble which has a self signed cert, so we have to pass an :http-client
             ;; if you were doing this against a "real" acme server you probably wouldn't need to
-            [session _] (cmd/create-session "https://localhost:14000/dir"
+            [session _] (cmd/create-session bg-lease "https://localhost:14000/dir"
                                             {:http-client {:ssl-context {:trust-store-pass "changeit"
                                                                          :trust-store      "test/fixtures/pebble-truststore.p12"}}
                                              :account-key account-key})
 
             ;; register a new account with the server
-            [session account] (cmd/new-account session account)
+            [session account] (cmd/new-account bg-lease session account)
 
             ;; save the account at this stage for use later during renewals
             _ (spit "./demo-account.edn" (account/serialize account account-key))
@@ -112,7 +98,7 @@
             order-request (order/create identifiers)
 
             ;; then submit the order to the server
-            [session order] (cmd/new-order session order-request)
+            [session order] (cmd/new-order bg-lease session order-request)
 
             ;; each identifier (just 1 in this demo) will be associated with an authorization record
             ;; by solving the authorization challenges you will make the authorization's status
@@ -124,7 +110,7 @@
                                    authz-urls authz-urls]
                               (if-let [authz-url (first authz-urls)]
                                 (let [;; fetch the authorization details
-                                      [session authz] (cmd/get-authorization session authz-url)
+                                      [session authz] (cmd/get-authorization bg-lease session authz-url)
 
                                       ;; find an http-01 challenge to solve
                                       http-challenge (challenge/find-by-type authz "http-01")
@@ -137,14 +123,16 @@
                                       _     (http01/register! http01-server token key-auth)
 
                                       ;; notify the server that the challenge is ready to be validated
-                                      [session _] (cmd/respond-challenge session http-challenge)
+                                      [session _] (cmd/respond-challenge bg-lease session http-challenge)
 
                                       ;; poll the authorization until it becomes valid
-                                      [session _authz] (cmd/poll-authorization session authz-url {:interval-ms 1000
-                                                                                                  :timeout-ms  60000})]
+                                      session (cmd/set-polling session {:interval-ms 1000})
+                                      [session _authz] (cmd/poll-authorization bg-lease session authz-url)
                                   (recur session (rest authz-urls)))
                                 [session order]))
-            [session order] (wait-for-order-ready session order)
+
+            ;; refresh the order - after authorizations are valid, order should be "ready"
+            [session order] (cmd/get-order bg-lease session (order/url order))
 
             ;; once all authorizations are valid, we need to finalize the order
             ;; by submitting a certificate signing request (CSR)
@@ -157,14 +145,14 @@
             csr-data (csr/create-csr cert-key domains)
 
             ;; finalize the order by submitting the CSR
-            [session order] (cmd/finalize-order session order csr-data)
+            [session order] (cmd/finalize-order bg-lease session order csr-data)
 
             ;; poll the order until it's status becomes "valid" and certificate is ready
-            [session order] (cmd/poll-order session (order/url order) {:interval-ms 1000
-                                                                       :timeout-ms  60000})
+            session (cmd/set-polling session {:interval-ms 1000})
+            [session order] (cmd/poll-order bg-lease session (order/url order))
 
             ;; download the certificate chain
-            [_ cert-result] (cmd/get-certificate session (order/certificate-url order))
+            [_ cert-result] (cmd/get-certificate bg-lease session (order/certificate-url order))
             preferred       (:preferred cert-result)
             pem-chain       (::specs/pem preferred)
 

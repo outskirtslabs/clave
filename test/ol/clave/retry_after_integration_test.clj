@@ -87,10 +87,10 @@
                           (swap! sleeps conj ms)
                           (original-sleep lease ms))
               [session _challenge] (commands/respond-challenge bg-lease session http-challenge)
+              session (commands/set-polling session {:timeout-ms 6000 :interval-ms 50})
               ex (with-redefs [http/lease-sleep sleep-spy]
                    (try
-                     (commands/poll-authorization bg-lease session authz-url {:timeout-ms 6000
-                                                                              :interval-ms 50})
+                     (commands/poll-authorization bg-lease session authz-url)
                      nil
                      (catch clojure.lang.ExceptionInfo e e)))]
           (is (= errors/authorization-timeout (:type (ex-data ex))))

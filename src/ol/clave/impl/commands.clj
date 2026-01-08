@@ -24,14 +24,17 @@
 
 (set! *warn-on-reflection* true)
 
+(def ^:const default-poll-interval-ms 5000)
+(def ^:const default-poll-timeout-ms 60000)
+
 (defn new-session
   [directory-url {:keys [http-client account-key account-kid]}]
   (let [base {::acme/directory-url directory-url
               ::acme/nonces http/empty-nonces
               ::acme/http (http/http-client http-client)
               ::acme/directory nil
-              ::acme/poll-interval 5000
-              ::acme/poll-timeout 60000}
+              ::acme/poll-interval default-poll-interval-ms
+              ::acme/poll-timeout default-poll-timeout-ms}
         session (cond-> base
                   account-key (assoc ::acme/account-key account-key)
                   account-kid (assoc ::acme/account-kid account-kid))]
@@ -366,44 +369,52 @@
      [session (assoc order ::acme/order-location (or (::acme/order-location order) order-url))])))
 
 (defn poll-order
-  ([lease session order-url]
-   (poll-order lease session order-url nil))
-  ([lease session order-url opts]
-   (let [interval-ms (long (or (:interval-ms opts) (::acme/poll-interval session) 5000))
-         timeout-ms (long (or (:timeout-ms opts) (::acme/poll-timeout session) 60000))
-         max-wait-ms (:max-wait-ms opts)
-         start (java.time.Instant/now)]
-     (loop [session session
-            attempts 0]
-       (lease/active?! lease)
-       (let [attempts (inc attempts)
-             [session order resp] (fetch-order lease session order-url)]
-         (cond
-           (= "valid" (::acme/status order))
-           [session order]
+  [lease session order-url]
+  (let [interval-ms (long (::acme/poll-interval session))
+        session-timeout-ms (long (::acme/poll-timeout session))
+        lease-remaining-ms (some-> ^java.time.Duration (lease/remaining lease) .toMillis)
+        timeout-ms (if lease-remaining-ms
+                     (min session-timeout-ms lease-remaining-ms)
+                     session-timeout-ms)
+        start (java.time.Instant/now)
+        throw-timeout (fn [attempts]
+                        (let [elapsed (java.time.Duration/between start (java.time.Instant/now))]
+                          (throw (errors/ex errors/order-timeout
+                                            "Order polling timed out"
+                                            {:url order-url
+                                             :attempts attempts
+                                             :elapsed-ms (.toMillis elapsed)}))))]
+    (try
+      (loop [session session
+             attempts 0]
+        (lease/active?! lease)
+        (let [attempts (inc attempts)
+              [session order resp] (fetch-order lease session order-url)]
+          (cond
+            (= "valid" (::acme/status order))
+            [session order]
 
-           (= "invalid" (::acme/status order))
-           (throw (errors/ex errors/order-invalid
-                             "Order became invalid"
-                             {:order order
-                              :url order-url}))
+            (= "invalid" (::acme/status order))
+            (throw (errors/ex errors/order-invalid
+                              "Order became invalid"
+                              {:order order
+                               :url order-url}))
 
-           :else
-           (let [elapsed (java.time.Duration/between start (java.time.Instant/now))
-                 remaining (- timeout-ms (.toMillis elapsed))]
-             (when (<= remaining 0)
-               (throw (errors/ex errors/order-timeout
-                                 "Order polling timed out"
-                                 {:url order-url
-                                  :attempts attempts
-                                  :elapsed-ms (.toMillis elapsed)})))
-             (let [fallback (java.time.Duration/ofMillis interval-ms)
-                   ^java.time.Duration retry (http/retry-after resp fallback)
-                   delay-ms (cond-> (min remaining (.toMillis retry))
-                              max-wait-ms (min (long max-wait-ms)))]
-               (when (pos? delay-ms)
-                 (http/lease-sleep lease delay-ms))
-               (recur session attempts)))))))))
+            :else
+            (let [elapsed (java.time.Duration/between start (java.time.Instant/now))
+                  remaining (- timeout-ms (.toMillis elapsed))]
+              (when (<= remaining 0)
+                (throw-timeout attempts))
+              (let [fallback (java.time.Duration/ofMillis interval-ms)
+                    ^java.time.Duration retry (http/retry-after resp fallback)
+                    delay-ms (min remaining (.toMillis retry))]
+                (when (pos? delay-ms)
+                  (http/lease-sleep lease delay-ms))
+                (recur session attempts))))))
+      (catch clojure.lang.ExceptionInfo e
+        (if (= :lease/deadline-exceeded (:type (ex-data e)))
+          (throw-timeout 0)
+          (throw e))))))
 
 (defn finalize-order
   ([lease session order csr]
@@ -481,57 +492,60 @@
      [session authorization])))
 
 (defn poll-authorization
-  ([lease session authorization-url]
-   (poll-authorization lease session authorization-url nil))
-  ([lease session authorization-url opts]
-   (let [interval-ms (long (or (:interval-ms opts) (::acme/poll-interval session) 5000))
-         timeout-ms (long (or (:timeout-ms opts) (::acme/poll-timeout session) 60000))
-         max-attempts (:max-attempts opts)
-         start (java.time.Instant/now)]
-     (loop [session session
-            attempts 0]
-       (lease/active?! lease)
-       (let [attempts (inc attempts)
-             [session authorization resp] (fetch-authorization lease session authorization-url)]
-         (cond
-           (authorization/authorization-valid? authorization)
-           [session authorization]
+  [lease session authorization-url]
+  (let [interval-ms (long (::acme/poll-interval session))
+        session-timeout-ms (long (::acme/poll-timeout session))
+        lease-remaining-ms (some-> ^java.time.Duration (lease/remaining lease) .toMillis)
+        timeout-ms (if lease-remaining-ms
+                     (min session-timeout-ms lease-remaining-ms)
+                     session-timeout-ms)
+        start (java.time.Instant/now)
+        throw-timeout (fn [attempts]
+                        (let [elapsed (java.time.Duration/between start (java.time.Instant/now))]
+                          (throw (errors/ex errors/authorization-timeout
+                                            "Authorization polling timed out"
+                                            {:url authorization-url
+                                             :attempts attempts
+                                             :elapsed-ms (.toMillis elapsed)}))))]
+    (try
+      (loop [session session
+             attempts 0]
+        (lease/active?! lease)
+        (let [attempts (inc attempts)
+              [session authorization resp] (fetch-authorization lease session authorization-url)]
+          (cond
+            (authorization/authorization-valid? authorization)
+            [session authorization]
 
-           (authorization/authorization-invalid? authorization)
-           (throw (errors/ex errors/authorization-invalid
-                             "Authorization became invalid"
-                             {:authorization authorization
-                              :problem (authorization/authorization-problem authorization)
-                              :url authorization-url}))
+            (authorization/authorization-invalid? authorization)
+            (throw (errors/ex errors/authorization-invalid
+                              "Authorization became invalid"
+                              {:authorization authorization
+                               :problem (authorization/authorization-problem authorization)
+                               :url authorization-url}))
 
-           (authorization/authorization-unusable? authorization)
-           (throw (errors/ex errors/authorization-unusable
-                             "Authorization became unusable"
-                             {:authorization authorization
-                              :problem (authorization/authorization-problem authorization)
-                              :url authorization-url}))
+            (authorization/authorization-unusable? authorization)
+            (throw (errors/ex errors/authorization-unusable
+                              "Authorization became unusable"
+                              {:authorization authorization
+                               :problem (authorization/authorization-problem authorization)
+                               :url authorization-url}))
 
-           :else
-           (let [elapsed (java.time.Duration/between start (java.time.Instant/now))
-                 remaining (- timeout-ms (.toMillis elapsed))]
-             (when (and max-attempts (>= attempts (long max-attempts)))
-               (throw (errors/ex errors/authorization-timeout
-                                 "Authorization polling exceeded max attempts"
-                                 {:url authorization-url
-                                  :attempts attempts
-                                  :elapsed-ms (.toMillis elapsed)})))
-             (when (<= remaining 0)
-               (throw (errors/ex errors/authorization-timeout
-                                 "Authorization polling timed out"
-                                 {:url authorization-url
-                                  :attempts attempts
-                                  :elapsed-ms (.toMillis elapsed)})))
-             (let [fallback (java.time.Duration/ofMillis interval-ms)
-                   ^java.time.Duration retry (http/retry-after resp fallback)
-                   delay-ms (min remaining (.toMillis retry))]
-               (when (pos? delay-ms)
-                 (http/lease-sleep lease delay-ms))
-               (recur session attempts)))))))))
+            :else
+            (let [elapsed (java.time.Duration/between start (java.time.Instant/now))
+                  remaining (- timeout-ms (.toMillis elapsed))]
+              (when (<= remaining 0)
+                (throw-timeout attempts))
+              (let [fallback (java.time.Duration/ofMillis interval-ms)
+                    ^java.time.Duration retry (http/retry-after resp fallback)
+                    delay-ms (min remaining (.toMillis retry))]
+                (when (pos? delay-ms)
+                  (http/lease-sleep lease delay-ms))
+                (recur session attempts))))))
+      (catch clojure.lang.ExceptionInfo e
+        (if (= :lease/deadline-exceeded (:type (ex-data e)))
+          (throw-timeout 0)
+          (throw e))))))
 
 (defn deactivate-authorization
   ([lease session authorization-or-url]

@@ -365,25 +365,17 @@
 (defn poll-order
   "Poll an order URL until it reaches a terminal status.
 
+  Timeout is the lesser of session's poll-timeout and the lease's deadline.
+  Configure polling defaults via [[set-polling]].
+
   Parameters:
   - `lease` — lease for cancellation/timeout control.
   - `session` — authenticated session.
   - `order-url` — order URL string.
-  - `opts` — optional map for polling controls.
-
-  Options:
-
-  | key            | description                                              |
-  |----------------|----------------------------------------------------------|
-  | `:interval-ms` | Poll interval fallback in milliseconds.                  |
-  | `:timeout-ms`  | Overall timeout in milliseconds.                         |
-  | `:max-wait-ms` | Cap per-iteration sleep even when Retry-After is larger. |
 
   Returns `[updated-session order]` on success or throws on invalid/timeout."
-  ([lease session order-url]
-   (impl/poll-order lease session order-url nil))
-  ([lease session order-url opts]
-   (impl/poll-order lease session order-url opts)))
+  [lease session order-url]
+  (impl/poll-order lease session order-url))
 
 (defn finalize-order
   "Finalize an order by submitting a CSR.
@@ -437,26 +429,18 @@
 (defn poll-authorization
   "Poll an authorization URL until it reaches a terminal status.
 
+  Timeout is the lesser of session' poll-timeout and lease's deadline.
+  Configure polling defaults via [[set-polling]].
+
   Parameters:
   - `lease` — lease for cancellation/timeout control.
   - `session` — authenticated session.
   - `authorization-url` — authorization URL string.
-  - `opts` — optional map for polling controls.
-
-  Options:
-
-  | key              | description                                          |
-  |------------------|------------------------------------------------------|
-  | `:interval-ms`   | Poll interval fallback in milliseconds.              |
-  | `:timeout-ms`    | Overall timeout in milliseconds.                     |
-  | `:max-attempts`  | Cap number of polls; includes `:attempts` in ex-data.|
 
   Returns `[updated-session authorization]` on success or throws when invalid,
   unusable, or timed out."
-  ([lease session authorization-url]
-   (impl/poll-authorization lease session authorization-url nil))
-  ([lease session authorization-url opts]
-   (impl/poll-authorization lease session authorization-url opts)))
+  [lease session authorization-url]
+  (impl/poll-authorization lease session authorization-url))
 
 (defn deactivate-authorization
   "Deactivate an authorization by sending a status update.

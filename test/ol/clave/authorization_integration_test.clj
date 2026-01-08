@@ -38,9 +38,8 @@
           key-auth (challenge/key-authorization http-challenge (::specs/account-key session))]
       (pebble/challtestsrv-add-http01 token key-auth)
       (let [[session _challenge] (commands/respond-challenge bg-lease session http-challenge)
-            [_session updated] (commands/poll-authorization bg-lease session authz-url
-                                                            {:timeout-ms 15000
-                                                             :interval-ms 250})]
+            session (commands/set-polling session {:timeout-ms 15000 :interval-ms 250})
+            [_session updated] (commands/poll-authorization bg-lease session authz-url)]
         (is (= "valid" (::specs/status updated)))))))
 
 (deftest respond-challenge-invalidates-authorization
@@ -55,61 +54,22 @@
           http-challenge (challenge/find-by-type authz "http-01")
           token (challenge/token http-challenge)]
       (pebble/challtestsrv-add-http01 token "bad-key-authorization")
-      (let [[session _challenge] (commands/respond-challenge bg-lease session http-challenge)]
+      (let [[session _challenge] (commands/respond-challenge bg-lease session http-challenge)
+            session (commands/set-polling session {:timeout-ms 15000 :interval-ms 250})]
         (is (thrown-with-error-type? errors/authorization-invalid
-                                     (commands/poll-authorization bg-lease session authz-url
-                                                                  {:timeout-ms 15000
-                                                                   :interval-ms 250})))))))
+                                     (commands/poll-authorization bg-lease session authz-url)))))))
 
 (deftest poll-authorization-times-out
   (testing "poll-authorization times out when no challenge is fulfilled"
     (let [bg-lease (lease/background)
-          session (util/fresh-session)
+          session (-> (util/fresh-session)
+                      (commands/set-polling {:timeout-ms 1000 :interval-ms 100}))
           identifiers [{:type "dns" :value "localhost"}]
           order-request {::specs/identifiers identifiers}
           [session order] (commands/new-order bg-lease session order-request)
           authz-url (first (::specs/authorizations order))]
       (is (thrown-with-error-type? errors/authorization-timeout
-                                   (commands/poll-authorization bg-lease session authz-url
-                                                                {:timeout-ms 1000
-                                                                 :interval-ms 100}))))))
-
-(deftest poll-authorization-honors-max-attempts
-  (testing "poll-authorization throws after max-attempts with :attempts in ex-data"
-    (let [bg-lease (lease/background)
-          session (util/fresh-session)
-          identifiers [{:type "dns" :value "localhost"}]
-          order-request {::specs/identifiers identifiers}
-          [session order] (commands/new-order bg-lease session order-request)
-          authz-url (first (::specs/authorizations order))
-          ex (try
-               (commands/poll-authorization bg-lease session authz-url
-                                            {:timeout-ms 60000
-                                             :interval-ms 10
-                                             :max-attempts 1})
-               nil
-               (catch clojure.lang.ExceptionInfo e e))]
-      (is (= errors/authorization-timeout (:type (ex-data ex))))
-      (is (= 1 (:attempts (ex-data ex)))
-          "ex-data should include :attempts equal to max-attempts")))
-
-  (testing "poll-authorization with max-attempts=3 makes exactly 3 attempts"
-    (let [bg-lease (lease/background)
-          session (util/fresh-session)
-          identifiers [{:type "dns" :value "localhost"}]
-          order-request {::specs/identifiers identifiers}
-          [session order] (commands/new-order bg-lease session order-request)
-          authz-url (first (::specs/authorizations order))
-          ex (try
-               (commands/poll-authorization bg-lease session authz-url
-                                            {:timeout-ms 60000
-                                             :interval-ms 10
-                                             :max-attempts 3})
-               nil
-               (catch clojure.lang.ExceptionInfo e e))]
-      (is (= errors/authorization-timeout (:type (ex-data ex))))
-      (is (= 3 (:attempts (ex-data ex)))
-          "ex-data should include :attempts equal to max-attempts"))))
+                                   (commands/poll-authorization bg-lease session authz-url))))))
 
 (deftest deactivate-authorization-sets-status
   (testing "deactivate-authorization transitions to deactivated"
@@ -122,3 +82,37 @@
           [session authz] (commands/get-authorization bg-lease session authz-url)
           [_session deactivated] (commands/deactivate-authorization bg-lease session authz)]
       (is (= "deactivated" (::specs/status deactivated))))))
+
+(deftest poll-authorization-respects-lease-deadline
+  (testing "poll-authorization times out at lease deadline even if session timeout is longer"
+    (let [bg-lease (lease/background)
+          session (-> (util/fresh-session)
+                      (commands/set-polling {:interval-ms 100}))
+          identifiers [{:type "dns" :value "localhost"}]
+          [session order] (commands/new-order bg-lease session {::specs/identifiers identifiers})
+          authz-url (first (::specs/authorizations order))
+          [poll-lease cancel] (lease/with-timeout bg-lease 1000)
+          start (System/currentTimeMillis)]
+      (try
+        (is (thrown-with-error-type? errors/authorization-timeout
+                                     (commands/poll-authorization poll-lease session authz-url)))
+        (let [elapsed (- (System/currentTimeMillis) start)]
+          (is (< elapsed 3000)
+              (str "Expected timeout around 1s (lease deadline), but took " elapsed "ms")))
+        (finally
+          (cancel))))))
+
+(deftest poll-authorization-uses-session-defaults
+  (testing "poll-authorization uses session poll-timeout when lease has no deadline"
+    (let [bg-lease (lease/background)
+          session (-> (util/fresh-session)
+                      (commands/set-polling {:timeout-ms 500 :interval-ms 50}))
+          identifiers [{:type "dns" :value "localhost"}]
+          [session order] (commands/new-order bg-lease session {::specs/identifiers identifiers})
+          authz-url (first (::specs/authorizations order))
+          start (System/currentTimeMillis)]
+      (is (thrown-with-error-type? errors/authorization-timeout
+                                   (commands/poll-authorization bg-lease session authz-url)))
+      (let [elapsed (- (System/currentTimeMillis) start)]
+        (is (< elapsed 2000)
+            (str "Expected timeout around 500ms (session default), but took " elapsed "ms"))))))

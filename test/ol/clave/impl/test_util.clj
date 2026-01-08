@@ -113,15 +113,15 @@
         key-auth (challenge/key-authorization http-challenge (::specs/account-key session))
         _ (pebble/challtestsrv-add-http01 token key-auth)
         [session _challenge] (commands/respond-challenge bg-lease session http-challenge)
-        [session _authz] (commands/poll-authorization bg-lease session authz-url {:timeout-ms 15000
-                                                                                  :interval-ms 250})
+        session (commands/set-polling session {:timeout-ms 15000 :interval-ms 250})
+        [session _authz] (commands/poll-authorization bg-lease session authz-url)
         [session order] (wait-for-order-ready bg-lease session order)
         cert-keypair (generate-cert-keypair)
         domains (mapv :value identifiers)
         csr-data (csr/create-csr (:keypair cert-keypair) domains)
         [session order] (commands/finalize-order bg-lease session order csr-data)
-        [session order] (commands/poll-order bg-lease session (order/url order) {:timeout-ms 60000
-                                                                                 :interval-ms 500})
+        session (commands/set-polling session {:interval-ms 500})
+        [session order] (commands/poll-order bg-lease session (order/url order))
         [session cert-result] (commands/get-certificate bg-lease session (order/certificate-url order))
         cert-chain (:preferred cert-result)
         certs (::specs/certificates cert-chain)]

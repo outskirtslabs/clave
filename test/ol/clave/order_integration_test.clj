@@ -92,32 +92,45 @@
           order-request {::specs/identifiers identifiers}
           [session order] (commands/new-order bg-lease session order-request)
           order-url (::specs/order-location order)
+          session (commands/set-polling session {:timeout-ms 2000 :interval-ms 10})
           ex (try
-               (commands/poll-order bg-lease session order-url {:timeout-ms 2000
-                                                                :interval-ms 10})
+               (commands/poll-order bg-lease session order-url)
                nil
                (catch clojure.lang.ExceptionInfo e e))]
       (is (= errors/order-timeout (:type (ex-data ex))))
       (is (pos? (:attempts (ex-data ex)))
           "ex-data should include :attempts count"))))
 
-(deftest poll-order-honors-max-wait
-  (testing "poll-order with :max-wait-ms makes multiple attempts despite large interval"
+(deftest poll-order-respects-lease-deadline
+  (testing "poll-order times out at lease deadline even if session timeout is longer"
     (let [bg-lease (lease/background)
-          session (fresh-session bg-lease)
+          session (-> (fresh-session bg-lease)
+                      (commands/set-polling {:interval-ms 100}))
           identifiers [{:type "dns" :value "example.com"}]
-          order-request {::specs/identifiers identifiers}
-          [session order] (commands/new-order bg-lease session order-request)
+          [session order] (commands/new-order bg-lease session {::specs/identifiers identifiers})
           order-url (::specs/order-location order)
-          ;; With interval-ms=5000 and no max-wait, only 1 attempt before 500ms timeout
-          ;; With max-wait-ms=100, we should get multiple attempts
-          ex (try
-               (commands/poll-order bg-lease session order-url {:timeout-ms 500
-                                                                :interval-ms 5000
-                                                                :max-wait-ms 100})
-               nil
-               (catch clojure.lang.ExceptionInfo e e))]
-      (is (= errors/order-timeout (:type (ex-data ex))))
-      (is (>= (:attempts (ex-data ex)) 3)
-          (str "With max-wait-ms=100, should make at least 3 attempts in 500ms, got: "
-               (:attempts (ex-data ex)))))))
+          [poll-lease cancel] (lease/with-timeout bg-lease 1000)
+          start (System/currentTimeMillis)]
+      (try
+        (is (thrown-with-error-type? errors/order-timeout
+                                     (commands/poll-order poll-lease session order-url)))
+        (let [elapsed (- (System/currentTimeMillis) start)]
+          (is (< elapsed 3000)
+              (str "Expected timeout around 1s (lease deadline), but took " elapsed "ms")))
+        (finally
+          (cancel))))))
+
+(deftest poll-order-uses-session-defaults
+  (testing "poll-order uses session poll-timeout when lease has no deadline"
+    (let [bg-lease (lease/background)
+          session (-> (fresh-session bg-lease)
+                      (commands/set-polling {:timeout-ms 500 :interval-ms 50}))
+          identifiers [{:type "dns" :value "example.com"}]
+          [session order] (commands/new-order bg-lease session {::specs/identifiers identifiers})
+          order-url (::specs/order-location order)
+          start (System/currentTimeMillis)]
+      (is (thrown-with-error-type? errors/order-timeout
+                                   (commands/poll-order bg-lease session order-url)))
+      (let [elapsed (- (System/currentTimeMillis) start)]
+        (is (< elapsed 2000)
+            (str "Expected timeout around 500ms (session default), but took " elapsed "ms"))))))

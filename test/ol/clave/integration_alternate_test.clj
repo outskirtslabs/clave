@@ -1,18 +1,16 @@
 (ns ol.clave.integration-alternate-test
   "Integration tests requiring Pebble with alternate roots enabled."
   (:require
+   [ol.clave.impl.keygen :as kg]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.account :as account]
    [ol.clave.challenge :as challenge]
    [ol.clave.commands :as commands]
-   [ol.clave.csr :as csr]
+   [ol.clave.impl.csr :as csr]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.lease :as lease]
    [ol.clave.order :as order]
-   [ol.clave.specs :as specs])
-  (:import
-   [java.security KeyPairGenerator]
-   [java.security.spec ECGenParameterSpec]))
+   [ol.clave.specs :as specs]))
 
 (use-fixtures :once pebble/pebble-alternate-roots-fixture)
 
@@ -25,26 +23,20 @@
         [session _account] (commands/new-account bg-lease session acct)]
     session))
 
-(defn- generate-cert-keypair
-  []
-  (let [generator (doto (KeyPairGenerator/getInstance "EC")
-                    (.initialize (ECGenParameterSpec. "secp256r1")))]
-    (.generateKeyPair generator)))
-
 (defn- wait-for-order-ready
   [bg-lease session order]
-  (let [timeout-ms 60000
+  (let [timeout-ms  60000
         interval-ms 250
-        deadline (+ (System/currentTimeMillis) timeout-ms)]
+        deadline    (+ (System/currentTimeMillis) timeout-ms)]
     (loop [session session
-           order order]
+           order   order]
       (if (= "ready" (::specs/status order))
         [session order]
         (do
           (when (>= (System/currentTimeMillis) deadline)
             (throw (ex-info "Order did not become ready in time"
                             {:status (::specs/status order)
-                             :order order})))
+                             :order  order})))
           (Thread/sleep interval-ms)
           (let [[session order] (commands/get-order bg-lease session order)]
             (recur session order)))))))
@@ -66,7 +58,7 @@
             session (commands/set-polling session {:timeout-ms 15000 :interval-ms 250})
             [session _authz] (commands/poll-authorization bg-lease session authz-url)
             [session order] (wait-for-order-ready bg-lease session order)
-            cert-key (generate-cert-keypair)
+            cert-key (kg/generate :p256)
             domains (mapv :value identifiers)
             csr-data (csr/create-csr cert-key domains)
             [session order] (commands/finalize-order bg-lease session order csr-data)

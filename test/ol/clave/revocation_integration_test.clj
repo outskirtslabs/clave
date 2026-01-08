@@ -4,9 +4,17 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.commands :as commands]
    [ol.clave.errors :as errors]
+   [ol.clave.impl.crypto :as crypto]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]
-   [ol.clave.lease :as lease]))
+   [ol.clave.lease :as lease])
+  (:import
+   [java.security KeyPair]))
+
+(defn- keypair->asymmetric
+  "Wrap a raw P-256 KeyPair as an AsymmetricKeyPair for signing."
+  [^KeyPair kp]
+  (crypto/->KeyPairAlgo (.getPublic kp) (.getPrivate kp) :ol.clave.algo/es256 {:curve "P-256"}))
 
 ;; Shared certificates to reduce issuance overhead
 ;; Each test gets its own cert to be order-independent
@@ -71,7 +79,7 @@
   (testing "revoke-certificate with certificate keypair uses JWK-embedded JWS"
     (let [bg-lease (lease/background)
           {:keys [session-d cert-d keypair-d]} @shared-certs
-          signing-key (:asymmetric-keypair keypair-d)
+          signing-key (keypair->asymmetric keypair-d)
           [session' result] (commands/revoke-certificate bg-lease session-d cert-d {:signing-key signing-key})]
       (is (some? session') "Should return updated session")
       (is (nil? result) "Should return nil on success"))))

@@ -4,12 +4,11 @@
    [ol.clave.account :as account]
    [ol.clave.challenge :as challenge]
    [ol.clave.commands :as commands]
-   [ol.clave.csr :as csr]
-   [ol.clave.impl.crypto :as crypto]
+   [ol.clave.impl.csr :as csr]
+   [ol.clave.impl.keygen :as kg]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.lease :as lease]
    [ol.clave.order :as order]
-   [ol.clave.protocols :as proto]
    [ol.clave.specs :as specs]))
 
 ((requiring-resolve 'hashp.install/install!))
@@ -72,11 +71,9 @@
     session))
 
 (defn- generate-cert-keypair
-  "Generate a certificate keypair as both KeyPairAlgo and raw KeyPair."
+  "Generate a P-256 certificate keypair."
   []
-  (let [algo (crypto/generate-keypair :ol.clave.algo/es256)]
-    {:asymmetric-keypair algo
-     :keypair (proto/keypair algo)}))
+  (kg/generate :p256))
 
 (defn- wait-for-order-ready
   [lease session order]
@@ -118,7 +115,7 @@
         [session order] (wait-for-order-ready bg-lease session order)
         cert-keypair (generate-cert-keypair)
         domains (mapv :value identifiers)
-        csr-data (csr/create-csr (:keypair cert-keypair) domains)
+        csr-data (csr/create-csr cert-keypair domains)
         [session order] (commands/finalize-order bg-lease session order csr-data)
         session (commands/set-polling session {:interval-ms 500})
         [session order] (commands/poll-order bg-lease session (order/url order))

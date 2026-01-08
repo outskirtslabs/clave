@@ -20,17 +20,9 @@
 
 (set! *warn-on-reflection* true)
 
-;; -----------------------------------------------------------------------------
-;; Constants
-;; -----------------------------------------------------------------------------
-
 (def default-traffic-calming-ms 250)
 (def default-user-agent "ol.clave")
 (def default-max-attempts 3)
-
-;; -----------------------------------------------------------------------------
-;; Utilities: user-agent, headers, media-type, link parsing
-;; -----------------------------------------------------------------------------
 
 (defn- canonical-header-name [k]
   (-> (cond
@@ -97,10 +89,6 @@
          (mapcat #(re-seq link-rel-re %))
          (keep (fn [[_ url r]] (when (= r rel) url)))
          vec)))
-
-;; -----------------------------------------------------------------------------
-;; Retry-After parsing (seconds or HTTP-date)
-;; -----------------------------------------------------------------------------
 
 (def ^:private ^Locale http-date-locale Locale/US)
 
@@ -197,10 +185,6 @@
         Duration/ZERO))
     fallback))
 
-;; -----------------------------------------------------------------------------
-;; Nonce management (LIFO stack)
-;; -----------------------------------------------------------------------------
-
 (def replay-nonce-header "replay-nonce")
 
 (def empty-nonces '())
@@ -223,14 +207,6 @@
     (update session ::acme/nonces (fnil conj empty-nonces) nonce)
     session))
 
-;; -----------------------------------------------------------------------------
-;; Cancellation helpers
-;; -----------------------------------------------------------------------------
-
-;; -----------------------------------------------------------------------------
-;; Problem+JSON handling (RFC 7807)
-;; -----------------------------------------------------------------------------
-
 (defn parse-problem-json
   "Decode application/problem+json into a map with at least :type :detail :status."
   [body-bytes]
@@ -239,10 +215,6 @@
       (merge {:type nil :detail nil :status nil} m))
     (catch Exception e
       {:parse-error e :raw (slurp body-bytes :encoding "UTF-8")})))
-
-;; -----------------------------------------------------------------------------
-;; do-http-request: one attempt + drain + retry-safety decision
-;; -----------------------------------------------------------------------------
 
 (defn do-http-request
   "Perform a single HTTP request.
@@ -279,10 +251,6 @@
           {:resp nil :headers nil :status 0 :body-bytes nil :nonce nil :retry? true :err e}))
       (catch Throwable e
         {:resp nil :headers nil :status 0 :body-bytes nil :nonce nil :retry? true :err e}))))
-
-;; -----------------------------------------------------------------------------
-;; http-req: robust request w/ retries + problem+json handling
-;; -----------------------------------------------------------------------------
 
 (defn http-req
   "Robust HTTP request with limited retries and careful replay rules.
@@ -351,10 +319,6 @@
         (throw (errors/ex errors/server-error
                           (str "Unexpected HTTP status " status)
                           {:status status}))))))
-
-;; -----------------------------------------------------------------------------
-;; http-post-jws: JWS POST + nonce handling + robust retries + badNonce handling
-;; -----------------------------------------------------------------------------
 
 (defn jws-encode-json
   "JWS-encode `input` JSON with `keypair`, `kid`, `nonce`, and `endpoint`.

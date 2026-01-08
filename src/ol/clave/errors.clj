@@ -70,6 +70,10 @@
 (def authorization-unusable ::authorization-unusable)
 (def authorization-timeout ::authorization-timeout)
 (def challenge-rejected ::challenge-rejected)
+(def no-compatible-challenge ::no-compatible-challenge)
+
+;; Porcelain layer errors
+(def invalid-solver ::invalid-solver)
 
 ;; Pre-authorization errors (RFC 8555 Section 7.4.1)
 (def pre-authorization-failed ::pre-authorization-failed)

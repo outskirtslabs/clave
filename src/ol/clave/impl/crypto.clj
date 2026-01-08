@@ -1,4 +1,6 @@
-(ns ol.clave.impl.crypto
+(ns ^:no-doc ol.clave.impl.crypto
+  "Crypto code used for ACME client implementation.
+  The code in here is only intendeded to be used to generate and manage ACME accounts, make ACME client requests and so forth. "
   (:require
    [clojure.string :as str]
    [ol.clave.errors :as errors]

@@ -1,4 +1,4 @@
-(ns plumbing-tls-alpn
+(ns e2e-plumbing-tls-alpn
   "TLS-ALPN-01 challenge example against Pebble."
   (:require
    [babashka.json :as json]
@@ -6,7 +6,7 @@
    [ol.clave.account :as account]
    [ol.clave.challenge :as challenge]
    [ol.clave.commands :as cmd]
-   [ol.clave.csr :as csr]
+   [ol.clave.impl.csr :as csr]
    [ol.clave.lease :as lease]
    [ol.clave.order :as order]
    [ol.clave.specs :as specs])
@@ -212,6 +212,4 @@
             (when @alpn-server (stop-alpn-server! @alpn-server)))))
       (finally
         (stop-pebble! pebble-proc)
-        (.delete (java.io.File. ^String config-path)))
-))
-)
+        (.delete (java.io.File. ^String config-path))))))

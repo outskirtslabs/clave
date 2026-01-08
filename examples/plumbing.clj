@@ -1,177 +1,145 @@
 (ns plumbing
+  "Tutorial showing low-level ACME transaction using ol.clave.commands.
+
+  This example demonstrates the explicit step-by-step ACME workflow, giving you
+  full control over each stage of the certificate issuance process.
+
+  Run pebble before running this example:
+
+    PEBBLE_VA_ALWAYS_VALID=1 pebble -config test/fixtures/pebble-config.json
+
+  Then run:
+
+    clj -A:dev -M -m plumbing"
   (:require
-   [clojure.string :as str]
+   [ol.clave :as clave]
    [ol.clave.account :as account]
    [ol.clave.challenge :as challenge]
    [ol.clave.commands :as cmd]
-   [ol.clave.csr :as csr]
-   [ol.clave.example.http01 :as http01]
    [ol.clave.lease :as lease]
    [ol.clave.order :as order]
-   [ol.clave.specs :as specs])
-  (:import
-   [java.io ByteArrayInputStream FileOutputStream]
-   [java.nio.charset StandardCharsets]
-   [java.security KeyPairGenerator KeyStore]
-   [java.security.cert CertificateFactory]
-   [java.security.spec ECGenParameterSpec]
-   [java.util Base64]))
-
-(defn- generate-cert-keypair
-  []
-  (let [generator (doto (KeyPairGenerator/getInstance "EC")
-                    (.initialize (ECGenParameterSpec. "secp256r1")))]
-    (.generateKeyPair generator)))
-
-(defn- private-key->pem
-  [private-key]
-  (let [bytes (.getEncoded private-key)
-        encoder (Base64/getMimeEncoder 64 (.getBytes "\n" StandardCharsets/UTF_8))
-        body (.encodeToString encoder bytes)
-        body (if (str/ends-with? body "\n") body (str body "\n"))]
-    (str "-----BEGIN PRIVATE KEY-----\n"
-         body
-         "-----END PRIVATE KEY-----\n")))
-
-(defn- pem->cert-chain
-  [pem]
-  (with-open [stream (ByteArrayInputStream. (.getBytes pem StandardCharsets/UTF_8))]
-    (vec (.generateCertificates (CertificateFactory/getInstance "X.509") stream))))
-
-(defn- write-keystore!
-  [private-key pem-chain]
-  (let [password "changeit"
-        keystore-path (.getAbsolutePath (java.io.File/createTempFile "clave-cert" ".p12"))
-        keystore (KeyStore/getInstance "PKCS12")
-        password-chars (.toCharArray password)
-        certificates (into-array java.security.cert.Certificate (pem->cert-chain pem-chain))]
-    (.load keystore nil password-chars)
-    (.setKeyEntry keystore "acme" private-key password-chars certificates)
-    (with-open [out (FileOutputStream. keystore-path)]
-      (.store keystore out password-chars))
-    {:path keystore-path
-     :password password}))
-
-(defn- hello-handler
-  [{:keys [request-method uri]}]
-  (if (and (= :get request-method) (= "/" uri))
-    {:status 200
-     :headers {"content-type" "text/plain"}
-     :body "hello world"}
-    {:status 404
-     :headers {"content-type" "text/plain"}
-     :body "Not Found"}))
+   [ol.clave.specs :as specs]))
 
 (defn -main [& _]
-  (let [http01-server (http01/start! {:port 5002})]
-    (try
-      (let [;; This example assumes Pebble is running at https://localhost:14000/dir
-            ;; and will validate HTTP-01 via http://localhost:5002.
+  ;; Put your domains here (IDNs must be in ASCII form)
+  (let [domains ["example.com"]
 
-            ;; create a lease for cancellation/timeout control
-            bg-lease (lease/background)
+        ;; A lease allows us to cancel long-running ops
+        bg-lease (lease/background)
 
-            ;; prepare a new account by generating a keypair and creating a local map of account data
-            account-key (account/generate-keypair)
-            account     (account/create "mailto:test@example.com" true)
+        ;; Before you can get a cert, you'll need an account registered with
+        ;; the ACME CA - it also needs a private key and should obviously be
+        ;; different from any key used for certificates!
+        account-key (account/generate-keypair)
+        account     (account/create "mailto:you@example.com" true)
 
-            ;; create a new session, this opaque handle must be passed to every ol.clave.command function
-            ;; they will always return a new session handle that you must use
-            ;; you _must_ never re-use a session handle
-            ;; for this demo we use pebble which has a self signed cert, so we have to pass an :http-client
-            ;; if you were doing this against a "real" acme server you probably wouldn't need to
-            [session _] (cmd/create-session bg-lease "https://localhost:14000/dir"
-                                            {:http-client {:ssl-context {:trust-store-pass "changeit"
-                                                                         :trust-store      "test/fixtures/pebble-truststore.p12"}}
-                                             :account-key account-key})
+        ;; Now we can make our low-level ACME session.
+        ;; For this demo we use pebble which has a self signed cert, so we have
+        ;; to pass an :http-client. If you were doing this against a "real"
+        ;; ACME server you probably wouldn't need to.
+        [session _] (cmd/create-session bg-lease "https://127.0.0.1:14000/dir"
+                                        {:http-client {:ssl-context {:trust-store-pass "changeit"
+                                                                     :trust-store      "test/fixtures/pebble-truststore.p12"}}
+                                         :account-key account-key})
 
-            ;; register a new account with the server
-            [session account] (cmd/new-account bg-lease session account)
+        ;; If the account is new, we need to create it; only do this once!
+        ;; Then be sure to securely store the account key and metadata so
+        ;; you can reuse it later!
+        [session account] (cmd/new-account bg-lease session account)
+        _                 (println "Account registered:" (::specs/account-kid session))
 
-            ;; save the account at this stage for use later during renewals
-            _ (spit "./demo-account.edn" (account/serialize account account-key))
+        ;; Save the account at this stage for use later during renewals
+        _ (spit "./demo-account.edn" (account/serialize account account-key))
 
-            ;; the setup for the ceremony is complete, now on to the ceremony itself: getting a cert
-            ;; first step in getting a cert is to prepare the order data
-            ;; here we are requesting a cert for the domain "localhost", you might do "example.com"
-            identifiers   [(order/create-identifier :dns "localhost")]
-            order-request (order/create identifiers)
+        ;; Now we can actually get a cert; first step is to create a new order
+        identifiers   (mapv #(order/create-identifier :dns %) domains)
+        order-request (order/create identifiers)
 
-            ;; then submit the order to the server
-            [session order] (cmd/new-order bg-lease session order-request)
+        ;; Submit the order to the server
+        [session order] (cmd/new-order bg-lease session order-request)
+        _               (println "Order created:" (order/url order))
 
-            ;; each identifier (just 1 in this demo) will be associated with an authorization record
-            ;; by solving the authorization challenges you will make the authorization's status
-            ;; "valid"
-            authz-urls (order/authorizations order)
+        ;; Each identifier on the order should now be associated with an
+        ;; authorization object; we must make the authorization "valid"
+        ;; by solving any of the challenges offered for it
+        authz-urls (order/authorizations order)
 
-            ;; solve each authorization by completing its challenges
-            [session order] (loop [session    session ;; we must always propagate the new session
-                                   authz-urls authz-urls]
-                              (if-let [authz-url (first authz-urls)]
-                                (let [;; fetch the authorization details
-                                      [session authz] (cmd/get-authorization bg-lease session authz-url)
+        ;; Solve each authorization by completing its challenges
+        session (loop [session    session
+                       authz-urls authz-urls]
+                  (if-let [authz-url (first authz-urls)]
+                    (let [;; Fetch the authorization details
+                          [session authz] (cmd/get-authorization bg-lease session authz-url)
+                          _               (println "Processing authorization for:" (challenge/identifier authz))
 
-                                      ;; find an http-01 challenge to solve
-                                      http-challenge (challenge/find-by-type authz "http-01")
+                          ;; Pick any available challenge to solve (we'll use http-01)
+                          http-challenge (challenge/find-by-type authz "http-01")
+                          _              (println "  Challenge type:" (::specs/type http-challenge))
+                          _              (println "  Token:" (::specs/token http-challenge))
 
-                                      ;; compute the key authorization for this challenge
-                                      key-auth (challenge/key-authorization http-challenge account-key)
+                          ;; At this point, you must prepare to solve the challenge; how
+                          ;; you do this depends on the challenge type (see RFC 8555).
+                          ;; Usually this involves configuring an HTTP or TLS server, or
+                          ;; setting a DNS record (which can take time to propagate).
+                          ;;
+                          ;; This example does NOT provision real challenge responses -
+                          ;; we rely on PEBBLE_VA_ALWAYS_VALID=1 to skip actual validation.
+                          ;; In production, you would use a solver from ol.clave.solver.*
+                          ;;
+                          ;; For HTTP-01, you would serve:
+                          ;;   GET /.well-known/acme-challenge/{token}
+                          ;;   Response body: {token}.{account-key-thumbprint}
+                          key-auth (challenge/key-authorization http-challenge account-key)
+                          _        (println "  Key authorization:" key-auth)
 
-                                      ;; provision the HTTP-01 response via the local server
-                                      token (challenge/token http-challenge)
-                                      _     (http01/register! http01-server token key-auth)
+                          ;; Once you are ready to solve the challenge, let the ACME
+                          ;; server know it should begin validation
+                          [session _] (cmd/respond-challenge bg-lease session http-challenge)
+                          _           (println "  Challenge initiated, polling authorization...")
 
-                                      ;; notify the server that the challenge is ready to be validated
-                                      [session _] (cmd/respond-challenge bg-lease session http-challenge)
+                          ;; Now the challenge should be under way; we wait for the ACME
+                          ;; server to tell us the challenge has been solved by polling the
+                          ;; authorization status
+                          session         (cmd/set-polling session {:interval-ms 1000})
+                          [session authz] (cmd/poll-authorization bg-lease session authz-url)
+                          _               (println "  Authorization status:" (::specs/status authz))]
+                      (recur session (rest authz-urls)))
+                    session))
 
-                                      ;; poll the authorization until it becomes valid
-                                      session (cmd/set-polling session {:interval-ms 1000})
-                                      [session _authz] (cmd/poll-authorization bg-lease session authz-url)
-                                  (recur session (rest authz-urls)))
-                                [session order]))
+        ;; Refresh the order - after authorizations are valid, order should be "ready"
+        [session order] (cmd/get-order bg-lease session (order/url order))
+        _               (println "Order status:" (::specs/status order))
 
-            ;; refresh the order - after authorizations are valid, order should be "ready"
-            [session order] (cmd/get-order bg-lease session (order/url order))
+        ;; We should be able to get a certificate now, so we need a private key
+        ;; to generate a CSR; if you think these functions may error and you
+        ;; do not want to waste the ACME transaction, you should do this at
+        ;; the top *before* starting ACME, but since key material is sensitive,
+        ;; avoid storing it anywhere until you get the certificate
+        cert-key (clave/generate-cert-keypair)
 
-            ;; once all authorizations are valid, we need to finalize the order
-            ;; by submitting a certificate signing request (CSR)
+        ;; Create the CSR for our domains
+        csr-data (clave/create-csr cert-key domains)
+        _        (println "CSR created for domains:" domains)
 
-            ;; first generate a certificate key pair
-            cert-key (generate-cert-keypair)
+        ;; To request a certificate, we finalize the order
+        [session order] (cmd/finalize-order bg-lease session order csr-data)
+        _               (println "Order finalized, polling for certificate...")
 
-            ;; create the CSR for our domains
-            domains  (mapv :value identifiers)
-            csr-data (csr/create-csr cert-key domains)
+        ;; Poll the order until its status becomes "valid" and certificate is ready
+        session         (cmd/set-polling session {:interval-ms 1000})
+        [session order] (cmd/poll-order bg-lease session (order/url order))
 
-            ;; finalize the order by submitting the CSR
-            [session order] (cmd/finalize-order bg-lease session order csr-data)
+        ;; We can now download the certificate; the server should actually
+        ;; provide the whole chain, and it can even offer multiple chains
+        ;; of trust for the same end-entity certificate
+        [_ cert-result] (cmd/get-certificate bg-lease session (order/certificate-url order))
+        preferred       (:preferred cert-result)
+        pem-chain       (::specs/pem preferred)]
 
-            ;; poll the order until it's status becomes "valid" and certificate is ready
-            session (cmd/set-polling session {:interval-ms 1000})
-            [session order] (cmd/poll-order bg-lease session (order/url order))
+    ;; All done! Store it somewhere safe, along with its key
+    (println "\nCertificate chain:\n" pem-chain)
 
-            ;; download the certificate chain
-            [_ cert-result] (cmd/get-certificate bg-lease session (order/certificate-url order))
-            preferred       (:preferred cert-result)
-            pem-chain       (::specs/pem preferred)
-
-            ;; save the certificate and private key
-            _ (spit "./localhost.crt" pem-chain)
-            _ (spit "./localhost.key" (private-key->pem (.getPrivate cert-key)))
-
-            ;; restart the server with TLS enabled using the fresh certificate
-            _                       (http01/stop! http01-server)
-            {:keys [path password]} (write-keystore! (.getPrivate cert-key) pem-chain)
-            https-server            (http01/start-https! hello-handler {:port         5003
-                                                                        :keystore     path
-                                                                        :key-password password})
-            server                  (:server https-server)]
-
-        (println "Certificate issued successfully!")
-        (println "Certificate saved to: ./localhost.crt")
-        (println "Private key saved to: ./localhost.key")
-        (println "HTTPS server running on https://localhost:5003")
-        (.join ^org.eclipse.jetty.server.Server server))
-      (finally
-        (http01/stop! http01-server)))))
+    (spit "./cert.pem" pem-chain)
+    (spit "./key.pem" (clave/private-key->pem (.getPrivate cert-key)))
+    (println "Certificate saved to: ./cert.pem")
+    (println "Private key saved to: ./key.pem")))

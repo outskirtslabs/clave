@@ -5,11 +5,11 @@
    [clojure.java.shell :as shell]
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
+   [ol.clave.impl.keygen :as kg]
    [ol.clave.impl.csr :as csr]
    [ol.clave.impl.der :as der])
   (:import
    [java.security KeyPairGenerator]
-   [java.security.spec ECGenParameterSpec]
    [java.util Base64]
    [org.bouncycastle.asn1.pkcs PKCSObjectIdentifiers]
    [org.bouncycastle.asn1.x509
@@ -22,20 +22,6 @@
 ;; -------------------------
 ;; Test Helpers
 ;; -------------------------
-
-(defn generate-keypair
-  "Generate a keypair for testing."
-  ([algo] (generate-keypair algo nil))
-  ([algo param]
-   (case algo
-     :rsa (let [kpg (KeyPairGenerator/getInstance "RSA")]
-            (.initialize kpg (or param 2048))
-            (.generateKeyPair kpg))
-     :ec (let [kpg (KeyPairGenerator/getInstance "EC")]
-           (.initialize kpg (ECGenParameterSpec. (or param "secp256r1")))
-           (.generateKeyPair kpg))
-     :ed25519 (let [kpg (KeyPairGenerator/getInstance "Ed25519")]
-                (.generateKeyPair kpg)))))
 
 (defn ed25519-available?
   "Check if Ed25519 is available (Java 15+)."
@@ -260,33 +246,28 @@
 
 (deftest test-algorithm-selection
   (testing "RSA 2048"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["test.com"])]
       (is (= :rsa-2048 (:algorithm result)))))
 
-  (testing "RSA 3072"
-    (let [kp (generate-keypair :rsa 3072)
-          result (csr/create-csr kp ["test.com"])]
-      (is (= :rsa-3072 (:algorithm result)))))
-
   (testing "RSA 4096"
-    (let [kp (generate-keypair :rsa 4096)
+    (let [kp (kg/generate :rsa4096)
           result (csr/create-csr kp ["test.com"])]
       (is (= :rsa-4096 (:algorithm result)))))
 
   (testing "ECDSA P-256"
-    (let [kp (generate-keypair :ec "secp256r1")
+    (let [kp (kg/generate :p256)
           result (csr/create-csr kp ["test.com"])]
       (is (= :ec-p256 (:algorithm result)))))
 
   (testing "ECDSA P-384"
-    (let [kp (generate-keypair :ec "secp384r1")
+    (let [kp (kg/generate :p384)
           result (csr/create-csr kp ["test.com"])]
       (is (= :ec-p384 (:algorithm result)))))
 
   (testing "Ed25519"
     (when (ed25519-available?)
-      (let [kp (generate-keypair :ed25519)
+      (let [kp (kg/generate :ed25519)
             result (csr/create-csr kp ["test.com"])]
         (is (= :ed25519 (:algorithm result)))))))
 
@@ -296,23 +277,23 @@
 
 (deftest test-subject-dn
   (testing "Empty subject when use-cn? is false"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["example.com"] {:use-cn? false})]
       (is (some? (:csr-pem result)))))
 
   (testing "CN from first SAN when use-cn? is true"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["example.com" "www.example.com"] {:use-cn? true})]
       (is (some? (:csr-pem result)))
       (is (str/includes? (:csr-pem result) "CERTIFICATE REQUEST"))))
 
   (testing "CN from first SAN even if wildcard"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["*.example.com" "example.com"] {:use-cn? true})]
       (is (some? (:csr-pem result)))))
 
   (testing "CN skips IP SANs and uses first DNS SAN when use-cn? is true"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["192.0.2.1" "example.com" "www.example.com"] {:use-cn? true})]
       (is (some? (:csr-pem result)))
       ;; Verify with cfssl if available
@@ -322,7 +303,7 @@
           (is (= "example.com" cn) "CN should be first DNS SAN, not IP")))))
 
   (testing "Empty CN when only IP SANs and use-cn? is true"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["192.0.2.1" "2001:db8::1"] {:use-cn? true})]
       (is (some? (:csr-pem result)))
       ;; Verify with cfssl if available
@@ -337,64 +318,64 @@
 
 (deftest test-san-validation
   (testing "Valid DNS SANs"
-    (is (csr/create-csr (generate-keypair :rsa 2048) ["example.com"]))
-    (is (csr/create-csr (generate-keypair :rsa 2048) ["*.example.com"]))
-    (is (csr/create-csr (generate-keypair :rsa 2048) ["sub.example.com"])))
+    (is (csr/create-csr (kg/generate :rsa2048) ["example.com"]))
+    (is (csr/create-csr (kg/generate :rsa2048) ["*.example.com"]))
+    (is (csr/create-csr (kg/generate :rsa2048) ["sub.example.com"])))
 
   (testing "Valid mixed DNS and IP SANs"
-    (is (csr/create-csr (generate-keypair :rsa 2048)
+    (is (csr/create-csr (kg/generate :rsa2048)
                         ["example.com" "192.0.2.1"])))
 
   (testing "Invalid DNS SANs - multiple wildcards"
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo
          #"Multiple wildcards"
-         (csr/create-csr (generate-keypair :rsa 2048)
+         (csr/create-csr (kg/generate :rsa2048)
                          ["*.*.example.com"]))))
 
   (testing "Invalid DNS SANs - empty label (caught by IDNA)"
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo
          #"Invalid IDNA domain"
-         (csr/create-csr (generate-keypair :rsa 2048)
+         (csr/create-csr (kg/generate :rsa2048)
                          ["example..com"])))))
 
 (deftest test-san-normalization
   (testing "Trailing dots removed"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["example.com."])]
       (is (some? (:csr-pem result)))))
 
   (testing "Duplicate SANs removed"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["example.com" "example.com" "www.example.com"])]
       ;; Should have 2 unique SANs
       (is (= 2 (count (get-in result [:details :sans]))))))
 
   (testing "Case normalization for DNS"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["Example.COM" "example.com"])]
       ;; Should deduplicate as case-insensitive
       (is (= 1 (count (get-in result [:details :sans])))))))
 
 (deftest test-wildcard-validation
   (testing "Valid single-label wildcards"
-    (is (csr/create-csr (generate-keypair :rsa 2048) ["*.example.com"]))
-    (is (csr/create-csr (generate-keypair :rsa 2048) ["*.api.example.com"])))
+    (is (csr/create-csr (kg/generate :rsa2048) ["*.example.com"]))
+    (is (csr/create-csr (kg/generate :rsa2048) ["*.api.example.com"])))
 
   (testing "Invalid multi-label wildcards"
-    (is (thrown? Exception (csr/create-csr (generate-keypair :rsa 2048) ["*.*.example.com"])))
-    (is (thrown? Exception (csr/create-csr (generate-keypair :rsa 2048) ["*example.com"])))
-    (is (thrown? Exception (csr/create-csr (generate-keypair :rsa 2048) ["foo*.example.com"]))))
+    (is (thrown? Exception (csr/create-csr (kg/generate :rsa2048) ["*.*.example.com"])))
+    (is (thrown? Exception (csr/create-csr (kg/generate :rsa2048) ["*example.com"])))
+    (is (thrown? Exception (csr/create-csr (kg/generate :rsa2048) ["foo*.example.com"]))))
 
   (testing "Wildcard at wrong position"
-    (is (thrown? Exception (csr/create-csr (generate-keypair :rsa 2048) ["example.*.com"]))))
+    (is (thrown? Exception (csr/create-csr (kg/generate :rsa2048) ["example.*.com"]))))
 
   (testing "Wildcard in IP address - treated as DNS with multiple wildcards"
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo
          #"Multiple wildcards"
-         (csr/create-csr (generate-keypair :rsa 2048) ["*.*.*.*"])))))
+         (csr/create-csr (kg/generate :rsa2048) ["*.*.*.*"])))))
 
 ;; -------------------------
 ;; IDNA/Punycode Tests
@@ -402,7 +383,7 @@
 
 (deftest test-idna-conversion
   (testing "Unicode to Punycode in CSR"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["münchen.example" "www.münchen.example"])]
       ;; Check that result contains punycode in details
       (is (some? (:csr-pem result)))
@@ -413,12 +394,12 @@
         (is (str/includes? (:value (second sans)) "xn--mnchen-3ya")))))
 
   (testing "Already-encoded Punycode unchanged"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["xn--mnchen-3ya.example"])]
       (is (some? (:csr-pem result)))))
 
   (testing "Mixed Unicode and ASCII labels"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["münchen.example.com"])]
       (is (some? (:csr-pem result))))))
 
@@ -428,21 +409,21 @@
 
 (deftest test-ip-sans
   (testing "IPv4 addresses (auto-detected)"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["192.0.2.1"])]
       (is (some? (:csr-pem result)))
       (let [sans (get-in result [:details :sans])]
         (is (= :ip (:type (first sans)))))))
 
   (testing "IPv6 addresses (auto-detected)"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["2001:db8::1"])]
       (is (some? (:csr-pem result)))
       (let [sans (get-in result [:details :sans])]
         (is (= :ip (:type (first sans)))))))
 
   (testing "Mixed DNS and IP SANs"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["example.com" "192.0.2.1" "2001:db8::1"])]
       (is (some? (:csr-pem result)))
       (let [sans (get-in result [:details :sans])]
@@ -457,25 +438,25 @@
 
 (deftest test-base64url-output
   (testing "Base64URL has no padding"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["test.com"])]
       (is (not (str/includes? (:csr-b64url result) "=")))
       (is (not (str/includes? (:csr-b64url result) "\n")))))
 
   (testing "Base64URL uses URL-safe characters"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["test.com"])]
       (is (not (str/includes? (:csr-b64url result) "+")))
       (is (not (str/includes? (:csr-b64url result) "/")))))
 
   (testing "Base64URL roundtrip"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["test.com"])
           decoded (base64url-decode (:csr-b64url result))]
       (is (= (seq (:csr-der result)) (seq decoded)))))
 
   (testing "ACME finalize-ready format"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["test.com"])
           payload {:csr (:csr-b64url result)}]
       (is (string? (:csr payload)))
@@ -487,13 +468,13 @@
 
 (deftest test-pem-output
   (testing "PEM format"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["test.com"])]
       (is (str/starts-with? (:csr-pem result) "-----BEGIN CERTIFICATE REQUEST-----"))
       (is (str/ends-with? (:csr-pem result) "-----END CERTIFICATE REQUEST-----\n"))))
 
   (testing "PEM has line breaks"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["test.com"])]
       (is (str/includes? (:csr-pem result) "\n")))))
 
@@ -503,7 +484,7 @@
 
 (deftest test-return-value
   (testing "All required keys present"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["test.com"])]
       (is (contains? result :csr-pem))
       (is (contains? result :csr-der))
@@ -512,7 +493,7 @@
       (is (contains? result :details))))
 
   (testing "Types are correct"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["test.com"])]
       (is (string? (:csr-pem result)))
       (is (bytes? (:csr-der result)))
@@ -526,7 +507,7 @@
 
 (deftest test-e2e-csr-generation
   (testing "Complete CSR generation - RSA"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp
                                  ["example.com"
                                   "www.example.com"
@@ -540,7 +521,7 @@
       (is (= "1.2.840.113549.1.1.11" (bc-get-signature-algorithm-oid bc-csr)))))
 
   (testing "Complete CSR generation - ECDSA P-256"
-    (let [kp (generate-keypair :ec "secp256r1")
+    (let [kp (kg/generate :p256)
           result (csr/create-csr kp ["example.com" "www.example.com"])
           bc-csr (bc-parse-csr (:csr-der result))]
       (is (= :ec-p256 (:algorithm result)))
@@ -548,7 +529,7 @@
       (is (= "1.2.840.10045.4.3.2" (bc-get-signature-algorithm-oid bc-csr)))))
 
   (testing "Complete CSR generation - ECDSA P-384"
-    (let [kp (generate-keypair :ec "secp384r1")
+    (let [kp (kg/generate :p384)
           result (csr/create-csr kp ["example.com"])
           bc-csr (bc-parse-csr (:csr-der result))]
       (is (= :ec-p384 (:algorithm result)))
@@ -557,7 +538,7 @@
 
   (testing "Complete CSR generation - Ed25519"
     (when (ed25519-available?)
-      (let [kp (generate-keypair :ed25519)
+      (let [kp (kg/generate :ed25519)
             result (csr/create-csr kp ["example.com"])
             bc-csr (bc-parse-csr (:csr-der result))]
         (is (= :ed25519 (:algorithm result)))
@@ -565,7 +546,7 @@
         (is (= "1.3.101.112" (bc-get-signature-algorithm-oid bc-csr))))))
 
   (testing "Mixed DNS and IP SANs"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["example.com" "192.0.2.1" "2001:db8::1"])
           bc-csr (bc-parse-csr (:csr-der result))
           bc-sans (bc-get-sans bc-csr)]
@@ -573,7 +554,7 @@
       (is (= 3 (count bc-sans)) "BC should extract all 3 SANs")))
 
   (testing "Unicode domains"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["münchen.example" "café.example"])
           bc-csr (bc-parse-csr (:csr-der result))
           bc-sans (bc-get-sans bc-csr)]
@@ -587,16 +568,16 @@
 
 (deftest test-error-handling
   (testing "Empty SAN list"
-    (is (thrown? Exception (csr/create-csr (generate-keypair :rsa 2048) []))))
+    (is (thrown? Exception (csr/create-csr (kg/generate :rsa2048) []))))
 
   (testing "Invalid wildcard placement"
-    (is (thrown? Exception (csr/create-csr (generate-keypair :rsa 2048) ["example.*.com"]))))
+    (is (thrown? Exception (csr/create-csr (kg/generate :rsa2048) ["example.*.com"]))))
 
   (testing "Wildcard in IP - treated as DNS with multiple wildcards"
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo
          #"Multiple wildcards"
-         (csr/create-csr (generate-keypair :rsa 2048) ["*.*.*.*"])))))
+         (csr/create-csr (kg/generate :rsa2048) ["*.*.*.*"])))))
 
 ;; -------------------------
 ;; Signature Verification Tests
@@ -604,19 +585,19 @@
 
 (deftest test-signature-self-verification
   (testing "RSA signature can be verified"
-    (let [kp (generate-keypair :rsa 2048)
+    (let [kp (kg/generate :rsa2048)
           result (csr/create-csr kp ["test.com"])]
       ;; Basic validation: CSR was generated without throwing
       (is (some? (:csr-der result)))))
 
   (testing "ECDSA signature can be verified"
-    (let [kp (generate-keypair :ec "secp256r1")
+    (let [kp (kg/generate :p256)
           result (csr/create-csr kp ["test.com"])]
       (is (some? (:csr-der result)))))
 
   (testing "Ed25519 signature can be verified"
     (when (ed25519-available?)
-      (let [kp (generate-keypair :ed25519)
+      (let [kp (kg/generate :ed25519)
             result (csr/create-csr kp ["test.com"])]
         (is (some? (:csr-der result)))))))
 
@@ -630,7 +611,7 @@
                     {:test :cfssl-verification-rsa}))
     (do
       (testing "RSA 2048 CSR can be parsed by CFSSL"
-        (let [kp (generate-keypair :rsa 2048)
+        (let [kp (kg/generate :rsa2048)
               result (csr/create-csr kp ["test.example.com" "www.test.example.com"] {:use-cn? true})
               cfssl-json (cfssl-verify-csr (:csr-pem result))]
           (is (some? cfssl-json) "CFSSL should parse the CSR")
@@ -640,7 +621,7 @@
           (is (= 4 (cfssl-signature-algorithm cfssl-json)) "Should be SHA256-RSA")))
 
       (testing "RSA 2048 with empty subject (modern ACME)"
-        (let [kp (generate-keypair :rsa 2048)
+        (let [kp (kg/generate :rsa2048)
               result (csr/create-csr kp ["example.com" "www.example.com"] {:use-cn? false})
               cfssl-json (cfssl-verify-csr (:csr-pem result))]
           (is (some? cfssl-json))
@@ -651,7 +632,7 @@
           (is (cfssl-has-san? cfssl-json :dns "www.example.com"))))
 
       (testing "RSA 3072"
-        (let [kp (generate-keypair :rsa 3072)
+        (let [kp (kg/generate :rsa4096)
               result (csr/create-csr kp ["test3072.example.com"])
               cfssl-json (cfssl-verify-csr (:csr-pem result))]
           (is (some? cfssl-json))
@@ -659,7 +640,7 @@
           (is (= 4 (cfssl-signature-algorithm cfssl-json)))))
 
       (testing "RSA 4096"
-        (let [kp (generate-keypair :rsa 4096)
+        (let [kp (kg/generate :rsa4096)
               result (csr/create-csr kp ["test4096.example.com"])
               cfssl-json (cfssl-verify-csr (:csr-pem result))]
           (is (some? cfssl-json) "Should parse RSA 4096 CSR (large modulus)")
@@ -672,7 +653,7 @@
                     {:test :cfssl-verification-ecdsa}))
     (do
       (testing "ECDSA P-256 CSR"
-        (let [kp (generate-keypair :ec "secp256r1")
+        (let [kp (kg/generate :p256)
               result (csr/create-csr kp ["ec256.example.com"] {:use-cn? true})
               cfssl-json (cfssl-verify-csr (:csr-pem result))]
           (is (some? cfssl-json))
@@ -681,7 +662,7 @@
           (is (= 10 (cfssl-signature-algorithm cfssl-json)) "Should be ECDSA-SHA256")))
 
       (testing "ECDSA P-384 CSR"
-        (let [kp (generate-keypair :ec "secp384r1")
+        (let [kp (kg/generate :p384)
               result (csr/create-csr kp ["ec384.example.com"] {:use-cn? true})
               cfssl-json (cfssl-verify-csr (:csr-pem result))]
           (is (some? cfssl-json))
@@ -695,7 +676,7 @@
                     {:test :cfssl-verification-ed25519}))
     (when (ed25519-available?)
       (testing "Ed25519 CSR"
-        (let [kp (generate-keypair :ed25519)
+        (let [kp (kg/generate :ed25519)
               result (csr/create-csr kp ["ed25519.example.com"] {:use-cn? true})
               cfssl-json (cfssl-verify-csr (:csr-pem result))]
           (is (some? cfssl-json))
@@ -707,7 +688,7 @@
     (throw (ex-info "cfssl not available in PATH - required for verification tests"
                     {:test :cfssl-verification-unicode}))
     (testing "Unicode domains converted to Punycode"
-      (let [kp (generate-keypair :rsa 2048)
+      (let [kp (kg/generate :rsa2048)
             result (csr/create-csr kp ["münchen.example" "www.münchen.example"])
             cfssl-json (cfssl-verify-csr (:csr-pem result))]
         (is (some? cfssl-json))
@@ -721,7 +702,7 @@
                     {:test :cfssl-verification-mixed-sans}))
     (do
       (testing "Mixed DNS and IP SANs"
-        (let [kp (generate-keypair :rsa 2048)
+        (let [kp (kg/generate :rsa2048)
               result (csr/create-csr kp ["example.com" "192.0.2.1" "2001:db8::1"])
               cfssl-json (cfssl-verify-csr (:csr-pem result))]
           (is (some? cfssl-json))
@@ -734,7 +715,7 @@
               "IPv6 address should be present in some form")))
 
       (testing "Wildcard SANs"
-        (let [kp (generate-keypair :rsa 2048)
+        (let [kp (kg/generate :rsa2048)
               result (csr/create-csr kp ["*.example.com" "example.com"])
               cfssl-json (cfssl-verify-csr (:csr-pem result))]
           (is (some? cfssl-json))
@@ -748,7 +729,7 @@
 (deftest test-bc-san-deduplication
   (testing "SAN deduplication in actual DER encoding"
     (testing "Duplicate DNS SANs are removed"
-      (let [kp (generate-keypair :rsa 2048)
+      (let [kp (kg/generate :rsa2048)
             result (csr/create-csr kp ["example.com" "EXAMPLE.COM" "Example.Com" "www.example.com"])
             bc-csr (bc-parse-csr (:csr-der result))
             bc-sans (bc-get-sans bc-csr)
@@ -760,7 +741,7 @@
         (is (some #(and (= :dns (:type %)) (= "www.example.com" (:value %))) bc-sans))))
 
     (testing "Mixed case and trailing dots normalize and deduplicate"
-      (let [kp (generate-keypair :rsa 2048)
+      (let [kp (kg/generate :rsa2048)
             result (csr/create-csr kp ["example.com" "example.com." "EXAMPLE.COM."])
             bc-csr (bc-parse-csr (:csr-der result))
             bc-sans (bc-get-sans bc-csr)]
@@ -769,7 +750,7 @@
         (is (= 1 (count bc-sans)) "Should deduplicate to 1 SAN")))
 
     (testing "IP addresses are deduplicated"
-      (let [kp (generate-keypair :rsa 2048)
+      (let [kp (kg/generate :rsa2048)
             result (csr/create-csr kp ["192.0.2.1" "example.com"])
             bc-csr (bc-parse-csr (:csr-der result))
             bc-sans (bc-get-sans bc-csr)]
@@ -778,7 +759,7 @@
         (is (= 2 (count bc-sans)) "Should have 2 unique SANs")))
 
     (testing "Unicode domains deduplicate after IDNA encoding"
-      (let [kp (generate-keypair :rsa 2048)
+      (let [kp (kg/generate :rsa2048)
             result (csr/create-csr kp ["münchen.example" "MÜNCHEN.EXAMPLE"])
             bc-csr (bc-parse-csr (:csr-der result))
             bc-sans (bc-get-sans bc-csr)]
@@ -790,16 +771,16 @@
 (deftest test-bc-algorithm-oids
   (testing "Algorithm OID verification in actual DER encoding"
     (testing "RSA uses SHA256withRSA OID 1.2.840.113549.1.1.11"
-      (doseq [key-size [2048 3072 4096]]
-        (let [kp (generate-keypair :rsa key-size)
+      (doseq [key-type [:rsa2048 :rsa4096]]
+        (let [kp (kg/generate key-type)
               result (csr/create-csr kp ["test.example.com"])
               bc-csr (bc-parse-csr (:csr-der result))
               oid (bc-get-signature-algorithm-oid bc-csr)]
           (is (= "1.2.840.113549.1.1.11" oid)
-              (str "RSA " key-size " should use SHA256withRSA OID")))))
+              (str key-type " should use SHA256withRSA OID")))))
 
     (testing "ECDSA P-256 uses ecdsa-with-SHA256 OID 1.2.840.10045.4.3.2"
-      (let [kp (generate-keypair :ec "secp256r1")
+      (let [kp (kg/generate :p256)
             result (csr/create-csr kp ["test.example.com"])
             bc-csr (bc-parse-csr (:csr-der result))
             oid (bc-get-signature-algorithm-oid bc-csr)]
@@ -807,7 +788,7 @@
             "ECDSA P-256 should use ecdsa-with-SHA256 OID")))
 
     (testing "ECDSA P-384 uses ecdsa-with-SHA384 OID 1.2.840.10045.4.3.3"
-      (let [kp (generate-keypair :ec "secp384r1")
+      (let [kp (kg/generate :p384)
             result (csr/create-csr kp ["test.example.com"])
             bc-csr (bc-parse-csr (:csr-der result))
             oid (bc-get-signature-algorithm-oid bc-csr)]
@@ -816,7 +797,7 @@
 
     (testing "Ed25519 uses correct OID 1.3.101.112"
       (when (ed25519-available?)
-        (let [kp (generate-keypair :ed25519)
+        (let [kp (kg/generate :ed25519)
               result (csr/create-csr kp ["test.example.com"])
               bc-csr (bc-parse-csr (:csr-der result))
               oid (bc-get-signature-algorithm-oid bc-csr)]

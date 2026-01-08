@@ -1,7 +1,7 @@
 (ns ol.clave.example.http01
   "Jetty-backed helper for serving HTTP-01 challenges and HTTPS demos."
   (:require
-   [clojure.string :as str]
+   [ol.clave.solver.http :as http-solver]
    [ring.adapter.jetty :refer [run-jetty]]))
 
 (set! *warn-on-reflection* true)
@@ -11,40 +11,17 @@
   (-> ^org.eclipse.jetty.server.ServerConnector (first (.getConnectors server))
       .getLocalPort))
 
-(defn handler
-  "Return a Ring handler for HTTP-01 challenges backed by `store_`."
-  [store_]
-  (fn [{:keys [request-method uri]}]
-    (cond
-      (not= :get request-method)
-      {:status 405
-       :headers {"allow" "GET"}
-       :body "Method Not Allowed"}
-
-      (not (str/starts-with? uri "/.well-known/acme-challenge/"))
-      {:status 404
-       :body "Not Found"}
-
-      :else
-      (let [token (subs uri (count "/.well-known/acme-challenge/"))
-            content (get @store_ token)]
-        (if content
-          {:status 200
-           :headers {"content-type" "application/octet-stream"}
-           :body content}
-          {:status 404
-           :body "Not Found"})))))
-
 (defn start!
   "Start an HTTP-01 challenge server.
 
-  Returns a map with `:store`, `:server`, `:stop`, and `:port`."
+  Returns a map with `:store_`, `:server`, `:stop`, and `:port`.
+  The `:store_` atom can be passed to [[ol.clave.solver.http/solver]]."
   ([]
    (start! nil))
   ([{:keys [port host]
      :or {port 5002}}]
    (let [store_ (atom {})
-         server (run-jetty (handler store_)
+         server (run-jetty (http-solver/handler store_)
                            {:port port
                             :host host
                             :join? false})

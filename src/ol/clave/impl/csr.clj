@@ -335,45 +335,7 @@
 ;; -------------------------
 
 (defn create-csr
-  "Generate a PKCS#10 CSR from a KeyPair, like certmagic's generateCSR.
-
-  SANs (Subject Alternative Names) are automatically processed:
-  - Unicode domains are converted to Punycode using IDNA encoding.
-  - Wildcard usage is validated per RFC 6125 (DNS names only).
-  - IP address format is validated for both IPv4 and IPv6.
-  - Values are deduplicated and normalized.
-
-  Arguments:
-    key-pair  - java.security.KeyPair (RSA, EC, or EdDSA). Required.
-    sans      - Vector of strings (domain names or IP addresses). Required.
-                Examples: [\"example.com\" \"*.example.com\" \"192.0.2.1\" \"2001:db8::1\"]
-
-    opts      - Map of options. Optional, defaults to {}.
-                :use-cn? - Boolean. If true, set Subject CN to the first DNS SAN.
-                           Default false. IPs are skipped when searching for CN value.
-                           When false, Subject is empty and all identifiers are in SANs only
-                           (one of three valid options per RFC 8555 Section 7.4).
-
-  Returns:
-    {:csr-pem     String  - PEM-encoded CSR
-     :csr-der     bytes   - Raw DER bytes
-     :csr-b64url  String  - Base64URL-encoded DER (no padding) for ACME
-     :algorithm   Keyword - :rsa-2048, :rsa-3072, :rsa-4096, :ec-p256, :ec-p384, or :ed25519
-     :details     Map     - Algorithm OIDs, signature info}
-
-  Examples:
-    ;; Modern ACME: no CN in subject (use-cn? = false, the default)
-    (create-csr kp [\"example.com\" \"*.example.com\"])
-    (create-csr kp [\"example.com\" \"www.example.com\"] {})
-
-    ;; Legacy: CN = first DNS SAN (IPs are skipped)
-    (create-csr kp [\"example.com\" \"www.example.com\"] {:use-cn? true})
-
-    ;; Mixed DNS and IP SANs (auto-detected)
-    (create-csr kp [\"example.com\" \"192.0.2.1\" \"2001:db8::1\"])
-
-    ;; Unicode domains (auto-converted to Punycode)
-    (create-csr kp [\"münchen.example\" \"www.münchen.example\"])"
+  "see docstring in [[ol.clave/create-csr]]"
   [key-pair sans & [opts]]
   (when (empty? sans)
     (throw (errors/ex errors/invalid-san

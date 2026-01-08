@@ -202,6 +202,26 @@
   [token]
   (challtestsrv-post "/del-http01" {:token token}))
 
+(defn challtestsrv-set-txt
+  "Set a DNS TXT record for DNS-01 challenges."
+  [host value]
+  (challtestsrv-post "/set-txt" {:host host :value value}))
+
+(defn challtestsrv-clear-txt
+  "Clear a DNS TXT record."
+  [host]
+  (challtestsrv-post "/clear-txt" {:host host}))
+
+(defn challtestsrv-add-tlsalpn01
+  "Add a TLS-ALPN-01 challenge certificate to the test server."
+  [host key-authorization]
+  (challtestsrv-post "/add-tlsalpn01" {:host host :content key-authorization}))
+
+(defn challtestsrv-del-tlsalpn01
+  "Remove a TLS-ALPN-01 challenge certificate from the test server."
+  [host]
+  (challtestsrv-post "/del-tlsalpn01" {:host host}))
+
 (defn wait-for-pebble
   "Wait until Pebble responds to the directory endpoint.
 

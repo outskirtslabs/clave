@@ -2,19 +2,20 @@
   (:require
    [clojure.string :as str]
    [ol.clave.impl.crypto :as crypto]
+   [ol.clave.impl.jwk :as jwk]
    [ol.clave.impl.util :as util]
-   [ol.clave.protocols :as proto]
    [ol.clave.specs :as acme])
   (:import
-   [java.nio.charset StandardCharsets]))
+   [java.nio.charset StandardCharsets]
+   [java.security KeyPair]))
 
 (set! *warn-on-reflection* true)
 
 (defn key-authorization
-  "Return key authorization for `token` and account key pair."
-  [token account-key]
-  (let [jwk (crypto/public-jwk (proto/public account-key))
-        thumbprint (crypto/jwk-thumbprint jwk)]
+  "Return key authorization for `token` and account keypair."
+  [token ^KeyPair account-keypair]
+  (let [public-key (.getPublic account-keypair)
+        thumbprint (jwk/jwk-thumbprint public-key)]
     (str token "." thumbprint)))
 
 (defn dns01-key-authorization

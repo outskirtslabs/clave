@@ -3,12 +3,13 @@
    [clojure.test :refer [deftest is testing]]
    [ol.clave.errors :as errors]
    [ol.clave.impl.crypto :as crypto]
-   [ol.clave.impl.test-util]
-   [ol.clave.protocols :as proto])
+   [ol.clave.impl.jwk :as jwk]
+   [ol.clave.impl.keygen :as kg]
+   [ol.clave.impl.test-util])
   (:import
    [java.nio.charset StandardCharsets]
-   [java.security.interfaces ECPrivateKey ECPublicKey]
-   [java.util Base64]))
+   [java.security KeyPair]
+   [java.security.interfaces ECPrivateKey ECPublicKey]))
 
 (defn- bytes->hex
   ^String [^bytes bs]
@@ -16,17 +17,6 @@
 
 (def ^:private sec1-es256-key
   "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIBp4CjYxzVKbB944piYubs2rQar3TrXRfka+LABHFJVroAoGCCqGSM49\nAwEHoUQDQgAEBxfCqhrVAzl4C4XG/4it6c9gjXh3Q9TQIfePNmBs5Gi/QF24OKzm\nR/g6PuhikzqvAmN9hzoxW9cOInMqUR4K0A==\n-----END EC PRIVATE KEY-----")
-
-(def ^:private sample-es256-jwk
-  {:kty "EC"
-   :crv "P-256"
-   :x "I9Vln4rYZY8Gv9i0Itg5OjWw0U2pDE3mteA94ppIqhQ"
-   :y "Jm7d6qVwG2rA8Oco8cG3A5Emu5vZH0i8A2I8A1ryu1s"})
-
-(def ^:private sample-ed25519-jwk
-  {:kty "OKP"
-   :crv "Ed25519"
-   :x "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"})
 
 (deftest base64url-helpers
   (testing "base64url encode/decode roundtrip"
@@ -52,35 +42,30 @@
 
 (deftest generate-es256-roundtrip
   (testing "ES256 keypair can roundtrip through PEM"
-    (let [keypair-algo (crypto/generate-keypair :ol.clave.algo/es256)
-          private (proto/private keypair-algo)
-          public (proto/public keypair-algo)
-          algo (proto/algo keypair-algo)
+    (let [^KeyPair keypair (kg/generate :p256)
+          private (.getPrivate keypair)
+          public (.getPublic keypair)
           private-pem (crypto/encode-private-key-pem private)
           public-pem (crypto/encode-public-key-pem public)
           decoded-private (crypto/decode-private-key-pem private-pem)
           decoded-public (crypto/decode-public-key-pem public-pem)]
-      (is (= :ol.clave.algo/es256 algo))
       (is (instance? ECPrivateKey private))
       (is (instance? ECPublicKey public))
-      (is (= :ol.clave.algo/es256 (crypto/key-algorithm decoded-private)))
-      (is (= :ol.clave.algo/es256 (crypto/key-algorithm decoded-public)))
-      (is (= {:algo :ol.clave.algo/es256}
-             (select-keys (crypto/verify-keypair decoded-private decoded-public) [:algo]))))))
+      (is (= :ol.clave.algo/es256 (jwk/key-algorithm decoded-private)))
+      (is (= :ol.clave.algo/es256 (jwk/key-algorithm decoded-public)))
+      (is (map? (crypto/verify-keypair decoded-private decoded-public))))))
 
 (deftest generate-ed25519-roundtrip
   (testing "Ed25519 keypair can roundtrip through PEM"
-    (let [keypair-algo (crypto/generate-keypair :ol.clave.algo/ed25519)
-          private (proto/private keypair-algo)
-          public (proto/public keypair-algo)
-          algo (proto/algo keypair-algo)
+    (let [^KeyPair keypair (kg/generate :ed25519)
+          private (.getPrivate keypair)
+          public (.getPublic keypair)
           private-pem (crypto/encode-private-key-pem private)
           public-pem (crypto/encode-public-key-pem public)]
-      (is (= :ol.clave.algo/ed25519 algo))
-      (is (= :ol.clave.algo/ed25519 (crypto/key-algorithm (crypto/decode-private-key-pem private-pem))))
-      (is (= :ol.clave.algo/ed25519 (crypto/key-algorithm (crypto/decode-public-key-pem public-pem))))
-      (is (= {:algo :ol.clave.algo/ed25519}
-             (select-keys (crypto/verify-keypair private public) [:algo]))))))
+      (is (= :ol.clave.algo/ed25519 (jwk/key-algorithm private)))
+      (is (= :ol.clave.algo/ed25519 (jwk/key-algorithm (crypto/decode-private-key-pem private-pem))))
+      (is (= :ol.clave.algo/ed25519 (jwk/key-algorithm (crypto/decode-public-key-pem public-pem))))
+      (is (map? (crypto/verify-keypair private public))))))
 
 (deftest decode-sec1-rejected
   (testing "SEC1 EC private keys are rejected"
@@ -93,29 +78,19 @@
       (is (thrown-with-error-type? ::errors/unsupported-key
                                    (crypto/decode-private-key-pem rsa))))))
 
-(deftest public-jwk-structure
-  (testing "public-jwk returns expected fields"
-    (let [keypair-algo (crypto/generate-keypair :ol.clave.algo/es256)
-          public (proto/public keypair-algo)
-          jwk (crypto/public-jwk public)
-          decoder (Base64/getUrlDecoder)]
-      (is (= "EC" (:kty jwk)))
-      (is (= "P-256" (:crv jwk)))
-      (is (= 32 (alength (.decode decoder (:x jwk)))))
-      (is (= 32 (alength (.decode decoder (:y jwk)))))))
-  (testing "Ed25519 public JWK encoding"
-    (let [keypair-algo (crypto/generate-keypair :ol.clave.algo/ed25519)
-          public (proto/public keypair-algo)
-          jwk (crypto/public-jwk public)
-          decoder (Base64/getUrlDecoder)]
-      (is (= "OKP" (:kty jwk)))
-      (is (= "Ed25519" (:crv jwk)))
-      (is (= 32 (alength (.decode decoder (:x jwk))))))))
-
-(deftest jwk-thumbprint-values
-  (testing "thumbprint for ES256 sample matches expected"
-    (is (= "JwXqtg9BKSKZMyf746alTaRApouSc2g4ystyAqDd7lo"
-           (crypto/jwk-thumbprint sample-es256-jwk))))
-  (testing "thumbprint for Ed25519 sample matches expected"
-    (is (= "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k"
-           (crypto/jwk-thumbprint sample-ed25519-jwk)))))
+(deftest json-escape-string-test
+  (testing "basic escaping"
+    (is (= "hello" (crypto/json-escape-string "hello")))
+    (is (= "hello\\nworld" (crypto/json-escape-string "hello\nworld")))
+    (is (= "say \\\"hi\\\"" (crypto/json-escape-string "say \"hi\"")))
+    (is (= "back\\\\slash" (crypto/json-escape-string "back\\slash"))))
+  (testing "control characters"
+    (is (= "\\u0000" (crypto/json-escape-string "\u0000")))
+    (is (= "\\u001f" (crypto/json-escape-string "\u001f"))))
+  (testing "unicode preserved"
+    (is (= "emoji: 🎉" (crypto/json-escape-string "emoji: 🎉"))))
+  (testing "rejects non-strings"
+    (is (thrown-with-error-type? ::errors/json-escape
+                                 (crypto/json-escape-string 123)))
+    (is (thrown-with-error-type? ::errors/json-escape
+                                 (crypto/json-escape-string nil)))))

@@ -7,34 +7,36 @@
    [ol.clave.commands :as commands]
    [ol.clave.errors :as errors]
    [ol.clave.impl.crypto :as crypto]
+   [ol.clave.impl.jwk :as jwk]
+   [ol.clave.impl.keygen :as kg]
    [ol.clave.impl.test-util]
    [ol.clave.lease :as lease]
-   [ol.clave.protocols :as proto]
-   [ol.clave.specs :as acme]))
+   [ol.clave.specs :as acme])
+  (:import
+   [java.security KeyPair]))
 
 (def ^:private sample-account
   {::acme/contact ["mailto:admin@example.com" "mailto:ops@example.com"]
    ::acme/termsOfServiceAgreed true})
 
 (defn- roundtrip [algo]
-  (let [kp (crypto/generate-keypair algo)
+  (let [^KeyPair kp (kg/generate algo)
         serialized (account/serialize sample-account kp)
-        [account keypair] (account/deserialize serialized)]
+        [account ^KeyPair keypair] (account/deserialize serialized)]
     (is (= (account/validate-account sample-account) account))
-    (is (= algo (proto/algo keypair)))
-    (is (= algo (crypto/key-algorithm (proto/private keypair))))
-    (is (= algo (crypto/key-algorithm (proto/public keypair))))
-    (is (= algo (:algo (crypto/verify-keypair (proto/private keypair) (proto/public keypair)))))
+    (is (instance? KeyPair keypair))
+    (is (= (jwk/key-algorithm (.getPrivate kp))
+           (jwk/key-algorithm (.getPrivate keypair))))
     (is (map? (edn/read-string serialized)))
     [account keypair]))
 
 (deftest serialize-deserialize-es256
   (testing "ES256 roundtrip retains account and keys"
-    (roundtrip :ol.clave.algo/es256)))
+    (roundtrip :p256)))
 
 (deftest serialize-deserialize-ed25519
   (testing "Ed25519 roundtrip retains account and keys"
-    (roundtrip :ol.clave.algo/ed25519)))
+    (roundtrip :ed25519)))
 
 (deftest deserialize-rejects-invalid-edn
   (testing "non-EDN input"
@@ -46,11 +48,11 @@
 
 (deftest deserialize-detects-key-mismatch
   (testing "mismatched keypair triggers key-mismatch"
-    (let [kp (crypto/generate-keypair :ol.clave.algo/es256)
+    (let [^KeyPair kp (kg/generate :p256)
           serialized (account/serialize sample-account kp)
           parsed (edn/read-string serialized)
-          tampered-keypair (crypto/generate-keypair :ol.clave.algo/es256)
-          tampered-public (proto/public tampered-keypair)
+          ^KeyPair tampered-keypair (kg/generate :p256)
+          tampered-public (.getPublic tampered-keypair)
           tampered-edn (with-out-str
                          (pprint/pprint
                           (assoc parsed ::acme/public-key-pem (crypto/encode-public-key-pem tampered-public))))]
@@ -107,31 +109,31 @@
                           (account/create "mailto:admin@example.com" :not-a-boolean)))))
 
 (deftest generate-keypair-produces-keypair
-  (testing "keypair generation returns private and public keys"
-    (let [keypair (account/generate-keypair)]
-      (is (instance? java.security.PrivateKey (proto/private keypair)))
-      (is (instance? java.security.PublicKey (proto/public keypair)))
-      (is (#{:ol.clave.algo/es256 :ol.clave.algo/ed25519} (proto/algo keypair))))))
+  (testing "keypair generation returns java.security.KeyPair"
+    (let [^KeyPair keypair (account/generate-keypair)]
+      (is (instance? KeyPair keypair))
+      (is (instance? java.security.PrivateKey (.getPrivate keypair)))
+      (is (instance? java.security.PublicKey (.getPublic keypair))))))
 
 (deftest deserialize-test-fixture
   (testing "deserialize test account fixture"
-    (let [[expected-account expected-keypair] (account/deserialize (slurp "test/fixtures/test-account.edn"))]
+    (let [[expected-account ^KeyPair expected-keypair] (account/deserialize (slurp "test/fixtures/test-account.edn"))]
       (is (= {::acme/contact ["mailto:test@example.com"]
               ::acme/termsOfServiceAgreed true}
              expected-account))
-      (is (= :ol.clave.algo/es256 (proto/algo expected-keypair)))
-      (is (instance? java.security.PrivateKey (proto/private expected-keypair)))
-      (is (instance? java.security.PublicKey (proto/public expected-keypair))))))
+      (is (instance? KeyPair expected-keypair))
+      (is (instance? java.security.PrivateKey (.getPrivate expected-keypair)))
+      (is (instance? java.security.PublicKey (.getPublic expected-keypair))))))
 
 (deftest serialize-preserves-account-kid
   (testing "account-kid is included in serialized artifact when present"
     (let [account-with-kid (assoc sample-account ::acme/account-kid "https://acme.example.com/acct/123")
-          kp (crypto/generate-keypair :ol.clave.algo/es256)
+          ^KeyPair kp (kg/generate :p256)
           serialized (account/serialize account-with-kid kp)
           [deserialized-account _] (account/deserialize serialized)]
       (is (= "https://acme.example.com/acct/123" (::acme/account-kid deserialized-account)))))
   (testing "account-kid is omitted when not present"
-    (let [kp (crypto/generate-keypair :ol.clave.algo/es256)
+    (let [^KeyPair kp (kg/generate :p256)
           serialized (account/serialize sample-account kp)
           [deserialized-account _] (account/deserialize serialized)]
       (is (nil? (::acme/account-kid deserialized-account))))))

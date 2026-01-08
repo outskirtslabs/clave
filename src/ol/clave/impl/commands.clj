@@ -11,15 +11,16 @@
    [ol.clave.impl.directory-cache :as dc]
    [ol.clave.impl.http :as http]
    [ol.clave.impl.json :as json]
+   [ol.clave.impl.jwk :as jwk]
    [ol.clave.impl.jws :as jws]
    [ol.clave.impl.order :as order]
    [ol.clave.impl.revocation :as revocation]
    [ol.clave.impl.tos :as tos]
    [ol.clave.impl.util :as util]
    [ol.clave.lease :as lease]
-   [ol.clave.protocols :as proto]
    [ol.clave.specs :as acme])
   (:import
+   [java.security KeyPair]
    [java.security.cert X509Certificate]))
 
 (set! *warn-on-reflection* true)
@@ -218,16 +219,16 @@
 
 (defn- ensure-keypair
   [value]
-  (if (and (some? value) (satisfies? proto/AsymmetricKeyPair value))
+  (if (instance? KeyPair value)
     value
     (throw (errors/ex errors/invalid-account-key
-                      "New account key must satisfy AsymmetricKeyPair"
+                      "New account key must be a java.security.KeyPair"
                       {:provided (some-> value class str)}))))
 
 (defn- key-change-inner-jws
-  [account-kid old-key new-key endpoint]
+  [account-kid ^KeyPair old-key ^KeyPair new-key endpoint]
   (let [payload-json (json/write-str {:account account-kid
-                                      :oldKey (crypto/public-jwk (proto/public old-key))})
+                                      :oldKey (jwk/public-jwk (.getPublic old-key))})
         inner-json (jws/jws-encode-json payload-json new-key nil nil endpoint)]
     (json/read-str inner-json)))
 

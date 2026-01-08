@@ -4,19 +4,19 @@
    [ol.clave.account :as account]
    [ol.clave.challenge :as challenge]
    [ol.clave.impl.crypto :as crypto]
-   [ol.clave.protocols :as proto]
+   [ol.clave.impl.jwk :as jwk]
    [ol.clave.specs :as specs])
   (:import
    [java.nio.charset StandardCharsets]
+   [java.security KeyPair]
    [java.security.cert X509Certificate]
    [java.util Arrays]))
 
 (deftest key-authorization-computes-thumbprint
   (testing "key-authorization combines token and JWK thumbprint"
-    (let [[_account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
+    (let [[_account ^KeyPair account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           token "test-token"
-          jwk (crypto/public-jwk (proto/public account-key))
-          thumbprint (crypto/jwk-thumbprint jwk)
+          thumbprint (jwk/jwk-thumbprint (.getPublic account-key))
           expected (str token "." thumbprint)]
       (is (= expected (challenge/key-authorization {::specs/token token} account-key))))))
 

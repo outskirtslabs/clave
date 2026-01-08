@@ -6,7 +6,7 @@
    [clojure.string :as str]
    [ol.clave.errors :as errors]
    [ol.clave.impl.crypto :as crypto]
-   [ol.clave.protocols :as proto]
+   [ol.clave.impl.keygen :as keygen]
    [ol.clave.specs :as acme]))
 
 (set! *warn-on-reflection* true)
@@ -88,18 +88,23 @@
   value)
 
 (defn serialize
-  [account keypair]
+  "Serialize an account and keypair to an EDN string."
+  [account ^java.security.KeyPair keypair]
   (let [normalized (validate-account account)
-        private-key (proto/private keypair)
-        public-key (proto/public keypair)
+        private-key (.getPrivate keypair)
+        public-key (.getPublic keypair)
         _ (crypto/verify-keypair private-key public-key)
         registration (select-keys normalized [::acme/contact ::acme/termsOfServiceAgreed ::acme/account-kid])
-        keypair-data (proto/serialize keypair)
-        artifact (merge keypair-data {::acme/registration registration})]
+        artifact {::acme/private-key-pem (crypto/encode-private-key-pem private-key)
+                  ::acme/public-key-pem (crypto/encode-public-key-pem public-key)
+                  ::acme/registration registration}]
     (with-out-str
       (pprint/pprint artifact))))
 
 (defn deserialize
+  "Deserialize an account EDN string to [account keypair].
+
+  Returns a vector of [account keypair] where keypair is a `java.security.KeyPair`."
   [account-edn]
   (let [artifact (try
                    (-> account-edn edn/read-string ensure-deserialized-map)
@@ -118,10 +123,16 @@
                         {:explain-data (s/explain-data ::acme/account-artifact artifact)})))))
 
 (defn generate-keypair
-  ([] (generate-keypair {:algo :ol.clave.algo/es256}))
-  ([{:keys [algo]
-     :or {algo :ol.clave.algo/es256}}]
-   (crypto/generate-keypair algo)))
+  "Generate a keypair for account key.
+
+  Options:
+  | key    | description                             | default |
+  |--------|-----------------------------------------|---------|
+  | :algo  | key algorithm (:p256, :p384, :ed25519)  | :p256   |"
+  (^java.security.KeyPair [] (generate-keypair {}))
+  (^java.security.KeyPair [{:keys [algo]
+                            :or {algo :p256}}]
+   (keygen/generate algo)))
 
 (defn create
   ([contact tos-agreed]

@@ -21,12 +21,15 @@
 
 (defn serialize
   "Serialize an account map and keypair into a pretty-printed EDN artifact.
-   keypair: proto/AsymmetricKeyPair (e.g., KeyPairAlgo record)."
+
+  `keypair` is a `java.security.KeyPair`."
   [account keypair]
   (impl/serialize account keypair))
 
 (defn deserialize
-  "Deserialize an EDN artifact into [account keypair] where keypair is a crypto/AsymmetricKeyPair."
+  "Deserialize an EDN artifact into [account keypair].
+
+  Returns a vector of [account keypair] where keypair is a `java.security.KeyPair`."
   [account-edn]
   (impl/deserialize account-edn))
 
@@ -34,11 +37,11 @@
   "Generate a new ACME account keypair.
 
   Options map:
-  * `:algo` – choose `:ol.clave.algo/es256` (default) or `:ol.clave.algo/ed25519`.
-
-  Returns a crypto/AsymmetricKeyPair."
-  ([] (impl/generate-keypair))
-  ([opts]
+  | key    | description                             | default |
+  |--------|-----------------------------------------|---------|
+  | :algo  | key algorithm (:p256, :p384, :ed25519)  | :p256   |"
+  (^java.security.KeyPair [] (impl/generate-keypair))
+  (^java.security.KeyPair [opts]
    (impl/generate-keypair opts)))
 
 (defn create

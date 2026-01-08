@@ -4,11 +4,10 @@
    [ol.clave.account :as account]
    [ol.clave.commands :as commands]
    [ol.clave.errors :as errors]
-   [ol.clave.impl.crypto :as crypto]
    [ol.clave.impl.csr :as csr]
+   [ol.clave.impl.keygen :as kg]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.lease :as lease]
-   [ol.clave.protocols :as proto]
    [ol.clave.specs :as specs]))
 
 (use-fixtures :once pebble/pebble-fixture)
@@ -55,8 +54,8 @@
           identifiers [{:type "dns" :value "example.com"}]
           order-request {::specs/identifiers identifiers}
           [session order] (commands/new-order bg-lease session order-request)
-          cert-key (crypto/generate-keypair)
-          csr-data (csr/create-csr (proto/keypair cert-key) ["example.com"])]
+          cert-key (kg/generate :p256)
+          csr-data (csr/create-csr cert-key ["example.com"])]
       (is (thrown-with-error-type? errors/order-not-ready
                                    (commands/finalize-order bg-lease session order csr-data))))))
 
@@ -67,8 +66,8 @@
           identifiers [{:type "dns" :value "example.com"}]
           order-request {::specs/identifiers identifiers}
           [session order] (commands/new-order bg-lease session order-request)
-          cert-key (crypto/generate-keypair)
-          csr-data (csr/create-csr (proto/keypair cert-key) ["example.com"])
+          cert-key (kg/generate :p256)
+          csr-data (csr/create-csr cert-key ["example.com"])
           ;; Manually mark the order as ready to bypass client-side pre-check
           ;; The server will still reject it because authorizations aren't complete
           fake-ready-order (assoc order ::specs/status "ready")

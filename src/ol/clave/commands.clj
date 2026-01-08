@@ -44,12 +44,12 @@
   - `opts` — optional map configuring the session. Recognised keys are
     summarised below.
 
-  | Key | Type | Description |
-  | --- | --- | --- |
-  | `:http-client` | map | Passed to `ol.clave.impl.http/http-client` to build the transport layer. |
-  | `:account-key` | `proto/AsymmetricKeyPair` | Injects an existing key pair into the session. |
-  | `:account-kid` | string | Stores a known account URL for authenticated calls. |
-  | `:scope` | scope token | Overrides the default cancellation/timeout scope. |
+  | Key            | Type                    | Description                                                              |
+  |----------------|-------------------------|--------------------------------------------------------------------------|
+  | `:http-client` | map                     | Passed to `ol.clave.impl.http/http-client` to build the transport layer. |
+  | `:account-key` | `java.security.KeyPair` | Injects an existing key pair into the session.                           |
+  | `:account-kid` | string                  | Stores a known account URL for authenticated calls.                      |
+  | `:scope`       | scope token             | Overrides the default cancellation/timeout scope.                        |
 
   Returns `[session nil]`, where `session` is a qualified map of
   `::ol.clave.specs/*` keys suitable for subsequent commands.
@@ -158,8 +158,7 @@
 
   Parameters:
   - `eab-opts` — map with `:kid` and `:mac-key`, or `nil` to skip the binding.
-  - `account-key` — existing account key pair (implements
-    `ol.clave.protocols/AsymmetricKeyPair`).
+  - `account-key` — existing account key pair (`java.security.KeyPair`).
   - `endpoint` — directory key identifying the `newAccount` URL.
 
   Returns the binding map described by RFC 8555 §7.3.4 or `nil` when
@@ -304,7 +303,7 @@
   - `lease` - A lease for cooperative cancellation.
   - `session` — authenticated session containing the current account key and KID.
   - `account` — account data used to verify the new key.
-  - `new-account-key` — implementation of `proto/AsymmetricKeyPair` to install.
+  - `new-account-key` — `java.security.KeyPair` to install.
 
   Returns `[updated-session verified-account]` with the session updated to store
   `new-account-key`. Verification failures raise
@@ -522,7 +521,7 @@
   | key            | description                                              |
   |----------------|----------------------------------------------------------|
   | `:reason`      | RFC 5280 reason code integer (0-6, 8-10).                |
-  | `:signing-key` | `AsymmetricKeyPair` for certificate-key authorization.   |
+  | `:signing-key` | `java.security.KeyPair` for certificate-key authorization. |
 
   When `:signing-key` is provided, uses certificate-key authorization with
   JWK-embedded JWS. Otherwise uses account-key authorization requiring an

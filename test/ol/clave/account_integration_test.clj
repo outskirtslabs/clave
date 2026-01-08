@@ -8,8 +8,9 @@
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util]
    [ol.clave.lease :as lease]
-   [ol.clave.protocols :as proto]
-   [ol.clave.specs :as specs]))
+   [ol.clave.specs :as specs])
+  (:import
+   [java.security KeyPair]))
 
 (use-fixtures :each pebble/pebble-fixture)
 
@@ -114,15 +115,15 @@
               (in rolled-session))
       (is (= (::specs/account-kid account)
              (::specs/account-kid verified-account)))
-      (is (not= (proto/public original-key)
-                (proto/public new-key)))
+      (is (not= (.getPublic ^KeyPair original-key)
+                (.getPublic ^KeyPair new-key)))
       (testing "subsequent POST-as-GET works with new key"
         (let [[_ refreshed-account] (commands/get-account bg-lease rolled-session verified-account)]
           (is (= (::specs/account-kid verified-account)
                  (::specs/account-kid refreshed-account))))))))
 
 (deftest rollover-account-key-rejects-invalid-pair
-  (testing "rollover-account-key requires a valid AsymmetricKeyPair"
+  (testing "rollover-account-key requires a valid KeyPair"
     (let [bg-lease (lease/background)
           [account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           [session _directory] (commands/create-session bg-lease (pebble/uri)

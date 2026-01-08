@@ -1,0 +1,70 @@
+NOTICE
+
+This file catalogs third-party code used in this repository.
+
+--------------------------------------------------------------------------------
+
+outskirtslabs/client-ip
+
+Source: https://github.com/outskirtslabs/client-ip/blob/f6162955e30fdee7814479638949574fd6b3182e/src/ol/client_ip/parse_ip.clj.
+Upstream file: src/ol/client_ip/parse_ip.clj.
+Derived files:
+  - src/ol/clave/impl/parse_ip.clj
+SPDX-License-Identifier: MIT
+Notes: The derived file is copied from the upstream file and may be modified.
+
+Copyright © 2025 Casey Link.
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following
+conditions:
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+
+--------------------------------------------------------------------------------
+
+babashka/http-client
+
+Source: https://github.com/babashka/http-client/releases/tag/v0.4.23.
+Upstream file: extra/babshka.http-client/src/babashka/http_client/internal.clj.
+Derived files:
+  - src/ol/clave/impl/http/impl.clj
+  - src/ol/clave/impl/http/interceptors.clj
+SPDX-License-Identifier: MIT
+Notes: The derived file is a slimmed and modified version of the upstream file.
+
+Copyright © 2022 - 2023 Michiel Borkent.
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following
+conditions:
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+
+--------------------------------------------------------------------------------

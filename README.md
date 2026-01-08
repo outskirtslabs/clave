@@ -25,12 +25,11 @@ See [here][sec] for security advisories or to report a security vulnerability.
 
 ## License: European Union Public License 1.2
 
-Copyright © 2025 Casey Link <unnamedrambler@gmail.com>
+Copyright © 2025-2026 Casey Link
 
 Distributed under the [EUPL-1.2](https://spdx.org/licenses/EUPL-1.2.html).
 
-
-Some files included in this project are from third-party sources and retain their original licenses as indicated in per-file license headers.
+Some files included in this project are from third-party sources and retain their original licenses as indicated in [NOTICE](./NOTICE).
 
 Special thanks to [Michiel Borkent (@borkdude)][borkdude] for the use of [babashka/http-client][b-http-client] and [babashka/json][b-json]
 

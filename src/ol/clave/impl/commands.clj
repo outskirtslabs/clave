@@ -409,7 +409,7 @@
                     ^java.time.Duration retry (http/retry-after resp fallback)
                     delay-ms (min remaining (.toMillis retry))]
                 (when (pos? delay-ms)
-                  (http/lease-sleep lease delay-ms))
+                  (lease/sleep lease delay-ms))
                 (recur session attempts))))))
       (catch clojure.lang.ExceptionInfo e
         (if (= :lease/deadline-exceeded (:type (ex-data e)))
@@ -540,7 +540,7 @@
                     ^java.time.Duration retry (http/retry-after resp fallback)
                     delay-ms (min remaining (.toMillis retry))]
                 (when (pos? delay-ms)
-                  (http/lease-sleep lease delay-ms))
+                  (lease/sleep lease delay-ms))
                 (recur session attempts))))))
       (catch clojure.lang.ExceptionInfo e
         (if (= :lease/deadline-exceeded (:type (ex-data e)))

@@ -497,3 +497,16 @@
       (if (pos? nanos-left)
         (Duration/ofNanos nanos-left)
         Duration/ZERO))))
+
+(defn sleep
+  "Cooperatively wait for `ms` milliseconds or until `lease` ends.
+
+  Returns `:slept` if the full duration elapsed, or `:lease-ended` if the
+  lease was cancelled or timed out during the wait."
+  [lease ms]
+  (if (pos? ms)
+    (let [result (deref (done-signal lease) ms :still-active)]
+      (if (= result :still-active)
+        :slept
+        :lease-ended))
+    :slept))

@@ -7,7 +7,6 @@
    [ol.clave.challenge :as challenge]
    [ol.clave.commands :as commands]
    [ol.clave.errors :as errors]
-   [ol.clave.impl.http :as http]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]
    [ol.clave.lease :as lease]
@@ -62,7 +61,7 @@
 (deftest poll-authorization-honors-retry-after
   ;; This test forces Pebble to keep an authz in "processing" by hanging the VA HTTP-01 request.
   ;; We assert the VA actually connected to the hanging server to confirm the challenge is in processing.
-  ;; We wrap http/lease-sleep with a spy to record every polling sleep while using a 50ms interval.
+  ;; We wrap lease/sleep with a spy to record every polling sleep while using a 50ms interval.
   ;; We then assert the max sleep is >= ~1s (well above 50ms) to prove Retry-After is honored.
   ;; That proves the polling delay comes from Pebble's Retry-After header in a real E2E flow.
   (testing "poll-authorization uses Retry-After delay from Pebble"
@@ -82,13 +81,13 @@
               ;; Using 1000ms threshold avoids flakiness from timer imprecision.
               min-expected-sleep-ms 1000
               accepted (:accepted hang-server)
-              original-sleep http/lease-sleep
+              original-sleep lease/sleep
               sleep-spy (fn [lease ms]
                           (swap! sleeps conj ms)
                           (original-sleep lease ms))
               [session _challenge] (commands/respond-challenge bg-lease session http-challenge)
               session (commands/set-polling session {:timeout-ms 6000 :interval-ms 50})
-              ex (with-redefs [http/lease-sleep sleep-spy]
+              ex (with-redefs [lease/sleep sleep-spy]
                    (try
                      (commands/poll-authorization bg-lease session authz-url)
                      nil

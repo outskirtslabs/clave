@@ -99,27 +99,6 @@
          vec)))
 
 ;; -----------------------------------------------------------------------------
-;; Lease helpers
-;; -----------------------------------------------------------------------------
-
-(defn lease-sleep
-  "Cooperatively wait for `ms` milliseconds or until `lease` ends.
-
-  Returns `:slept` if the full duration elapsed, or `:lease-ended` if the
-  lease was cancelled or timed out during the wait.
-
-  This function is designed for testability - tests can `with-redefs` it to
-  spy on sleep durations (e.g., verifying Retry-After delays).
-  Note: No type hint on ms to allow with-redefs to work."
-  [lease ms]
-  (if (pos? ms)
-    (let [result (deref (lease/done-signal lease) ms :still-active)]
-      (if (= result :still-active)
-        :slept
-        :lease-ended))
-    :slept))
-
-;; -----------------------------------------------------------------------------
 ;; Retry-After parsing (seconds or HTTP-date)
 ;; -----------------------------------------------------------------------------
 
@@ -324,7 +303,7 @@
          traffic-calming-ms default-traffic-calming-ms}}]
   (loop [i 0]
     (when (> i 0)
-      (lease-sleep lease traffic-calming-ms))
+      (lease/sleep lease traffic-calming-ms))
     (lease/active?! lease)
     (let [as (:as req)
           {:keys [status headers body-bytes retry? err nonce] :as res}
@@ -439,7 +418,7 @@
          attempt 1
          fivexx 0]
     (when (> attempt 1)
-      (lease-sleep lease default-traffic-calming-ms))
+      (lease/sleep lease default-traffic-calming-ms))
     (lease/active?! lease)
     (let [[session nonce] (get-nonce lease session)
           payload-bytes (jws-encode-json private-key kid nonce endpoint payload)

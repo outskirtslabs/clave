@@ -3,7 +3,7 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [ol.clave.impl.test-util]
-   [ol.clave.impl.tos :as tos]
+   [ol.clave.acme.impl.tos :as tos]
    [ol.clave.specs :as specs]))
 
 (def ^:private tos-v1 "https://example.com/tos-v1")

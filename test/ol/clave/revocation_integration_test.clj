@@ -2,7 +2,7 @@
   "Integration tests for certificate revocation against Pebble."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.commands :as commands]
+   [ol.clave.acme.commands :as commands]
    [ol.clave.errors :as errors]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]

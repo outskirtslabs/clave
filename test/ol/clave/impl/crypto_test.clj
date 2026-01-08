@@ -2,9 +2,9 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [ol.clave.errors :as errors]
-   [ol.clave.impl.crypto :as crypto]
-   [ol.clave.impl.jwk :as jwk]
-   [ol.clave.impl.keygen :as kg]
+   [ol.clave.crypto.impl.core :as crypto]
+   [ol.clave.crypto.impl.jwk :as jwk]
+   [ol.clave.certificate.impl.keygen :as kg]
    [ol.clave.impl.test-util])
   (:import
    [java.nio.charset StandardCharsets]

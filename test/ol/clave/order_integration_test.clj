@@ -1,11 +1,11 @@
 (ns ol.clave.order-integration-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.account :as account]
-   [ol.clave.commands :as commands]
+   [ol.clave.acme.account :as account]
+   [ol.clave.acme.commands :as commands]
    [ol.clave.errors :as errors]
-   [ol.clave.impl.csr :as csr]
-   [ol.clave.impl.keygen :as kg]
+   [ol.clave.certificate.impl.csr :as csr]
+   [ol.clave.certificate.impl.keygen :as kg]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.lease :as lease]
    [ol.clave.specs :as specs]))

@@ -1,8 +1,8 @@
 (ns ol.clave.impl.pebble-harness
   (:require
    [babashka.process :as p]
-   [ol.clave.impl.http.impl :as http]
-   [ol.clave.impl.json :as json])
+   [ol.clave.acme.impl.http.impl :as http]
+   [ol.clave.crypto.impl.json :as json])
   (:import
    (java.net ServerSocket)))
 

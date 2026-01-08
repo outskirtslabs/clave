@@ -1,9 +1,9 @@
 (ns ol.clave.impl.http-integration-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.impl.commands :as commands]
-   [ol.clave.impl.http :as http]
-   [ol.clave.impl.http.impl :as http-impl]
+   [ol.clave.acme.impl.commands :as commands]
+   [ol.clave.acme.impl.http :as http]
+   [ol.clave.acme.impl.http.impl :as http-impl]
    [ol.clave.impl.pebble-harness :as pebble :refer [http-client-opts]]
    [ol.clave.lease :as lease]
    [ol.clave.specs :as acme])

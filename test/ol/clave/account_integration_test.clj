@@ -2,8 +2,8 @@
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [expectations.clojure.test :refer [expect in]]
-   [ol.clave.account :as account]
-   [ol.clave.commands :as commands]
+   [ol.clave.acme.account :as account]
+   [ol.clave.acme.commands :as commands]
    [ol.clave.errors :as errors]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util]

@@ -1,7 +1,7 @@
 (ns ol.clave.example.http01
   "Jetty-backed helper for serving HTTP-01 challenges and HTTPS demos."
   (:require
-   [ol.clave.solver.http :as http-solver]
+   [ol.clave.acme.solver.http :as http-solver]
    [ring.adapter.jetty :refer [run-jetty]]))
 
 (set! *warn-on-reflection* true)

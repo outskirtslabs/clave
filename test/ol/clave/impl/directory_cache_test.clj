@@ -2,7 +2,7 @@
   "Unit tests for directory cache."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.impl.directory-cache :as dc]
+   [ol.clave.acme.impl.directory-cache :as dc]
    [ol.clave.impl.test-util]))
 
 (def ^:private test-url "https://acme.example.com/directory")

@@ -2,7 +2,7 @@
   "Integration tests for Terms of Service change detection against Pebble."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.commands :as commands]
+   [ol.clave.acme.commands :as commands]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.lease :as lease]
    [ol.clave.specs :as specs]))

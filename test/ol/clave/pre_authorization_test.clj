@@ -1,7 +1,7 @@
 (ns ol.clave.pre-authorization-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.impl.authorization :as authorization]))
+   [ol.clave.acme.impl.authorization :as authorization]))
 
 (deftest wildcard-identifier-detection
   (testing "returns true for wildcard identifiers"

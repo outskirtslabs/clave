@@ -4,14 +4,14 @@
   (:require
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave :as clave]
-   [ol.clave.account :as account]
-   [ol.clave.challenge :as challenge]
-   [ol.clave.commands :as cmd]
+   [ol.clave.certificate :as clave]
+   [ol.clave.acme.account :as account]
+   [ol.clave.acme.challenge :as challenge]
+   [ol.clave.acme.commands :as cmd]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.lease :as lease]
-   [ol.clave.order :as order]
-   [ol.clave.solver.http :as http-solver]
+   [ol.clave.acme.order :as order]
+   [ol.clave.acme.solver.http :as http-solver]
    [ol.clave.specs :as specs]))
 
 (use-fixtures :once pebble/pebble-challenge-fixture)
@@ -37,11 +37,11 @@
                   :cleanup (fn [_lease _challenge state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          [_session result] (clave/obtain-certificate
+          [_session result] (clave/obtain
                              (lease/background)
                              (fresh-session)
                              [(order/create-identifier :dns "localhost")]
-                             (clave/generate-cert-keypair)
+                             (clave/keypair)
                              {:http-01 solver}
                              {})]
       (is (= "valid" (::specs/status (:order result))))
@@ -57,11 +57,11 @@
                            (pebble/challtestsrv-add-http01 token (get new-val token)))
                          (doseq [token (keys (apply dissoc old-val (keys new-val)))]
                            (pebble/challtestsrv-del-http01 token))))
-          [_session result] (clave/obtain-certificate
+          [_session result] (clave/obtain
                              (lease/background)
                              (fresh-session)
                              [(order/create-identifier :dns "localhost")]
-                             (clave/generate-cert-keypair)
+                             (clave/keypair)
                              {:http-01 (http-solver/solver registry)}
                              {})]
       (is (= "valid" (::specs/status (:order result))))
@@ -78,11 +78,11 @@
                              (reset! cleanup-called true)
                              nil)}]
       (is (thrown? Exception
-                   (clave/obtain-certificate
+                   (clave/obtain
                     (lease/background)
                     (fresh-session)
                     [(order/create-identifier :dns "localhost")]
-                    (clave/generate-cert-keypair)
+                    (clave/keypair)
                     {:http-01 solver}
                     {:poll-timeout-ms 5000 :poll-interval-ms 500})))
       (is @cleanup-called "Cleanup should be called even on failure"))))
@@ -97,12 +97,12 @@
                   :cleanup (fn [_lease _challenge state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          [_session result] (clave/obtain-certificate
+          [_session result] (clave/obtain
                              (lease/background)
                              (fresh-session)
                              [(order/create-identifier :dns "localhost")
                               (order/create-identifier :dns "127.0.0.1.nip.io")]
-                             (clave/generate-cert-keypair)
+                             (clave/keypair)
                              {:http-01 solver}
                              {})]
       (is (= "valid" (::specs/status (:order result))))
@@ -115,11 +115,11 @@
       (is (thrown-with-msg?
            clojure.lang.ExceptionInfo
            #"Wildcard.*dns-01"
-           (clave/obtain-certificate
+           (clave/obtain
             (lease/background)
             (fresh-session)
             [(order/create-identifier :dns "*.localhost")]
-            (clave/generate-cert-keypair)
+            (clave/keypair)
             {:http-01 solver}
             {}))))))
 
@@ -136,11 +136,11 @@
       (is (thrown-with-msg?
            clojure.lang.ExceptionInfo
            #"[Cc]ancelled"
-           (clave/obtain-certificate
+           (clave/obtain
             child-lease
             (fresh-session)
             [(order/create-identifier :dns "localhost")]
-            (clave/generate-cert-keypair)
+            (clave/keypair)
             {:http-01 solver}
             {}))))))
 
@@ -149,20 +149,20 @@
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo
          #"missing.*:present"
-         (clave/obtain-certificate
+         (clave/obtain
           (lease/background)
           (fresh-session)
           [(order/create-identifier :dns "localhost")]
-          (clave/generate-cert-keypair)
+          (clave/keypair)
           {:http-01 {:cleanup (fn [_ _ _] nil)}}
           {})))
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo
          #"missing.*:cleanup"
-         (clave/obtain-certificate
+         (clave/obtain
           (lease/background)
           (fresh-session)
           [(order/create-identifier :dns "localhost")]
-          (clave/generate-cert-keypair)
+          (clave/keypair)
           {:http-01 {:present (fn [_ _ _] nil)}}
           {})))))

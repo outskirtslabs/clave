@@ -2,8 +2,8 @@
   "Unit tests for session validation and configuration."
   (:require
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.account :as account]
-   [ol.clave.commands :as commands]
+   [ol.clave.acme.account :as account]
+   [ol.clave.acme.commands :as commands]
    [ol.clave.errors :as errors]
    [ol.clave.impl.test-util]
    [ol.clave.lease :as lease]

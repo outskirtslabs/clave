@@ -2,9 +2,9 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [ol.clave.errors :as errors]
-   [ol.clave.impl.order :as impl]
+   [ol.clave.acme.impl.order :as impl]
    [ol.clave.impl.test-util]
-   [ol.clave.order :as order]
+   [ol.clave.acme.order :as order]
    [ol.clave.specs :as specs]))
 
 (deftest create-identifier-normalizes-inputs

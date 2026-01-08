@@ -1,10 +1,10 @@
 (ns ol.clave.challenge-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.account :as account]
-   [ol.clave.challenge :as challenge]
-   [ol.clave.impl.crypto :as crypto]
-   [ol.clave.impl.jwk :as jwk]
+   [ol.clave.acme.account :as account]
+   [ol.clave.acme.challenge :as challenge]
+   [ol.clave.crypto.impl.core :as crypto]
+   [ol.clave.crypto.impl.jwk :as jwk]
    [ol.clave.specs :as specs])
   (:import
    [java.nio.charset StandardCharsets]

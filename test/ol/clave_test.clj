@@ -2,10 +2,10 @@
   (:require
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
-   [ol.clave :as clave]
-   [ol.clave.account :as account]
-   [ol.clave.impl.stats :as stats]
-   [ol.clave.solver.http :as http-solver]))
+   [ol.clave.certificate :as clave]
+   [ol.clave.acme.account :as account]
+   [ol.clave.acme.impl.stats :as stats]
+   [ol.clave.acme.solver.http :as http-solver]))
 
 (set! *warn-on-reflection* true)
 

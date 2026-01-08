@@ -5,9 +5,9 @@
    [clojure.java.shell :as shell]
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.impl.keygen :as kg]
-   [ol.clave.impl.csr :as csr]
-   [ol.clave.impl.der :as der])
+   [ol.clave.certificate.impl.keygen :as kg]
+   [ol.clave.certificate.impl.csr :as csr]
+   [ol.clave.crypto.impl.der :as der])
   (:import
    [java.security KeyPairGenerator]
    [java.util Base64]

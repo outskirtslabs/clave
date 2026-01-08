@@ -1,8 +1,8 @@
 (ns ol.clave.authorization-integration-test
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.challenge :as challenge]
-   [ol.clave.commands :as commands]
+   [ol.clave.acme.challenge :as challenge]
+   [ol.clave.acme.commands :as commands]
    [ol.clave.errors :as errors]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]

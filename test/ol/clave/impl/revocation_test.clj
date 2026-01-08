@@ -1,9 +1,9 @@
 (ns ol.clave.impl.revocation-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.impl.certificate :as certificate]
-   [ol.clave.impl.crypto :as crypto]
-   [ol.clave.impl.revocation :as revocation]
+   [ol.clave.certificate.impl.parse :as certificate]
+   [ol.clave.crypto.impl.core :as crypto]
+   [ol.clave.acme.impl.revocation :as revocation]
    [ol.clave.impl.test-util])
   (:import
    [java.security.cert X509Certificate]))

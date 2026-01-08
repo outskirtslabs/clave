@@ -2,7 +2,7 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [ol.clave.errors :as errors]
-   [ol.clave.impl.certificate :as cert]
+   [ol.clave.certificate.impl.parse :as cert]
    [ol.clave.specs :as specs])
   (:import
    [java.security.cert X509Certificate]))

@@ -4,13 +4,13 @@
   pebble-challenge-fixture which also uses that port for challtestsrv."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.challenge :as challenge]
-   [ol.clave.commands :as commands]
+   [ol.clave.acme.challenge :as challenge]
+   [ol.clave.acme.commands :as commands]
    [ol.clave.errors :as errors]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]
    [ol.clave.lease :as lease]
-   [ol.clave.order :as order])
+   [ol.clave.acme.order :as order])
   (:import
    [java.net ServerSocket]))
 

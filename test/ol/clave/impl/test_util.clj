@@ -1,14 +1,14 @@
 (ns ol.clave.impl.test-util
   (:require
    [clojure.test :as t :refer [do-report]]
-   [ol.clave.account :as account]
-   [ol.clave.challenge :as challenge]
-   [ol.clave.commands :as commands]
-   [ol.clave.impl.csr :as csr]
-   [ol.clave.impl.keygen :as kg]
+   [ol.clave.acme.account :as account]
+   [ol.clave.acme.challenge :as challenge]
+   [ol.clave.acme.commands :as commands]
+   [ol.clave.certificate.impl.csr :as csr]
+   [ol.clave.certificate.impl.keygen :as kg]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.lease :as lease]
-   [ol.clave.order :as order]
+   [ol.clave.acme.order :as order]
    [ol.clave.specs :as specs]))
 
 ((requiring-resolve 'hashp.install/install!))

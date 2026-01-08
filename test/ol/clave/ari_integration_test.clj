@@ -2,9 +2,9 @@
   "Integration tests for ARI (ACME Renewal Information) against Pebble."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.commands :as commands]
+   [ol.clave.acme.commands :as commands]
    [ol.clave.errors :as errors]
-   [ol.clave.impl.ari :as ari]
+   [ol.clave.acme.impl.ari :as ari]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]
    [ol.clave.lease :as lease]))

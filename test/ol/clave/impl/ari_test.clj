@@ -3,7 +3,7 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [ol.clave.errors :as errors]
-   [ol.clave.impl.ari :as ari]
+   [ol.clave.acme.impl.ari :as ari]
    [ol.clave.impl.test-util])
   (:import
    [java.io ByteArrayInputStream]

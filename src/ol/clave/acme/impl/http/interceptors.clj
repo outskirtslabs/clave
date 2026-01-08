@@ -1,0 +1,263 @@
+;; Copyright © 2022 - 2023 Michiel Borkent
+;; SPDX-License-Identifier: MIT
+;; This is a slimmed version of babashka's http-client library
+;; https://github.com/babashka/http-client/releases/tag/v0.4.23
+(ns ol.clave.acme.impl.http.interceptors
+  (:refer-clojure :exclude [get])
+  (:require
+   [clojure.java.io :as io]
+   [clojure.string :as str]
+   [ol.clave.crypto.impl.json :as json])
+  (:import
+   [java.net URLEncoder]
+   [java.util.zip
+    GZIPInputStream
+    Inflater
+    InflaterInputStream
+    ZipException]))
+
+(set! *warn-on-reflection* true)
+
+(defn ->uri [uri]
+  (cond (string? uri) (java.net.URI/create uri)
+        (map? uri)
+        (java.net.URI. ^String (:scheme uri)
+                       ^String (:user uri)
+                       ^String (:host uri)
+                       ^Integer (:port uri -1)
+                       ^String (:path uri)
+                       ^String (:query uri)
+                       ^String (:fragment uri))
+        :else uri))
+
+(defn- coerce-key
+  "Coerces a key to str"
+  [k]
+  (if (keyword? k)
+    (-> k str (subs 1))
+    (str k)))
+
+(defn- url-encode
+  "Returns an UTF-8 URL encoded version of the given string."
+  [^String unencoded]
+  (URLEncoder/encode unencoded "UTF-8"))
+
+(defn- map->form-params [form-params-map]
+  (loop [params* (transient [])
+         kvs (seq form-params-map)]
+    (if kvs
+      (let [[k v] (first kvs)
+            v (url-encode (str v))
+            param (str (url-encode (coerce-key k)) "=" v)]
+        (recur (conj! params* param) (next kvs)))
+      (str/join "&" (persistent! params*)))))
+
+(def accept-header
+  "Request: adds `:accept` header. Only supported value is `:json`."
+  {:name ::accept-header
+   :request
+   (fn [opts]
+     (if-let [accept (:accept opts)]
+       (let [headers (:headers opts)
+             accept-header (case accept
+                             :json "application/json")
+             headers (assoc headers :accept accept-header)
+             opts (assoc opts :headers headers)]
+         opts)
+       opts))})
+
+(defn- map->query-params [query-params-map]
+  (loop [params* (transient [])
+         kvs (seq query-params-map)]
+    (if kvs
+      (let [[k v] (first kvs)]
+        (if (and (coll? v)
+                 (seqable? v))
+          (recur params* (concat
+                          (map (fn [v]
+                                 [k v]) v)
+                          (rest kvs)))
+          (recur (conj! params* (str (url-encode (coerce-key k))
+                                     "="
+                                     (url-encode (str v)))) (next kvs))))
+      (str/join "&" (persistent! params*)))))
+
+(defn uri-with-query
+  "We can't use the URI constructor because it encodes all arguments for us.
+  See https://stackoverflow.com/a/77971448/6264"
+  [^java.net.URI uri new-query]
+  (let [old-query (.getQuery uri)
+        new-query (if old-query (str old-query "&" new-query)
+                      new-query)]
+    (java.net.URI.
+     (str (.getScheme uri) "://"
+          (.getAuthority uri)
+          (.getRawPath uri)
+          (when-let [nq new-query]
+            (str "?" nq))
+          (when-let [f (.getFragment uri)]
+            (str "#" f))))))
+
+(def query-params
+  "Request: encodes `:query-params` map and appends to `:uri`."
+  {:name ::query-params
+   :request (fn [opts]
+              (if-let [qp (:query-params opts)]
+                (let [^java.net.URI uri (:uri opts)
+                      new-query (map->query-params qp)
+                      new-uri (uri-with-query uri new-query)]
+                  (assoc opts :uri new-uri))
+                opts))})
+
+(comment
+  (def uri (java.net.URI. "https://borkdude:foobar@foobar.net:80/single%2felement?q=1#/dude"))
+  (.getScheme uri) ;;=> https
+  (.getSchemeSpecificPart uri) ;;=> //foobar.net/?q=1
+  (.getUserInfo uri) ;;=> nil
+  (.getAuthority uri) ;;=> "foobar.net"
+  (.getRawPath uri) ;;=> "/single%2felement"
+  (.getQuery uri) ;;=> q=1
+  (.getFragment uri) ;;=> nil
+  (uri-with-query uri "f=dude%26hello"))
+
+(def form-params
+  "Request: encodes `:form-params` map and adds `:body`."
+  {:name ::form-params
+   :request (fn [opts]
+              (if-let [fp (:form-params opts)]
+                (let [opts (assoc opts :body (map->form-params fp))
+                      ct (get-in opts [:headers :content-type])]
+                  (if ct
+                    opts
+                    (assoc-in opts [:headers :content-type] "application/x-www-form-urlencoded")))
+                opts))})
+
+(defmulti ^:private do-decompress-body
+  (fn [resp]
+    (when-let [encoding (get-in resp [:headers "content-encoding"])]
+      (str/lower-case encoding))))
+
+(defn- gunzip
+  "Returns a gunzip'd version of the given byte array or input stream."
+  [b]
+  (when b
+    (when (instance? java.io.InputStream b)
+      (GZIPInputStream. b))))
+
+(defmethod do-decompress-body "gzip"
+  [resp]
+  (update resp :body gunzip))
+
+(defn- inflate
+  "Returns a zlib inflate'd version of the given byte array or InputStream. Taken from hato."
+  [b]
+  (when b
+    ;; This weirdness is because HTTP servers lie about what kind of deflation
+    ;; they're using, so we try one way, then if that doesn't work, reset and
+    ;; try the other way
+    (let [stream (java.io.BufferedInputStream. b)
+          _ (.mark stream 512)
+          iis (InflaterInputStream. stream)
+          readable? (try (.read iis) true
+                         (catch ZipException _ false))
+          _ (.reset stream)
+          iis' (if readable?
+                 (InflaterInputStream. stream)
+                 (InflaterInputStream. stream (Inflater. true)))]
+
+      iis')))
+
+(defmethod do-decompress-body "deflate"
+  [resp]
+  (update resp :body inflate))
+
+(defmethod do-decompress-body :default [resp]
+  resp)
+
+(def decompress-body
+  "Response: decompresses body based on  \"content-encoding\" header. Valid values: `gzip` and `deflate`."
+  {:name ::decompress
+   :response (fn [resp]
+               (if (or (false? (:decompress-body (:request resp)))
+                       (= :head (-> resp :request :method)))
+                 resp
+                 (do-decompress-body resp)))})
+
+(defn- stream-bytes [is]
+  (let [baos (java.io.ByteArrayOutputStream.)]
+    (io/copy is baos)
+    (.toByteArray baos)))
+
+(def decode-body
+  "Response: based on the value of `:as` in request, decodes as `:string`, `:stream` or `:bytes`. Defaults to `:string`."
+  {:name ::decode-body
+   :response (fn [resp]
+               (let [as (or (-> resp :request :as) :string)
+                     body (:body resp)
+                     body (if (not (string? body))
+                            (case as
+                              :string (slurp body)
+                              :stream body
+                              :bytes (stream-bytes body))
+                            body)]
+                 (assoc resp :body body)))})
+
+(def construct-uri
+  "Request: construct uri from map"
+  {:name ::construct-uri
+   :request (fn [req]
+              (let [uri (or (:uri req)
+                            (:url req))
+                    uri (->uri uri)]
+                (assoc req :uri uri)))})
+
+(def request-method
+  "Request: normalize :method option"
+  {:name ::request-method
+   :request (fn [req]
+              (if (:method req) req
+                  (if-let [m (:request-method req)]
+                    (assoc req :method m)
+                    req)))})
+
+(def unexceptional-statuses
+  #{200 201 202 203 204 205 206 207 300 301 302 303 304 307})
+
+(def throw-on-exceptional-status-code
+  "Response: throw on exceptional status codes"
+  {:name ::throw-on-exceptional-status-code
+   :response (fn [resp]
+               (if-let [status (:status resp)]
+                 (if (or (false? (some-> resp :request :throw))
+                         (contains? unexceptional-statuses status))
+                   resp
+                   (throw (ex-info (str "Exceptional status code: " status) resp)))
+                 resp))})
+
+(def parse-json-body
+  {:name     ::json
+   :description "A request with `:as :json` will automatically get the
+         \"application/json\" accept header and the response is decoded as JSON."
+   :request  (fn [request]
+               (if (= :json (:as request))
+                 (-> (assoc-in request [:headers :accept] "application/json")
+                    ;; Read body as :string
+                    ;; Mark request as amenable to json decoding
+                     (assoc :as :string ::json true))
+                 request))
+   :response (fn [response]
+               (if (get-in response [:request ::json])
+                 (update response :body #(json/read-str %))
+                 response))})
+
+(def default-interceptors
+  "Default interceptor chain. Interceptors are called in order for request and in reverse order for response."
+  [parse-json-body
+   throw-on-exceptional-status-code
+   request-method
+   construct-uri
+   accept-header
+   query-params
+   form-params
+   decode-body
+   decompress-body])

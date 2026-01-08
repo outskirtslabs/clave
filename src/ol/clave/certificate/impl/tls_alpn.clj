@@ -182,21 +182,7 @@
 ;; Public API
 
 (defn tlsalpn01-challenge-cert
-  "Build a TLS-ALPN-01 challenge certificate.
-
-  Arguments:
-    identifier        - Map with `:type` (\"dns\" or \"ip\") and `:value`
-    key-authorization - The computed key authorization string
-
-  Returns a map with:
-    :certificate-der   - DER-encoded certificate bytes
-    :certificate-pem   - PEM-encoded certificate string
-    :private-key-der   - DER-encoded private key bytes (PKCS#8)
-    :private-key-pem   - PEM-encoded private key string (PKCS#8)
-    :x509              - Parsed X509Certificate object
-    :keypair           - The generated KeyPair
-    :identifier-type   - The identifier type from input
-    :identifier-value  - The identifier value from input"
+  "See [[ol.clave.acme.challenge/tlsalpn01-challenge-cert]]"
   [identifier key-authorization]
   (when (str/blank? key-authorization)
     (throw (errors/ex errors/encoding-failed

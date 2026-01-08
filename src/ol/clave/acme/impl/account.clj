@@ -41,6 +41,7 @@
   contacts)
 
 (defn validate-account
+  "See [[ol.clave.acme.account/validate-account]]"
   [account]
   (ensure-map account)
   (let [contacts (-> account ::acme/contact normalize-contacts validate-contacts)
@@ -63,12 +64,14 @@
                           {:explain-data (s/explain-data ::acme/account normalized)}))))))
 
 (defn get-primary-contact
+  "See [[ol.clave.acme.account/get-primary-contact]]"
   [account]
   (let [contacts (::acme/contact (validate-account account))]
     (when-let [first-uri (first contacts)]
       (subs first-uri (count "mailto:")))))
 
 (defn account-from-edn
+  "See [[ol.clave.acme.account/account-from-edn]]"
   [registration-edn]
   (try
     (-> registration-edn edn/read-string validate-account)
@@ -88,7 +91,7 @@
   value)
 
 (defn serialize
-  "Serialize an account and keypair to an EDN string."
+  "See [[ol.clave.acme.account/serialize]]"
   [account ^java.security.KeyPair keypair]
   (let [normalized (validate-account account)
         private-key (.getPrivate keypair)
@@ -102,9 +105,7 @@
       (pprint/pprint artifact))))
 
 (defn deserialize
-  "Deserialize an account EDN string to [account keypair].
-
-  Returns a vector of [account keypair] where keypair is a `java.security.KeyPair`."
+  "See [[ol.clave.acme.account/deserialize]]"
   [account-edn]
   (let [artifact (try
                    (-> account-edn edn/read-string ensure-deserialized-map)
@@ -123,18 +124,14 @@
                         {:explain-data (s/explain-data ::acme/account-artifact artifact)})))))
 
 (defn generate-keypair
-  "Generate a keypair for account key.
-
-  Options:
-  | key    | description                             | default |
-  |--------|-----------------------------------------|---------|
-  | :algo  | key algorithm (:p256, :p384, :ed25519)  | :p256   |"
+  "See [[ol.clave.acme.account/generate-keypair]]"
   (^java.security.KeyPair [] (generate-keypair {}))
   (^java.security.KeyPair [{:keys [algo]
                             :or {algo :p256}}]
    (keygen/generate algo)))
 
 (defn create
+  "See [[ol.clave.acme.account/create]]"
   ([contact tos-agreed]
    (create contact tos-agreed nil))
   ([contact tos-agreed _]

@@ -36,6 +36,7 @@
           type))
 
 (defn private-key->pem
+  "See [[ol.clave.certificate/private-key->pem]]"
   [^java.security.PrivateKey private-key]
   (pem-encode "PRIVATE KEY" (.getEncoded private-key)))
 
@@ -80,6 +81,7 @@
     (.generateKeyPair generator)))
 
 (defn generate
+  "See [[ol.clave.certificate/keypair]]"
   ^KeyPair [key-type]
   (case key-type
     :ed25519 (gen-ed25519)

@@ -29,6 +29,7 @@
 (def ^:const default-poll-timeout-ms 60000)
 
 (defn new-session
+  "See [[ol.clave.acme.commands/new-session]]"
   [directory-url {:keys [http-client account-key account-kid]}]
   (let [base {::acme/directory-url directory-url
               ::acme/nonces http/empty-nonces
@@ -42,12 +43,14 @@
     [session nil]))
 
 (defn set-polling
+  "See [[ol.clave.acme.commands/set-polling]]"
   [session {:keys [interval-ms timeout-ms]}]
   (cond-> session
     interval-ms (assoc ::acme/poll-interval (long interval-ms))
     timeout-ms (assoc ::acme/poll-timeout (long timeout-ms))))
 
 (defn load-directory
+  "See [[ol.clave.acme.commands/load-directory]]"
   ([lease session]
    (load-directory lease session nil))
   ([lease {::acme/keys [directory-url] :as session} opts]
@@ -77,12 +80,14 @@
            [session' qualified]))))))
 
 (defn create-session
+  "See [[ol.clave.acme.commands/create-session]]"
   [lease directory-url opts]
   (let [[session _] (new-session directory-url opts)
         [session directory] (load-directory lease session opts)]
     [session directory]))
 
 (defn compute-eab-binding
+  "See [[ol.clave.acme.commands/compute-eab-binding]]"
   [eab-opts account-key endpoint]
   (when eab-opts
     (let [{:keys [kid mac-key]} eab-opts
@@ -99,6 +104,7 @@
        (jws/jws-encode-eab account-key mac-bytes kid endpoint)))))
 
 (defn new-account
+  "See [[ol.clave.acme.commands/new-account]]"
   ([lease session account]
    (new-account lease session account nil))
   ([lease session account opts]
@@ -139,6 +145,7 @@
                          {}))))))
 
 (defn find-account-by-key
+  "See [[ol.clave.acme.commands/find-account-by-key]]"
   ([lease session]
    (find-account-by-key lease session nil))
   ([lease session _opts]
@@ -233,6 +240,7 @@
     (json/read-str inner-json)))
 
 (defn get-account
+  "See [[ol.clave.acme.commands/get-account]]"
   ([lease session account]
    (get-account lease session account nil))
   ([lease session account _opts]
@@ -244,6 +252,7 @@
      [session' normalized-account])))
 
 (defn update-account-contact
+  "See [[ol.clave.acme.commands/update-account-contact]]"
   ([lease session account contacts]
    (update-account-contact lease session account contacts nil))
   ([lease session account contacts _opts]
@@ -261,6 +270,7 @@
      [session' updated-account])))
 
 (defn deactivate-account
+  "See [[ol.clave.acme.commands/deactivate-account]]"
   ([lease session account]
    (deactivate-account lease session account nil))
   ([lease session account _opts]
@@ -271,6 +281,7 @@
      [session' deactivated-account])))
 
 (defn rollover-account-key
+  "See [[ol.clave.acme.commands/rollover-account-key]]"
   ([lease session account new-account-key]
    (rollover-account-key lease session account new-account-key nil))
   ([lease session account new-account-key _opts]
@@ -305,6 +316,7 @@
                                  ex))))))))))
 
 (defn new-order
+  "See [[ol.clave.acme.commands/new-order]]"
   ([lease session order]
    (new-order lease session order nil))
   ([lease session order opts]
@@ -357,6 +369,7 @@
       [session' normalized resp])))
 
 (defn get-order
+  "See [[ol.clave.acme.commands/get-order]]"
   ([lease session order-or-url]
    (get-order lease session order-or-url nil))
   ([lease session order-or-url _opts]
@@ -370,6 +383,7 @@
      [session (assoc order ::acme/order-location (or (::acme/order-location order) order-url))])))
 
 (defn poll-order
+  "See [[ol.clave.acme.commands/poll-order]]"
   [lease session order-url]
   (let [interval-ms (long (::acme/poll-interval session))
         session-timeout-ms (long (::acme/poll-timeout session))
@@ -418,6 +432,7 @@
           (throw e))))))
 
 (defn finalize-order
+  "See [[ol.clave.acme.commands/finalize-order]]"
   ([lease session order csr]
    (finalize-order lease session order csr nil))
   ([lease session order csr _opts]
@@ -482,6 +497,7 @@
       [session' normalized resp])))
 
 (defn get-authorization
+  "See [[ol.clave.acme.commands/get-authorization]]"
   ([lease session authorization-or-url]
    (get-authorization lease session authorization-or-url nil))
   ([lease session authorization-or-url _opts]
@@ -493,6 +509,7 @@
      [session authorization])))
 
 (defn poll-authorization
+  "See [[ol.clave.acme.commands/poll-authorization]]"
   [lease session authorization-url]
   (let [interval-ms (long (::acme/poll-interval session))
         session-timeout-ms (long (::acme/poll-timeout session))
@@ -549,6 +566,7 @@
           (throw e))))))
 
 (defn deactivate-authorization
+  "See [[ol.clave.acme.commands/deactivate-authorization]]"
   ([lease session authorization-or-url]
    (deactivate-authorization lease session authorization-or-url nil))
   ([lease session authorization-or-url _opts]
@@ -573,6 +591,7 @@
        [(http/push-nonce session nonce) normalized]))))
 
 (defn new-authorization
+  "See [[ol.clave.acme.commands/new-authorization]]"
   ([lease session identifier]
    (new-authorization lease session identifier nil))
   ([lease session identifier _opts]
@@ -617,6 +636,7 @@
                               :problem    problem}))))))))
 
 (defn respond-challenge
+  "See [[ol.clave.acme.commands/respond-challenge]]"
   ([lease session challenge]
    (respond-challenge lease session challenge nil))
   ([lease session challenge opts]
@@ -639,6 +659,7 @@
        [(http/push-nonce session nonce) normalized]))))
 
 (defn get-certificate
+  "See [[ol.clave.acme.commands/get-certificate]]"
   ([lease session certificate-url]
    (get-certificate lease session certificate-url nil))
   ([lease session certificate-url _opts]
@@ -668,6 +689,7 @@
                :links (get preferred ::acme/links)}])))
 
 (defn revoke-certificate
+  "See [[ol.clave.acme.commands/revoke-certificate]]"
   ([lease session certificate]
    (revoke-certificate lease session certificate nil))
   ([lease session certificate opts]
@@ -731,6 +753,7 @@
             nil))))))
 
 (defn get-renewal-info
+  "See [[ol.clave.acme.commands/get-renewal-info]]"
   ([lease session cert-or-id]
    (get-renewal-info lease session cert-or-id nil))
   ([lease session cert-or-id _opts]
@@ -769,6 +792,7 @@
              (throw ex))))))))
 
 (defn check-terms-of-service
+  "See [[ol.clave.acme.commands/check-terms-of-service]]"
   ([lease session]
    (check-terms-of-service lease session nil))
   ([lease session _opts]

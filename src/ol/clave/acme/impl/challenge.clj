@@ -12,14 +12,14 @@
 (set! *warn-on-reflection* true)
 
 (defn key-authorization
-  "Return key authorization for `token` and account keypair."
+  "See [[ol.clave.acme.challenge/key-authorization]]"
   [token ^KeyPair account-keypair]
   (let [public-key (.getPublic account-keypair)
         thumbprint (jwk/jwk-thumbprint public-key)]
     (str token "." thumbprint)))
 
 (defn dns01-key-authorization
-  "Return DNS-01 key authorization digest for `key-authorization`."
+  "See [[ol.clave.acme.challenge/dns01-key-authorization]]"
   [^String key-authorization]
   (-> key-authorization
       (.getBytes StandardCharsets/UTF_8)
@@ -27,12 +27,12 @@
       crypto/base64url-encode))
 
 (defn http01-resource-path
-  "Return the HTTP-01 challenge path for `token`."
+  "See [[ol.clave.acme.challenge/http01-resource-path]]"
   [token]
   (str "/.well-known/acme-challenge/" token))
 
 (defn dns01-txt-name
-  "Return the DNS-01 TXT record name for `domain`."
+  "See [[ol.clave.acme.challenge/dns01-txt-name]]"
   [domain]
   (let [domain (str/replace domain #"\.$" "")]
     (str "_acme-challenge." domain)))

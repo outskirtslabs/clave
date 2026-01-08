@@ -19,10 +19,7 @@
                             {:provided identifier-type}))))
 
 (defn create-identifier
-  "Return a normalized identifier map.
-
-  Accepts either a map with `:type` and `:value` keys, or two arguments
-  for type and value directly."
+  "See [[ol.clave.acme.order/create-identifier]]"
   ([identifier]
    (when-not (map? identifier)
      (throw (errors/ex errors/order-creation-failed
@@ -40,14 +37,7 @@
    (create-identifier {:type identifier-type :value identifier-value})))
 
 (defn create
-  "Construct an order map with qualified keys.
-
-  Options map supports:
-  | key         | description                              |
-  |-------------|------------------------------------------|
-  | `:notBefore`| earliest certificate validity start time |
-  | `:notAfter` | latest certificate expiry time           |
-  | `:profile`  | ACME profile name                        |"
+  "See [[ol.clave.acme.order/create]]"
   ([identifiers]
    (create identifiers nil))
   ([identifiers opts]

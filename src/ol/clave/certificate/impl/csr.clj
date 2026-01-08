@@ -335,7 +335,7 @@
 ;; -------------------------
 
 (defn create-csr
-  "see docstring in [[ol.clave/create-csr]]"
+  "See [[ol.clave.certificate/csr]]"
   [key-pair sans & [opts]]
   (when (empty? sans)
     (throw (errors/ex errors/invalid-san

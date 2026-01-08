@@ -265,7 +265,7 @@
 
 (defn- start-lock-freshener! [^Path filename]
   (Thread/startVirtualThread
-   (fn []
+   (bound-fn []
      (loop []
        (let [result (try
                       (Thread/sleep (long (.toMillis ^Duration lock-freshness-interval)))

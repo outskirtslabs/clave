@@ -231,10 +231,11 @@
 
 (defn then [x f]
   (if (instance? CompletableFuture x)
-    (.thenApply ^CompletableFuture x
-                ^Function (reify Function
-                            (apply [_ args]
-                              (f args))))
+    (let [bound-f (bound-fn* f)]
+      (.thenApply ^CompletableFuture x
+                  ^Function (reify Function
+                              (apply [_ args]
+                                (bound-f args)))))
     (f x)))
 
 (defn- apply-interceptors [init interceptors k]
@@ -363,22 +364,24 @@
                                              interceptors/default-interceptors)))]
           (if async
             (let [then-fn (:async-then req)
-                  catch-fn (:async-catch req)]
+                  catch-fn (:async-catch req)
+                  bound-then-fn (when then-fn (bound-fn* then-fn))
+                  bound-catch-fn (when catch-fn (bound-fn* catch-fn))]
               (cond-> ^CompletableFuture resp
                 then-fn (.thenApply
                          (reify Function
                            (apply [_ resp]
-                             (then-fn resp))))
+                             (bound-then-fn resp))))
                 catch-fn (.exceptionally
                           (reify Function
                             (apply [_ e]
                               (let [^Throwable e e
                                     cause (ex-cause e)]
-                                (catch-fn {:ex e
-                                           :ex-cause cause
-                                           :ex-data (ex-data (or cause e))
-                                           :ex-message (ex-message (or cause e))
-                                           :request req})))))))
+                                (bound-catch-fn {:ex e
+                                                 :ex-cause cause
+                                                 :ex-data (ex-data (or cause e))
+                                                 :ex-message (ex-message (or cause e))
+                                                 :request req})))))))
             resp)))))
 
 (defn request-with-lease
@@ -406,11 +409,12 @@
                           request-builder)
         request (.build request-builder)
         http-future (.sendAsync client request (HttpResponse$BodyHandlers/ofInputStream))
+        watcher-fn (bound-fn* (fn []
+                                (when (deref (lease/done-signal lease))
+                                  (.cancel http-future true))))
         watcher (CompletableFuture/runAsync
                  (reify Runnable
-                   (run [_]
-                     (when (deref (lease/done-signal lease))
-                       (.cancel http-future true))))
+                   (run [_] (watcher-fn)))
                  @shared-virtual-executor)]
     (try
       (let [response (.get http-future)]

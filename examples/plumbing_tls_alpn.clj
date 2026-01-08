@@ -104,13 +104,13 @@
         executor (Executors/newVirtualThreadPerTaskExecutor)
         accept-thread
         (Thread.
-         (fn []
+         (bound-fn []
            (while @running
              (try
                (let [socket (.accept server-socket)]
                  (.submit executor
                           ^Callable
-                          (fn []
+                          (bound-fn []
                             (try
                               (let [^javax.net.ssl.SSLSocket ssl-socket (cast javax.net.ssl.SSLSocket socket)
                                     params (doto (SSLParameters.)

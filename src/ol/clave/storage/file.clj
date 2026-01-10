@@ -75,8 +75,8 @@
   (require '[ol.clave.storage.file :as fs]
            '[ol.clave.storage :as s])
 
-  ;; Use platform-appropriate directories
-  (def storage (fs/file-storage (fs/state-dir \"myapp\")))
+  ;; Use platform-appropriate directories for certificate storage
+  (def storage (fs/file-storage (fs/data-dir \"myapp\")))
 
   ;; Or specify a custom path
   (def storage (fs/file-storage \"/var/lib/myapp\"))
@@ -606,4 +606,58 @@
    (if-let [systemd-dir (first-path (System/getenv "CACHE_DIRECTORY"))]
      systemd-dir
      (when-let [base (cache-dir)]
+       (str base "/" app-name)))))
+
+(defn data-dir
+  "Returns the directory for persistent application data.
+
+  This is the recommended directory for ACME certificates and keys because they
+  are valuable cryptographic material with rate limits on reissuance.
+
+  With no arguments, returns the base directory (caller appends app name).
+  With `app-name`, appends it as a subdirectory (unless systemd provides one).
+
+  Checks environment variables in order:
+  1. `$STATE_DIRECTORY` - set by systemd (`StateDirectory=` maps to `/var/lib/` which is semantically correct)
+  2. `$XDG_DATA_HOME` - XDG base directory spec
+  3. Platform default
+
+  When systemd sets `$STATE_DIRECTORY`, it may contain multiple colon-separated
+  paths if the unit configures multiple directories; this function returns the
+  first path.
+
+  Platform defaults when no environment variable is set:
+
+  | platform | path                                |
+  |----------|-------------------------------------|
+  | Linux    | `$HOME/.local/share`                |
+  | macOS    | `$HOME/Library/Application Support` |
+  | Windows  | `%LOCALAPPDATA%`                    |
+
+  Returns `nil` if a suitable directory cannot be determined.
+
+  ```clojure
+  (data-dir)           ; => \"/home/user/.local/share\"
+  (data-dir \"myapp\")  ; => \"/home/user/.local/share/myapp\"
+
+  ;; Under systemd system unit with StateDirectory=myapp:
+  (data-dir)           ; => \"/var/lib/myapp\"
+  (data-dir \"myapp\")  ; => \"/var/lib/myapp\" (no double append)
+
+  (file-storage (data-dir \"myapp\"))
+  ```"
+  ([]
+   (or (first-path (System/getenv "STATE_DIRECTORY"))
+       (not-empty (System/getenv "XDG_DATA_HOME"))
+       (when-let [home (home-dir)]
+         (case (os-name)
+           :windows (not-empty (System/getenv "LOCALAPPDATA"))
+           :macos (str home "/Library/Application Support")
+           :linux (str home "/.local/share")
+           (str home "/.local/share")))))
+  ([app-name]
+   ;; If systemd set STATE_DIRECTORY, use it directly (already app-specific)
+   (if-let [systemd-dir (first-path (System/getenv "STATE_DIRECTORY"))]
+     systemd-dir
+     (when-let [base (data-dir)]
        (str base "/" app-name)))))

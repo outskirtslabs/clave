@@ -271,3 +271,10 @@
     (is (= "/a" (#'file/first-path "/a:/b:/c")))
     (is (nil? (#'file/first-path "")))
     (is (nil? (#'file/first-path nil)))))
+
+(deftest data-dir-test
+  (testing "data-dir returns a non-empty string"
+    (is (not-empty (file/data-dir))))
+
+  (testing "data-dir with app-name returns a non-empty string"
+    (is (not-empty (file/data-dir "myapp")))))

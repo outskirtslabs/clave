@@ -1,6 +1,7 @@
 ;; Auto-generated test timing data for parallel test balancing
 ;; Generated: 2026-01-12T15:03:42.186653146Z
-{:ol.clave-integration-test 26.919997869,
+{:ol.clave.automation.system-test 0.1,
+ :ol.clave-integration-test 26.919997869,
  :ol.clave-test 0.004124363,
  :ol.clave.account-integration-test 2.094012818,
  :ol.clave.account-test 0.05805694,

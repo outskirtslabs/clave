@@ -1059,3 +1059,63 @@
                     "Certificate file should have 0600 permissions (rw-------)"))))
           (finally
             (automation/stop system)))))))
+
+(deftest job-queue-deduplicates-concurrent-requests
+  (testing "Multiple concurrent requests for same domain result in single certificate obtain"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          solver {:present (fn [_lease chall account-key]
+                             ;; Add small delay to make concurrent requests more likely to overlap
+                             (Thread/sleep 50)
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)
+              ;; Step 2: Submit multiple requests simultaneously
+              request-count 10
+              futures (doall
+                       (for [_ (range request-count)]
+                         (future (automation/manage-domains system [domain]))))]
+          ;; Wait for all futures to complete
+          (doseq [f futures] @f)
+          ;; Step 3-5: Collect all events within a reasonable time window
+          (let [events (loop [collected []
+                              deadline (+ (System/currentTimeMillis) 30000)]
+                         (if (> (System/currentTimeMillis) deadline)
+                           collected
+                           (if-let [evt (.poll queue 100 TimeUnit/MILLISECONDS)]
+                             (recur (conj collected evt) deadline)
+                             ;; Wait a bit more for any remaining events
+                             (if-let [evt (.poll queue 500 TimeUnit/MILLISECONDS)]
+                               (recur (conj collected evt) deadline)
+                               collected))))
+                ;; Count event types
+                domain-added-events (filter #(= :domain-added (:type %)) events)
+                cert-obtained-events (filter #(= :certificate-obtained (:type %)) events)]
+            ;; Step 3: Should have multiple domain-added events (one per request)
+            ;; but manage-domains is idempotent so could be 1-10
+            (is (>= (count domain-added-events) 1)
+                "Should have at least one domain-added event")
+            ;; Step 3: Should have exactly 1 certificate-obtained event (deduplication)
+            (is (= 1 (count cert-obtained-events))
+                (str "Should have exactly 1 certificate-obtained event but got "
+                     (count cert-obtained-events)
+                     ". Deduplication should prevent multiple obtains."))
+            ;; Step 7: Verify single certificate obtained
+            (let [bundle (automation/lookup-cert system domain)]
+              (is (some? bundle) "Certificate should be available")
+              (is (some? (:certificate bundle)) "Bundle should have certificate")
+              (is (some? (:private-key bundle)) "Bundle should have private key"))))
+        (finally
+          (automation/stop system))))))

@@ -5,16 +5,19 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.config :as config]
+   [ol.clave.acme.challenge :as challenge]
    [ol.clave.certificate :as certificate]
    [ol.clave.certificate.impl.keygen :as keygen]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]
+   [ol.clave.specs :as specs]
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
    [java.nio.file Files]
    [java.nio.file.attribute FileAttribute]
-   [java.security.cert X509Certificate]))
+   [java.security.cert X509Certificate]
+   [java.util.concurrent TimeUnit]))
 
 ;; Use pebble-challenge-fixture because some tests need the challenge test server
 (use-fixtures :once pebble/pebble-challenge-fixture)
@@ -119,3 +122,58 @@
             (is (= domain (get-in event [:data :domain])) "Event domain should match"))
           (finally
             (automation/stop system)))))))
+
+(deftest manage-domains-triggers-immediate-certificate-obtain
+  (testing "manage-domains triggers immediate certificate obtain"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          issuer-key (config/issuer-key-from-url (pebble/uri))
+          ;; Create an HTTP-01 solver that works with pebble's challenge test server
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        ;; Get event queue before calling manage-domains
+        (let [queue (automation/get-event-queue system)]
+          ;; Call manage-domains
+          (automation/manage-domains system [domain])
+          ;; Step 4: Verify :domain-added event is emitted
+          (let [domain-added-event (.poll queue 5 TimeUnit/SECONDS)]
+            (is (some? domain-added-event) "Should receive :domain-added event")
+            (is (= :domain-added (:type domain-added-event))
+                "First event should be :domain-added")
+            (is (= domain (get-in domain-added-event [:data :domain]))
+                "Event domain should match"))
+          ;; Step 5-6: Wait for certificate obtain to complete and verify event
+          (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
+            (is (some? cert-event) "Should receive certificate event")
+            (is (= :certificate-obtained (:type cert-event))
+                "Event should be :certificate-obtained")
+            (is (= domain (get-in cert-event [:data :domain]))
+                "Certificate event domain should match"))
+          ;; Step 7: Verify certificate is in cache via lookup-cert
+          (let [cert-bundle (automation/lookup-cert system domain)]
+            (is (some? cert-bundle) "Certificate should be in cache")
+            (is (= [domain] (:names cert-bundle)) "Certificate SANs should match")
+            (is (some? (:certificate cert-bundle)) "Bundle should have certificate")
+            (is (some? (:private-key cert-bundle)) "Bundle should have private key"))
+          ;; Step 8: Verify certificate is persisted to storage
+          (let [cert-key (config/cert-storage-key issuer-key domain)
+                key-key (config/key-storage-key issuer-key domain)]
+            (is (storage/exists? storage-impl nil cert-key)
+                "Certificate should be persisted to storage")
+            (is (storage/exists? storage-impl nil key-key)
+                "Private key should be persisted to storage")))
+        (finally
+          (automation/stop system))))))

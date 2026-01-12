@@ -6,15 +6,21 @@
   (:require
    [clojure.data.json :as json]
    [clojure.string :as str]
+   [ol.clave.acme.account :as account]
+   [ol.clave.acme.commands :as cmd]
    [ol.clave.automation.impl.cache :as cache]
    [ol.clave.automation.impl.config :as config]
    [ol.clave.automation.impl.decisions :as decisions]
+   [ol.clave.certificate :as certificate]
+   [ol.clave.certificate.impl.keygen :as keygen]
    [ol.clave.certificate.impl.parse :as cert-parse]
+   [ol.clave.lease :as lease]
    [ol.clave.specs :as specs]
    [ol.clave.storage :as storage])
   (:import
    [java.security KeyFactory]
    [java.security.spec PKCS8EncodedKeySpec]
+   [java.time Instant]
    [java.util Base64]
    [java.util.concurrent ConcurrentHashMap Executors LinkedBlockingQueue Semaphore]))
 
@@ -290,11 +296,167 @@
   [system hostname]
   (cache/lookup-cert (:cache system) hostname))
 
+;; =============================================================================
+;; Event Emission
+;; =============================================================================
+
+(defn- emit-event!
+  "Emit an event to the event queue."
+  [system event]
+  (when-let [queue @(:event-queue system)]
+    (.offer ^LinkedBlockingQueue queue event)))
+
+(defn- create-domain-added-event
+  "Create a :domain-added event."
+  [domain]
+  {:type :domain-added
+   :timestamp (Instant/now)
+   :data {:domain domain}})
+
+;; =============================================================================
+;; Certificate Obtain Workflow
+;; =============================================================================
+
+(defn- create-acme-session
+  "Create an ACME session for the given issuer config."
+  [system issuer-config]
+  (let [bg-lease (lease/background)
+        account-key (account/generate-keypair)
+        http-opts (:http-client system)
+        directory-url (:directory-url issuer-config)
+        [session _] (cmd/create-session bg-lease directory-url
+                                        {:http-client http-opts
+                                         :account-key account-key})
+        account {::specs/contact (when-let [email (:email issuer-config)]
+                                   [(str "mailto:" email)])
+                 ::specs/termsOfServiceAgreed true}
+        [session _] (cmd/new-account bg-lease session account)]
+    session))
+
+(defn- store-certificate!
+  "Store a certificate bundle to storage."
+  [system domain issuer-key cert-pem key-pem names]
+  (let [storage (:storage system)
+        cert-key (config/cert-storage-key issuer-key domain)
+        key-key (config/key-storage-key issuer-key domain)
+        meta-key (config/meta-storage-key issuer-key domain)
+        meta-json (json/write-str {:names names :issuer issuer-key})]
+    (storage/store-string! storage nil cert-key cert-pem)
+    (storage/store-string! storage nil key-key key-pem)
+    (storage/store-string! storage nil meta-key meta-json)))
+
+(defn- obtain-certificate!
+  "Execute the full ACME certificate obtain workflow.
+
+  Returns a result map with :status (:success or :error) and :bundle on success."
+  [system cmd]
+  (try
+    (let [domain (:domain cmd)
+          resolved-config (config/resolve-config system domain)
+          issuers (config/select-issuer resolved-config)
+          issuer (first issuers)
+          issuer-key (or (:issuer-key issuer)
+                         (config/issuer-key-from-url (:directory-url issuer)))
+          solvers (get-in system [:config :solvers])
+          key-type (or (:key-type resolved-config) :p256)
+          ;; Create session for this issuer
+          session (create-acme-session system issuer)
+          ;; Generate certificate keypair
+          cert-keypair (keygen/generate key-type)
+          ;; Obtain certificate
+          [_session result] (certificate/obtain-for-sans
+                             (lease/background)
+                             session
+                             [domain]
+                             cert-keypair
+                             solvers)
+          ;; Extract certificate data
+          cert-data (first (:certificates result))
+          chain-pem (:chain-pem cert-data)
+          key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
+          ;; Parse the certificate for bundle creation
+          parsed (cert-parse/parse-pem-chain chain-pem)
+          certs (::specs/certificates parsed)
+          ^java.security.cert.X509Certificate first-cert (first certs)
+          not-before (.toInstant (.getNotBefore first-cert))
+          not-after (.toInstant (.getNotAfter first-cert))
+          ;; Create bundle
+          bundle {:names [domain]
+                  :certificate certs
+                  :private-key (.getPrivate cert-keypair)
+                  :not-before not-before
+                  :not-after not-after
+                  :issuer-key issuer-key
+                  :hash (cache/hash-certificate (mapv (fn [^java.security.cert.X509Certificate c]
+                                                        (.getEncoded c))
+                                                      certs))
+                  :managed true}]
+      ;; Store to storage
+      (store-certificate! system domain issuer-key chain-pem key-pem [domain])
+      {:status :success :bundle bundle})
+    (catch Exception e
+      {:status :error
+       :message (ex-message e)
+       :reason (decisions/classify-error e)})))
+
+;; =============================================================================
+;; Command Execution
+;; =============================================================================
+
+(defn- execute-command!
+  "Execute a command and return the result."
+  [system cmd]
+  (case (:command cmd)
+    :obtain-certificate (obtain-certificate! system cmd)
+    :renew-certificate {:status :error :message "Not implemented"}
+    :fetch-ocsp {:status :error :message "Not implemented"}
+    {:status :error :message "Unknown command"}))
+
+(defn- on-command-complete!
+  "Handle command completion - update cache and emit event."
+  [system cmd result]
+  ;; Update cache on success
+  (cache/handle-command-result (:cache system) cmd result)
+  ;; Emit event
+  (let [event (decisions/event-for-result cmd result)]
+    (emit-event! system event)))
+
+(defn- submit-command!
+  "Submit a command for async execution with deduplication."
+  [system cmd]
+  (let [command-key (decisions/command-key cmd)
+        ^ConcurrentHashMap in-flight (:in-flight system)]
+    ;; Check if already in-flight (deduplication)
+    (when-not (.putIfAbsent in-flight command-key true)
+      (let [semaphore (if (decisions/fast-command? cmd)
+                        (:fast-semaphore system)
+                        (:slow-semaphore system))
+            ^java.util.concurrent.ExecutorService executor (:executor system)]
+        ;; Submit bound Runnable that propagates dynamic bindings
+        (.submit executor
+                 ^Runnable
+                 (let [task-fn (bound-fn []
+                                 (try
+                                   (.acquire ^Semaphore semaphore)
+                                   (try
+                                     (let [result (execute-command! system cmd)]
+                                       (on-command-complete! system cmd result))
+                                     (finally
+                                       (.release ^Semaphore semaphore)))
+                                   (finally
+                                     (.remove in-flight command-key))))]
+                   (reify Runnable (run [_] (task-fn)))))))))
+
 (defn manage-domains
-  "Adds domains to management."
-  [_system _domains]
-  ;; TODO: Implement
-  nil)
+  "Adds domains to management, triggering immediate certificate obtain."
+  [system domains]
+  (doseq [domain domains]
+    ;; Emit domain-added event
+    (emit-event! system (create-domain-added-event domain))
+    ;; Submit obtain-certificate command
+    (submit-command! system {:command :obtain-certificate
+                             :domain domain
+                             :identifiers [domain]})))
 
 (defn unmanage-domains
   "Removes domains from management."

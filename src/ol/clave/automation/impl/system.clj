@@ -301,10 +301,18 @@
 ;; =============================================================================
 
 (defn- emit-event!
-  "Emit an event to the event queue."
+  "Emit an event to the event queue.
+  If the queue is full, drops the oldest event to make room."
   [system event]
-  (when-let [queue @(:event-queue system)]
-    (.offer ^LinkedBlockingQueue queue event)))
+  (when-let [^LinkedBlockingQueue queue @(:event-queue system)]
+    ;; Try to add the event, if queue is full, drop oldest and retry
+    (loop [attempts 0]
+      (when (< attempts 10)
+        (if (.offer queue event)
+          true
+          (do
+            (.poll queue)  ;; Remove oldest
+            (recur (inc attempts))))))))
 
 (defn- create-domain-added-event
   "Create a :domain-added event."

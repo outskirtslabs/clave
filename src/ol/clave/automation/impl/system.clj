@@ -94,6 +94,7 @@
   "Creates the initial system state map."
   [config]
   {:cache (atom {:certs {} :index {} :capacity (:cache-capacity config)})
+   :managed-domains (atom #{})  ;; Set of actively managed domain names
    :event-queue (atom nil)  ;; Lazily created
    :shutdown? (atom false)
    :started? (atom false)
@@ -194,6 +195,7 @@
   [system]
   (let [storage (:storage system)
         issuers (get-in system [:config :issuers])
+        managed-domains-atom (:managed-domains system)
         loaded-bundles (atom [])]
     (doseq [issuer issuers]
       (let [issuer-key (or (:issuer-key issuer)
@@ -203,6 +205,8 @@
             (when-let [bundle (load-certificate-bundle storage issuer-key domain)]
               ;; Add to cache
               (cache/cache-certificate (:cache system) bundle)
+              ;; Track as managed domain
+              (swap! managed-domains-atom conj domain)
               ;; Emit event if queue exists
               (when-let [queue @(:event-queue system)]
                 (let [event (decisions/create-certificate-loaded-event bundle)]
@@ -335,10 +339,34 @@
   [system]
   (boolean (and system @(:started? system))))
 
+(defn- load-cert-from-storage-for-domain
+  "Try to load a certificate for a domain from storage.
+
+  Iterates through all configured issuers and tries to load from each.
+  Returns the first bundle found, or nil if not found in any issuer's storage."
+  [system domain]
+  (let [issuers (get-in system [:config :issuers])
+        storage (:storage system)]
+    (some (fn [issuer]
+            (let [issuer-key (or (:issuer-key issuer)
+                                 (config/issuer-key-from-url (:directory-url issuer)))]
+              (load-certificate-bundle storage issuer-key domain)))
+          issuers)))
+
 (defn lookup-cert
-  "Finds a certificate for a hostname."
+  "Finds a certificate for a hostname.
+
+  Tries cache first, then falls back to storage if not found.
+  If found in storage, the certificate is loaded into the cache.
+  Only loads from storage for domains that are actively managed."
   [system hostname]
-  (cache/lookup-cert (:cache system) hostname))
+  (or (cache/lookup-cert (:cache system) hostname)
+      ;; Fallback: try to load from storage, but only for managed domains
+      (when (contains? @(:managed-domains system) hostname)
+        (when-let [bundle (load-cert-from-storage-for-domain system hostname)]
+          ;; Add to cache (this may evict another cert, which is fine)
+          (cache/cache-certificate (:cache system) bundle)
+          bundle))))
 
 ;; =============================================================================
 ;; Event Emission
@@ -610,6 +638,8 @@
   "Adds domains to management, triggering immediate certificate obtain."
   [system domains]
   (doseq [domain domains]
+    ;; Track as managed domain
+    (swap! (:managed-domains system) conj domain)
     ;; Emit domain-added event
     (emit-event! system (create-domain-added-event domain))
     ;; Submit obtain-certificate command
@@ -623,18 +653,22 @@
   For each domain:
   1. Finds the certificate bundle in the cache
   2. Removes it from the cache
-  3. Cancels any in-flight commands for that domain
-  4. Emits a :domain-removed event
+  3. Removes from managed-domains set
+  4. Cancels any in-flight commands for that domain
+  5. Emits a :domain-removed event
 
   Certificates remain in storage but are no longer actively managed."
   [system domains]
   (let [cache-atom (:cache system)
+        managed-domains-atom (:managed-domains system)
         ^ConcurrentHashMap in-flight (:in-flight system)]
     (doseq [domain domains]
       ;; Find the certificate bundle for this domain
       (when-let [bundle (cache/lookup-cert cache-atom domain)]
         ;; Remove from cache
         (cache/remove-certificate cache-atom bundle))
+      ;; Remove from managed domains set
+      (swap! managed-domains-atom disj domain)
       ;; Cancel any in-flight commands for this domain
       ;; Commands are keyed by [command-type domain]
       (.remove in-flight [:obtain-certificate domain])

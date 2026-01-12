@@ -336,7 +336,8 @@
          :timestamp now
          :data {:domain domain
                 :names (:names bundle)
-                :not-after (:not-after bundle)}})
+                :not-after (:not-after bundle)
+                :issuer-key (:issuer-key bundle)}})
 
       ;; Certificate renewed successfully
       (and success? (= :renew-certificate command))
@@ -345,7 +346,8 @@
          :timestamp now
          :data {:domain domain
                 :names (:names bundle)
-                :not-after (:not-after bundle)}})
+                :not-after (:not-after bundle)
+                :issuer-key (:issuer-key bundle)}})
 
       ;; Certificate obtain/renew failed
       (and (not success?) (#{:obtain-certificate :renew-certificate} command))

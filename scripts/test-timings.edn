@@ -14,6 +14,7 @@
  :ol.clave.automation.impl.domain-test 0.1,
  :ol.clave.automation.impl.decisions-test 0.008197878,
  :ol.clave.automation.impl.events-test 0.1,
+ :ol.clave.automation.issuer-fallback-integration-test 0.1,
  :ol.clave.certificate-integration-test 10.997112817,
  :ol.clave.challenge-test 0.038321533,
  :ol.clave.errors-test 0.005648061,

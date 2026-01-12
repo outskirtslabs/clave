@@ -407,7 +407,8 @@
   "Create an ACME session for the given issuer config.
 
   If account keys exist in storage, loads them and uses them.
-  Otherwise generates new keys, registers account, and saves keys."
+  Otherwise generates new keys, registers account, and saves keys.
+  External Account Binding credentials are passed if configured."
   [system issuer-config]
   (let [bg-lease (lease/background)
         storage (:storage system)
@@ -424,8 +425,11 @@
         account {::specs/contact (when-let [email (:email issuer-config)]
                                    [(str "mailto:" email)])
                  ::specs/termsOfServiceAgreed true}
+        ;; Build options for new-account, including EAB if configured
+        new-account-opts (when-let [eab (:external-account issuer-config)]
+                           {:external-account eab})
         ;; new-account will return existing account if key is already registered
-        [session _] (cmd/new-account bg-lease session account)]
+        [session _] (cmd/new-account bg-lease session account new-account-opts)]
     ;; Save keypair if we generated a new one
     (when-not existing-keypair
       (save-account-keypair! storage issuer-key account-key))
@@ -443,116 +447,105 @@
     (storage/store-string! storage nil key-key key-pem)
     (storage/store-string! storage nil meta-key meta-json)))
 
+(defn- try-obtain-from-issuer
+  "Try to obtain a certificate from a single issuer.
+  Returns {:status :success :bundle ...} on success, or {:status :error ...} on failure."
+  [system domain issuer solvers key-type]
+  (let [issuer-key (or (:issuer-key issuer)
+                       (config/issuer-key-from-url (:directory-url issuer)))
+        session (create-acme-session system issuer)
+        cert-keypair (keygen/generate key-type)
+        [_session result] (certificate/obtain-for-sans
+                           (lease/background)
+                           session
+                           [domain]
+                           cert-keypair
+                           solvers)
+        cert-data (first (:certificates result))
+        chain-pem (:chain-pem cert-data)
+        key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
+        parsed (cert-parse/parse-pem-chain chain-pem)
+        certs (::specs/certificates parsed)
+        ^java.security.cert.X509Certificate first-cert (first certs)
+        not-before (.toInstant (.getNotBefore first-cert))
+        not-after (.toInstant (.getNotAfter first-cert))
+        bundle {:names [domain]
+                :certificate certs
+                :private-key (.getPrivate cert-keypair)
+                :not-before not-before
+                :not-after not-after
+                :issuer-key issuer-key
+                :hash (cache/hash-certificate (mapv (fn [^java.security.cert.X509Certificate c]
+                                                      (.getEncoded c))
+                                                    certs))
+                :managed true}]
+    (store-certificate! system domain issuer-key chain-pem key-pem [domain])
+    {:status :success :bundle bundle}))
+
 (defn- obtain-certificate!
   "Execute the full ACME certificate obtain workflow.
 
+  Tries each configured issuer in order until one succeeds.
   Returns a result map with :status (:success or :error) and :bundle on success."
   [system cmd]
-  (try
-    (let [domain (:domain cmd)
-          resolved-config (config/resolve-config system domain)
-          issuers (config/select-issuer resolved-config)
-          issuer (first issuers)
-          issuer-key (or (:issuer-key issuer)
-                         (config/issuer-key-from-url (:directory-url issuer)))
-          solvers (get-in system [:config :solvers])
-          key-type (or (:key-type resolved-config) :p256)
-          ;; Create session for this issuer
-          session (create-acme-session system issuer)
-          ;; Generate certificate keypair
-          cert-keypair (keygen/generate key-type)
-          ;; Obtain certificate
-          [_session result] (certificate/obtain-for-sans
-                             (lease/background)
-                             session
-                             [domain]
-                             cert-keypair
-                             solvers)
-          ;; Extract certificate data
-          cert-data (first (:certificates result))
-          chain-pem (:chain-pem cert-data)
-          key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
-          ;; Parse the certificate for bundle creation
-          parsed (cert-parse/parse-pem-chain chain-pem)
-          certs (::specs/certificates parsed)
-          ^java.security.cert.X509Certificate first-cert (first certs)
-          not-before (.toInstant (.getNotBefore first-cert))
-          not-after (.toInstant (.getNotAfter first-cert))
-          ;; Create bundle
-          bundle {:names [domain]
-                  :certificate certs
-                  :private-key (.getPrivate cert-keypair)
-                  :not-before not-before
-                  :not-after not-after
-                  :issuer-key issuer-key
-                  :hash (cache/hash-certificate (mapv (fn [^java.security.cert.X509Certificate c]
-                                                        (.getEncoded c))
-                                                      certs))
-                  :managed true}]
-      ;; Store to storage
-      (store-certificate! system domain issuer-key chain-pem key-pem [domain])
-      {:status :success :bundle bundle})
-    (catch Exception e
-      {:status :error
-       :message (ex-message e)
-       :reason (decisions/classify-error e)})))
+  (let [domain (:domain cmd)
+        resolved-config (config/resolve-config system domain)
+        issuers (config/select-issuer resolved-config)
+        solvers (get-in system [:config :solvers])
+        key-type (or (:key-type resolved-config) :p256)]
+    ;; Try each issuer in order
+    (loop [remaining-issuers issuers
+           last-error nil]
+      (if (empty? remaining-issuers)
+        ;; All issuers failed
+        (or last-error
+            {:status :error
+             :message "No issuers available"
+             :reason :config-error})
+        (let [issuer (first remaining-issuers)
+              result (try
+                       (try-obtain-from-issuer system domain issuer solvers key-type)
+                       (catch Exception e
+                         {:status :error
+                          :message (ex-message e)
+                          :reason (decisions/classify-error e)}))]
+          (if (= :success (:status result))
+            result
+            ;; Try next issuer
+            (recur (rest remaining-issuers) result)))))))
 
 (defn- renew-certificate!
   "Execute the certificate renewal workflow.
 
   Similar to obtain but reuses domain info from the existing bundle.
   Always generates a new private key (default behavior, key-reuse not implemented yet).
+  Tries each configured issuer in order until one succeeds.
 
   Returns a result map with :status (:success or :error) and :bundle on success."
   [system cmd]
-  (try
-    (let [domain (:domain cmd)
-          resolved-config (config/resolve-config system domain)
-          issuers (config/select-issuer resolved-config)
-          issuer (first issuers)
-          issuer-key (or (:issuer-key issuer)
-                         (config/issuer-key-from-url (:directory-url issuer)))
-          solvers (get-in system [:config :solvers])
-          key-type (or (:key-type resolved-config) :p256)
-          ;; Create session for this issuer
-          session (create-acme-session system issuer)
-          ;; Always generate new keypair (key-reuse is false by default)
-          cert-keypair (keygen/generate key-type)
-          ;; Renew certificate using same domain
-          [_session result] (certificate/obtain-for-sans
-                             (lease/background)
-                             session
-                             [domain]
-                             cert-keypair
-                             solvers)
-          ;; Extract certificate data
-          cert-data (first (:certificates result))
-          chain-pem (:chain-pem cert-data)
-          key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
-          ;; Parse the certificate for bundle creation
-          parsed (cert-parse/parse-pem-chain chain-pem)
-          certs (::specs/certificates parsed)
-          ^java.security.cert.X509Certificate first-cert (first certs)
-          not-before (.toInstant (.getNotBefore first-cert))
-          not-after (.toInstant (.getNotAfter first-cert))
-          ;; Create bundle
-          bundle {:names [domain]
-                  :certificate certs
-                  :private-key (.getPrivate cert-keypair)
-                  :not-before not-before
-                  :not-after not-after
-                  :issuer-key issuer-key
-                  :hash (cache/hash-certificate (mapv (fn [^java.security.cert.X509Certificate c]
-                                                        (.getEncoded c))
-                                                      certs))
-                  :managed true}]
-      ;; Store to storage
-      (store-certificate! system domain issuer-key chain-pem key-pem [domain])
-      {:status :success :bundle bundle})
-    (catch Exception e
-      {:status :error
-       :message (ex-message e)
-       :reason (decisions/classify-error e)})))
+  (let [domain (:domain cmd)
+        resolved-config (config/resolve-config system domain)
+        issuers (config/select-issuer resolved-config)
+        solvers (get-in system [:config :solvers])
+        key-type (or (:key-type resolved-config) :p256)]
+    ;; Try each issuer in order (same logic as obtain)
+    (loop [remaining-issuers issuers
+           last-error nil]
+      (if (empty? remaining-issuers)
+        (or last-error
+            {:status :error
+             :message "No issuers available"
+             :reason :config-error})
+        (let [issuer (first remaining-issuers)
+              result (try
+                       (try-obtain-from-issuer system domain issuer solvers key-type)
+                       (catch Exception e
+                         {:status :error
+                          :message (ex-message e)
+                          :reason (decisions/classify-error e)}))]
+          (if (= :success (:status result))
+            result
+            (recur (rest remaining-issuers) result)))))))
 
 ;; =============================================================================
 ;; Command Execution

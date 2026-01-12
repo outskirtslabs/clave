@@ -10,22 +10,52 @@
    [java.security MessageDigest]
    [java.security.cert X509Certificate]))
 
+(defn- random-evict
+  "Randomly evict one certificate from the cache to make room.
+  Returns updated cache state with one certificate removed."
+  [{:keys [certs index] :as cache}]
+  (if (empty? certs)
+    cache
+    (let [hashes (keys certs)
+          victim-hash (rand-nth (vec hashes))
+          victim-bundle (get certs victim-hash)
+          victim-sans (:names victim-bundle)]
+      {:certs (dissoc certs victim-hash)
+       :index (reduce (fn [idx san]
+                        (update idx san (fn [h] (vec (remove #(= % victim-hash) h)))))
+                      index victim-sans)
+       :capacity (:capacity cache)})))
+
 (defn cache-certificate
   "Add or update a certificate in the cache.
 
+  If `:capacity` is set in the cache and adding would exceed it,
+  one random certificate is evicted first.
+
   | key | description |
   |-----|-------------|
-  | `cache-atom` | Atom containing {:certs {} :index {}} |
+  | `cache-atom` | Atom containing {:certs {} :index {} :capacity nil} |
   | `bundle` | Certificate bundle with :hash and :names |"
   [cache-atom bundle]
   (swap! cache-atom
-         (fn [{:keys [certs index]}]
+         (fn [{:keys [certs capacity] :as cache}]
            (let [hash (:hash bundle)
-                 sans (:names bundle)]
+                 sans (:names bundle)
+                 ;; Check if this certificate is already in cache (update case)
+                 already-cached? (contains? certs hash)
+                 ;; Check if we need to evict (only if capacity set and not already cached)
+                 needs-eviction? (and capacity
+                                      (not already-cached?)
+                                      (>= (count certs) capacity))
+                 ;; Evict if needed, then extract certs and index
+                 {:keys [certs index]} (if needs-eviction?
+                                         (random-evict cache)
+                                         cache)]
              {:certs (assoc certs hash bundle)
               :index (reduce (fn [idx san]
                                (update idx san (fnil conj []) hash))
-                             index sans)}))))
+                             index sans)
+              :capacity capacity}))))
 
 (defn- hostname->wildcard
   "Convert hostname to wildcard pattern.
@@ -60,25 +90,26 @@
 
   | key | description |
   |-----|-------------|
-  | `cache-atom` | Atom containing {:certs {} :index {}} |
+  | `cache-atom` | Atom containing {:certs {} :index {} :capacity nil} |
   | `bundle` | Certificate bundle with :hash and :names to remove |"
   [cache-atom bundle]
   (swap! cache-atom
-         (fn [{:keys [certs index]}]
+         (fn [{:keys [certs index capacity]}]
            (let [hash (:hash bundle)
                  sans (:names bundle)]
              {:certs (dissoc certs hash)
               :index (reduce (fn [idx san]
                                (update idx san (fn [hashes]
                                                  (vec (remove #(= % hash) hashes)))))
-                             index sans)}))))
+                             index sans)
+              :capacity capacity}))))
 
 (defn update-ocsp-staple
   "Update OCSP staple in existing cached bundle.
 
   | key | description |
   |-----|-------------|
-  | `cache-atom` | Atom containing {:certs {} :index {}} |
+  | `cache-atom` | Atom containing {:certs {} :index {} :capacity nil} |
   | `hash` | Hash of the certificate to update |
   | `ocsp-response` | New OCSP staple data |"
   [cache-atom hash ocsp-response]

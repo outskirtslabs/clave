@@ -93,7 +93,7 @@
 (defn- create-system-state
   "Creates the initial system state map."
   [config]
-  {:cache (atom {:certs {} :index {}})
+  {:cache (atom {:certs {} :index {} :capacity (:cache-capacity config)})
    :event-queue (atom nil)  ;; Lazily created
    :shutdown? (atom false)
    :started? (atom false)
@@ -102,7 +102,7 @@
    :slow-semaphore (Semaphore. *slow-semaphore-permits*)
    :in-flight (ConcurrentHashMap.)
    :storage (:storage config)
-   :config (dissoc config :storage :config-fn :http-client)
+   :config (dissoc config :storage :config-fn :http-client :cache-capacity)
    :config-fn (:config-fn config)
    :http-client (:http-client config)
    :maintenance-thread (atom nil)})

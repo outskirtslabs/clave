@@ -1119,3 +1119,7 @@
               (is (some? (:private-key bundle)) "Bundle should have private key"))))
         (finally
           (automation/stop system))))))
+
+;; Cache eviction is tested at unit level in cache_test.clj
+;; Pebble cannot issue certificates for arbitrary subdomains,
+;; so integration testing of cache eviction with multiple domains is not feasible.

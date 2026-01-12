@@ -318,3 +318,96 @@
       (cache/handle-command-result cache-atom cmd result)
       (let [updated-bundle (get-in @cache-atom [:certs "abc123"])]
         (is (nil? (:ocsp-staple updated-bundle)))))))
+
+;; =============================================================================
+;; Cache capacity and eviction tests
+;; =============================================================================
+
+(deftest cache-certificate-evicts-when-at-capacity
+  (testing "Adding certificate to full cache evicts one randomly"
+    (let [bundle1 (make-bundle {:hash "hash1" :names ["domain1.com"]})
+          bundle2 (make-bundle {:hash "hash2" :names ["domain2.com"]})
+          bundle3 (make-bundle {:hash "hash3" :names ["domain3.com"]})
+          bundle4 (make-bundle {:hash "hash4" :names ["domain4.com"]})
+          cache-atom (atom {:certs {"hash1" bundle1
+                                    "hash2" bundle2
+                                    "hash3" bundle3}
+                            :index {"domain1.com" ["hash1"]
+                                    "domain2.com" ["hash2"]
+                                    "domain3.com" ["hash3"]}
+                            :capacity 3})]
+      ;; Add 4th certificate - should evict one
+      (cache/cache-certificate cache-atom bundle4)
+      (let [{:keys [certs]} @cache-atom]
+        ;; Should still have exactly 3 certs
+        (is (= 3 (count certs))
+            "Cache should have exactly 3 certificates after eviction")
+        ;; New cert should be in cache
+        (is (contains? certs "hash4")
+            "New certificate should be in cache")))))
+
+(deftest cache-certificate-no-eviction-under-capacity
+  (testing "Adding certificate below capacity does not evict"
+    (let [bundle1 (make-bundle {:hash "hash1" :names ["domain1.com"]})
+          bundle2 (make-bundle {:hash "hash2" :names ["domain2.com"]})
+          cache-atom (atom {:certs {"hash1" bundle1}
+                            :index {"domain1.com" ["hash1"]}
+                            :capacity 3})]
+      ;; Add 2nd certificate - should not evict (2 < 3)
+      (cache/cache-certificate cache-atom bundle2)
+      (let [{:keys [certs]} @cache-atom]
+        ;; Should have both certs
+        (is (= 2 (count certs))
+            "Cache should have 2 certificates")
+        (is (contains? certs "hash1"))
+        (is (contains? certs "hash2"))))))
+
+(deftest cache-certificate-no-eviction-when-unlimited
+  (testing "Adding certificate with nil capacity does not evict"
+    (let [bundle1 (make-bundle {:hash "hash1" :names ["domain1.com"]})
+          bundle2 (make-bundle {:hash "hash2" :names ["domain2.com"]})
+          bundle3 (make-bundle {:hash "hash3" :names ["domain3.com"]})
+          bundle4 (make-bundle {:hash "hash4" :names ["domain4.com"]})
+          cache-atom (atom {:certs {"hash1" bundle1
+                                    "hash2" bundle2
+                                    "hash3" bundle3}
+                            :index {"domain1.com" ["hash1"]
+                                    "domain2.com" ["hash2"]
+                                    "domain3.com" ["hash3"]}
+                            :capacity nil})]
+      ;; Add 4th certificate - should not evict (unlimited)
+      (cache/cache-certificate cache-atom bundle4)
+      (let [{:keys [certs]} @cache-atom]
+        ;; Should have all 4 certs
+        (is (= 4 (count certs))
+            "Cache should have all 4 certificates with unlimited capacity")))))
+
+(deftest cache-certificate-update-does-not-evict
+  (testing "Updating existing certificate does not trigger eviction"
+    (let [bundle1 (make-bundle {:hash "hash1" :names ["domain1.com"]})
+          bundle2 (make-bundle {:hash "hash2" :names ["domain2.com"]})
+          bundle3 (make-bundle {:hash "hash3" :names ["domain3.com"]})
+          ;; Updated version of bundle1 (same hash)
+          bundle1-updated (make-bundle {:hash "hash1"
+                                        :names ["domain1.com"]
+                                        :ocsp-staple {:updated true}})
+          cache-atom (atom {:certs {"hash1" bundle1
+                                    "hash2" bundle2
+                                    "hash3" bundle3}
+                            :index {"domain1.com" ["hash1"]
+                                    "domain2.com" ["hash2"]
+                                    "domain3.com" ["hash3"]}
+                            :capacity 3})]
+      ;; Update bundle1 - should not evict since hash exists
+      (cache/cache-certificate cache-atom bundle1-updated)
+      (let [{:keys [certs]} @cache-atom]
+        ;; Should still have exactly 3 certs
+        (is (= 3 (count certs))
+            "Cache should still have 3 certificates")
+        ;; All original hashes should be present
+        (is (contains? certs "hash1"))
+        (is (contains? certs "hash2"))
+        (is (contains? certs "hash3"))
+        ;; bundle1 should be updated
+        (is (= {:updated true} (:ocsp-staple (get certs "hash1")))
+            "Bundle should be updated")))))

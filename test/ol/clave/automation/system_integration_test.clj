@@ -154,14 +154,28 @@
             (is (= :domain-added (:type domain-added-event))
                 "First event should be :domain-added")
             (is (= domain (get-in domain-added-event [:data :domain]))
-                "Event domain should match"))
-          ;; Step 5-6: Wait for certificate obtain to complete and verify event
-          (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
-            (is (some? cert-event) "Should receive certificate event")
-            (is (= :certificate-obtained (:type cert-event))
-                "Event should be :certificate-obtained")
-            (is (= domain (get-in cert-event [:data :domain]))
-                "Certificate event domain should match"))
+                "Event domain should match")
+            ;; Verify event has timestamp
+            (is (some? (:timestamp domain-added-event))
+                "Event should have timestamp")
+            (is (instance? java.time.Instant (:timestamp domain-added-event))
+                "Timestamp should be an Instant")
+            ;; Step 5-6: Wait for certificate obtain to complete and verify event
+            (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
+              (is (some? cert-event) "Should receive certificate event")
+              (is (= :certificate-obtained (:type cert-event))
+                  "Event should be :certificate-obtained")
+              (is (= domain (get-in cert-event [:data :domain]))
+                  "Certificate event domain should match")
+              ;; Verify event has timestamp
+              (is (some? (:timestamp cert-event))
+                  "Certificate event should have timestamp")
+              (is (instance? java.time.Instant (:timestamp cert-event))
+                  "Certificate event timestamp should be an Instant")
+              ;; Verify timestamps are in chronological order
+              (is (not (.isAfter ^java.time.Instant (:timestamp domain-added-event)
+                                 ^java.time.Instant (:timestamp cert-event)))
+                  "Domain-added event should not be after certificate-obtained event")))
           ;; Step 7: Verify certificate is in cache via lookup-cert
           (let [cert-bundle (automation/lookup-cert system domain)
                 certs (:certificate cert-bundle)

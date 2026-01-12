@@ -183,6 +183,28 @@
   [issuer-key]
   (str "certificates/" issuer-key))
 
+(defn account-private-key-storage-key
+  "Generate storage key for an account private key PEM file.
+
+  Format: `accounts/{issuer-key}/account.key`
+
+  | key | description |
+  |-----|-------------|
+  | `issuer-key` | Issuer identifier (hostname from directory URL) |"
+  [issuer-key]
+  (str "accounts/" issuer-key "/account.key"))
+
+(defn account-public-key-storage-key
+  "Generate storage key for an account public key PEM file.
+
+  Format: `accounts/{issuer-key}/account.pub`
+
+  | key | description |
+  |-----|-------------|
+  | `issuer-key` | Issuer identifier (hostname from directory URL) |"
+  [issuer-key]
+  (str "accounts/" issuer-key "/account.pub"))
+
 (defn select-chain
   "Select a certificate chain based on preference.
 

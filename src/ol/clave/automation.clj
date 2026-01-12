@@ -193,3 +193,15 @@
   | `opts` | Options with `:remove-from-storage` |"
   [system certificate opts]
   (system/revoke system certificate opts))
+
+(defn trigger-maintenance!
+  "Manually triggers a maintenance cycle.
+
+  This is primarily useful for testing - in normal operation the
+  maintenance loop runs automatically at regular intervals.
+
+  | key | description |
+  |-----|-------------|
+  | `system` | System handle from `start` |"
+  [system]
+  (system/trigger-maintenance! system))

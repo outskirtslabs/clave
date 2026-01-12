@@ -220,7 +220,9 @@
             (if (empty? authz-urls)
               ;; Process authorizations
               (let [;; Phase 4: Challenge Selection
-                    selected (for [authz authzs]
+                    ;; Filter out already-valid authorizations - they don't need challenges solved
+                    pending-authzs (filterv #(= "pending" (::specs/status %)) authzs)
+                    selected (for [authz pending-authzs]
                                (let [[challenge-type challenge] (select-challenge authz solvers preferred-challenges {})]
                                  {:authz authz
                                   :challenge-type challenge-type

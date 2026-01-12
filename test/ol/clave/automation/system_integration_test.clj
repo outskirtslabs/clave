@@ -6,6 +6,7 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.config :as config]
+   [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.automation.impl.system :as system]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.certificate :as certificate]
@@ -555,5 +556,320 @@
         ;; Step 2-3: Call has-valid-cert? for unknown domain
         (is (false? (automation/has-valid-cert? system "unknown.example.com"))
             "has-valid-cert? should return false for unknown domain")
+        (finally
+          (automation/stop system))))))
+
+(deftest account-is-created-automatically-on-first-certificate-request
+  (testing "Account is created and persisted on first certificate request"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          issuer-key (config/issuer-key-from-url (pebble/uri))
+          ;; Create an HTTP-01 solver
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Step 3: Call manage-domains to trigger certificate obtain
+          (automation/manage-domains system [domain])
+          ;; Consume events until certificate is obtained
+          (loop []
+            (let [event (.poll queue 30 TimeUnit/SECONDS)]
+              (when (and event (not= :certificate-obtained (:type event)))
+                (recur))))
+          ;; Step 4: Verify account is registered (certificate was issued successfully)
+          (let [cert-bundle (automation/lookup-cert system domain)]
+            (is (some? cert-bundle) "Certificate should be obtained, proving account was registered"))
+          ;; Step 5: Verify account key is persisted to storage
+          (let [private-key-key (config/account-private-key-storage-key issuer-key)
+                public-key-key (config/account-public-key-storage-key issuer-key)]
+            (is (storage/exists? storage-impl nil private-key-key)
+                "Account private key should be persisted")
+            (is (storage/exists? storage-impl nil public-key-key)
+                "Account public key should be persisted")))
+        (finally
+          (automation/stop system))))))
+
+(deftest account-key-is-persisted-and-reused-across-restarts
+  (testing "Account key is reused after system restart"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          issuer-key (config/issuer-key-from-url (pebble/uri))
+          ;; Create an HTTP-01 solver
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}]
+      ;; First run: obtain certificate (creates account)
+      (let [system1 (automation/start config)
+            queue1 (automation/get-event-queue system1)]
+        (try
+          (automation/manage-domains system1 [domain])
+          ;; Wait for certificate
+          (loop []
+            (let [event (.poll queue1 30 TimeUnit/SECONDS)]
+              (when (and event (not= :certificate-obtained (:type event)))
+                (recur))))
+          (finally
+            (automation/stop system1))))
+      ;; Record the account key fingerprint
+      ;; Second run: restart and obtain another certificate
+      (let [private-key-key (config/account-private-key-storage-key issuer-key)
+            original-key-pem (storage/load-string storage-impl nil private-key-key)
+            system2 (automation/start config)
+            queue2 (automation/get-event-queue system2)]
+        (try
+            ;; Force renewal to create new certificate (with threshold > 1)
+            (binding [decisions/*renewal-threshold* 1.01]
+              (automation/trigger-maintenance! system2)
+              ;; Wait for renewal
+              (loop [attempts 0]
+                (when (< attempts 10)
+                  (let [evt (.poll queue2 5 TimeUnit/SECONDS)]
+                    (when-not (= :certificate-renewed (:type evt))
+                      (recur (inc attempts)))))))
+            ;; Verify account key is unchanged
+            (let [reloaded-key-pem (storage/load-string storage-impl nil private-key-key)]
+              (is (= original-key-pem reloaded-key-pem)
+                  "Account key should be unchanged after restart"))
+            (finally
+              (automation/stop system2)))))))
+
+(deftest system-graceful-shutdown-waits-for-in-flight-operations
+  (testing "System stop waits for in-flight certificate operations to complete"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          ;; Create an HTTP-01 solver with a delay to simulate slow operations
+          solver-started (atom false)
+          solver {:present (fn [_lease chall account-key]
+                             ;; Signal that solver has started
+                             (reset! solver-started true)
+                             ;; Add slight delay to ensure stop is called during operation
+                             (Thread/sleep 100)
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)
+          queue (automation/get-event-queue system)]
+      ;; Step 2: Start a certificate obtain operation (async)
+      (automation/manage-domains system [domain])
+      ;; Wait briefly to ensure operation has started
+      (Thread/sleep 50)
+      ;; Step 3: Call automation/stop while obtain is in progress
+      ;; This should block until the operation completes
+      (let [stop-start-time (System/currentTimeMillis)
+            _ (automation/stop system)
+            stop-end-time (System/currentTimeMillis)
+            stop-duration (- stop-end-time stop-start-time)]
+        ;; Step 4: Verify stop blocked (took some time)
+        ;; The solver adds 100ms delay, so stop should have waited
+        (is (>= stop-duration 50) "Stop should have blocked waiting for operation")
+        ;; Step 6: Verify system is fully stopped
+        (is (false? (automation/started? system))
+            "System should be stopped after stop returns")
+        ;; Step 5: Verify certificate was successfully obtained
+        ;; Look for certificate-obtained event or check storage
+        (let [cert-key (config/cert-storage-key
+                        (config/issuer-key-from-url (pebble/uri))
+                        domain)]
+          (is (storage/exists? storage-impl nil cert-key)
+              "Certificate should be persisted after graceful shutdown")))
+      ;; Step 7: Verify event queue receives shutdown signal
+      ;; Drain all events and find the shutdown marker
+      (let [events (loop [collected []]
+                     (let [evt (.poll queue 100 TimeUnit/MILLISECONDS)]
+                       (if evt
+                         (recur (conj collected evt))
+                         collected)))
+            has-shutdown (some #(= :ol.clave/shutdown %) events)]
+        (is has-shutdown "Event queue should receive shutdown signal")))))
+
+(deftest certificate-renewal-happens-before-expiration
+  (testing "Certificate renewal is triggered when threshold is reached"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          ;; Create an HTTP-01 solver that works with pebble's challenge test server
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Step 3: Obtain a certificate
+          (automation/manage-domains system [domain])
+          ;; Consume domain-added event
+          (.poll queue 5 TimeUnit/SECONDS)
+          ;; Wait for certificate obtain to complete
+          (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
+            (is (= :certificate-obtained (:type cert-event))
+                "Should receive :certificate-obtained event"))
+          ;; Get initial certificate info
+          (let [initial-bundle (automation/lookup-cert system domain)
+                initial-hash (:hash initial-bundle)]
+            (is (some? initial-bundle) "Should have initial certificate")
+            (is (some? initial-hash) "Initial bundle should have hash")
+            ;; Step 4: Override renewal-threshold to > 1.0 to force immediate renewal
+            ;; With threshold > 1.0, renewal-time becomes before not-before,
+            ;; so needs-renewal? always returns true
+            (binding [decisions/*renewal-threshold* 1.01]
+              ;; Step 5: Trigger maintenance loop manually
+              (automation/trigger-maintenance! system)
+              ;; Step 6-7: Wait for renewal to complete
+              ;; Note: Maintenance may also trigger OCSP refresh, so we poll until we get
+              ;; the certificate-renewed event or timeout
+              (let [renewed-event (loop [attempts 0]
+                                    (when (< attempts 10)
+                                      (let [evt (.poll queue 5 TimeUnit/SECONDS)]
+                                        (if (= :certificate-renewed (:type evt))
+                                          evt
+                                          (recur (inc attempts))))))]
+                ;; Step 8: Verify :certificate-renewed event is emitted
+                (is (some? renewed-event) "Should receive renewal event")
+                (is (= :certificate-renewed (:type renewed-event))
+                    "Event should be :certificate-renewed")
+                (is (= domain (get-in renewed-event [:data :domain]))
+                    "Renewed event domain should match"))
+              ;; Step 9-10: Verify new certificate has different hash (proving it's a new cert)
+              ;; Note: NotBefore may be the same if Pebble issues both within same second
+              (let [new-bundle (automation/lookup-cert system domain)
+                    new-hash (:hash new-bundle)]
+                (is (some? new-bundle) "Should have new certificate")
+                (is (some? new-hash) "New bundle should have hash")
+                (is (not= initial-hash new-hash)
+                    "New certificate should have different hash than old")))))
+        (finally
+          (automation/stop system))))))
+
+(deftest private-key-type-respects-configuration
+  (testing "Certificate private key type matches :key-type configuration"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          ;; Configure RSA 2048-bit key type
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :key-type :rsa2048
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Obtain a certificate
+          (automation/manage-domains system [domain])
+          ;; Consume domain-added event
+          (.poll queue 5 TimeUnit/SECONDS)
+          ;; Wait for certificate obtain
+          (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
+            (is (= :certificate-obtained (:type cert-event))
+                "Should receive :certificate-obtained event"))
+          ;; Verify key type is RSA 2048-bit
+          (let [bundle (automation/lookup-cert system domain)
+                private-key (:private-key bundle)]
+            (is (some? private-key) "Bundle should have private key")
+            (is (instance? java.security.interfaces.RSAPrivateKey private-key)
+                "Private key should be RSA type")
+            (when (instance? java.security.interfaces.RSAPrivateKey private-key)
+              (let [^java.security.interfaces.RSAPrivateKey rsa-key private-key
+                    modulus-bits (.bitLength (.getModulus rsa-key))]
+                (is (= 2048 modulus-bits)
+                    "RSA key should be 2048 bits")))))
+        (finally
+          (automation/stop system))))))
+
+(deftest new-private-key-generated-for-each-certificate-by-default
+  (testing "Renewal generates new private key (key-reuse false by default)"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Obtain initial certificate
+          (automation/manage-domains system [domain])
+          ;; Consume domain-added event
+          (.poll queue 5 TimeUnit/SECONDS)
+          ;; Wait for certificate obtain
+          (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
+            (is (= :certificate-obtained (:type cert-event))))
+          ;; Get initial private key fingerprint
+          (let [initial-bundle (automation/lookup-cert system domain)
+                initial-key (:private-key initial-bundle)
+                initial-fingerprint (.hashCode initial-key)]
+            (is (some? initial-key) "Initial bundle should have private key")
+            ;; Force renewal with threshold > 1.0
+            (binding [decisions/*renewal-threshold* 1.01]
+              (automation/trigger-maintenance! system)
+              ;; Wait for renewal
+              (loop [attempts 0]
+                (when (< attempts 10)
+                  (let [evt (.poll queue 5 TimeUnit/SECONDS)]
+                    (when-not (= :certificate-renewed (:type evt))
+                      (recur (inc attempts)))))))
+            ;; Verify new private key is different
+            (let [new-bundle (automation/lookup-cert system domain)
+                  new-key (:private-key new-bundle)
+                  new-fingerprint (.hashCode new-key)]
+              (is (some? new-key) "Renewed bundle should have private key")
+              (is (not= initial-fingerprint new-fingerprint)
+                  "New private key should be different from initial"))))
         (finally
           (automation/stop system))))))

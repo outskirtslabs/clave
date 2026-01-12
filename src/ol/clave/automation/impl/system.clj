@@ -14,6 +14,7 @@
    [ol.clave.certificate :as certificate]
    [ol.clave.certificate.impl.keygen :as keygen]
    [ol.clave.certificate.impl.parse :as cert-parse]
+   [ol.clave.crypto.impl.core :as crypto]
    [ol.clave.lease :as lease]
    [ol.clave.specs :as specs]
    [ol.clave.storage :as storage])
@@ -47,6 +48,13 @@
 (def ^:dynamic *slow-semaphore-permits*
   "Concurrent slow command permits (obtain, renew)."
   1000)
+
+(def ^:dynamic *shutdown-timeout-ms*
+  "Timeout for graceful shutdown in milliseconds (30 seconds)."
+  30000)
+
+;; Forward declaration for functions that have cyclic dependencies
+(declare submit-command!)
 
 (def ^:private storage-test-key
   "Key used for storage validation on startup."
@@ -209,18 +217,51 @@
     (let [event (decisions/create-certificate-loaded-event bundle)]
       (.offer ^LinkedBlockingQueue queue event))))
 
+(defn- run-maintenance-cycle!
+  "Execute a single maintenance cycle.
+
+  Iterates all managed certificates in the cache and checks if any
+  maintenance is needed. Submits commands for certificates that need
+  renewal or OCSP refresh."
+  [system]
+  (let [cache-atom (:cache system)
+        {:keys [certs]} @cache-atom
+        now (Instant/now)]
+    (doseq [[_hash bundle] certs]
+      (when (:managed bundle)
+        (try
+          (let [domain (first (:names bundle))
+                resolved-config (config/resolve-config system domain)
+                commands (decisions/check-cert-maintenance bundle resolved-config now)]
+            ;; Submit each command to the queue
+            (doseq [cmd commands]
+              (submit-command! system cmd)))
+          (catch Exception e
+            ;; Log and continue - don't let one domain break others
+            (println "Error in maintenance cycle for"
+                     (first (:names bundle)) "-" (ex-message e))))))))
+
+(defn trigger-maintenance!
+  "Manually trigger a maintenance cycle.
+
+  This is primarily useful for testing - in normal operation the
+  maintenance loop runs automatically."
+  [system]
+  (run-maintenance-cycle! system))
+
 (defn- start-maintenance-loop!
   "Starts the maintenance loop on a virtual thread.
   Returns the thread."
   [system]
-  ;; Placeholder for now - will implement full maintenance loop later
   (let [shutdown? (:shutdown? system)
         thread (Thread/startVirtualThread
                 (bound-fn []
                   (loop []
                     (when-not @shutdown?
                       (try
-                        ;; TODO: Implement maintenance loop body
+                        ;; Run maintenance cycle
+                        (run-maintenance-cycle! system)
+                        ;; Sleep with jitter
                         (Thread/sleep (long (+ *maintenance-interval-ms*
                                                (rand-int *maintenance-jitter-ms*))))
                         (catch InterruptedException _
@@ -278,9 +319,12 @@
     ;; Interrupt maintenance thread
     (when-let [thread @(:maintenance-thread system)]
       (.interrupt ^Thread thread))
-    ;; Shutdown executor
-    (when-let [executor (:executor system)]
-      (.shutdown ^java.util.concurrent.ExecutorService executor))
+    ;; Shutdown executor and wait for in-flight operations
+    (when-let [^java.util.concurrent.ExecutorService executor (:executor system)]
+      ;; Signal no new tasks accepted
+      (.shutdown executor)
+      ;; Wait for in-flight operations to complete with timeout
+      (.awaitTermination executor *shutdown-timeout-ms* java.util.concurrent.TimeUnit/MILLISECONDS))
     ;; Close event queue if created
     (when-let [queue @(:event-queue system)]
       (.offer ^LinkedBlockingQueue queue :ol.clave/shutdown))
@@ -332,20 +376,54 @@
 ;; Certificate Obtain Workflow
 ;; =============================================================================
 
+(defn- load-account-keypair
+  "Load account keypair from storage if it exists.
+  Returns a java.security.KeyPair or nil if not found."
+  [storage issuer-key]
+  (let [private-key-key (config/account-private-key-storage-key issuer-key)
+        public-key-key (config/account-public-key-storage-key issuer-key)]
+    (when (and (storage/exists? storage nil private-key-key)
+               (storage/exists? storage nil public-key-key))
+      (let [private-pem (storage/load-string storage nil private-key-key)
+            public-pem (storage/load-string storage nil public-key-key)]
+        (crypto/keypair-from-pems private-pem public-pem)))))
+
+(defn- save-account-keypair!
+  "Save account keypair to storage."
+  [storage issuer-key ^java.security.KeyPair keypair]
+  (let [private-key-key (config/account-private-key-storage-key issuer-key)
+        public-key-key (config/account-public-key-storage-key issuer-key)
+        private-pem (crypto/encode-private-key-pem (.getPrivate keypair))
+        public-pem (crypto/encode-public-key-pem (.getPublic keypair))]
+    (storage/store-string! storage nil private-key-key private-pem)
+    (storage/store-string! storage nil public-key-key public-pem)))
+
 (defn- create-acme-session
-  "Create an ACME session for the given issuer config."
+  "Create an ACME session for the given issuer config.
+
+  If account keys exist in storage, loads them and uses them.
+  Otherwise generates new keys, registers account, and saves keys."
   [system issuer-config]
   (let [bg-lease (lease/background)
-        account-key (account/generate-keypair)
+        storage (:storage system)
         http-opts (:http-client system)
         directory-url (:directory-url issuer-config)
+        issuer-key (or (:issuer-key issuer-config)
+                       (config/issuer-key-from-url directory-url))
+        ;; Try to load existing account keys
+        existing-keypair (load-account-keypair storage issuer-key)
+        account-key (or existing-keypair (account/generate-keypair))
         [session _] (cmd/create-session bg-lease directory-url
                                         {:http-client http-opts
                                          :account-key account-key})
         account {::specs/contact (when-let [email (:email issuer-config)]
                                    [(str "mailto:" email)])
                  ::specs/termsOfServiceAgreed true}
+        ;; new-account will return existing account if key is already registered
         [session _] (cmd/new-account bg-lease session account)]
+    ;; Save keypair if we generated a new one
+    (when-not existing-keypair
+      (save-account-keypair! storage issuer-key account-key))
     session))
 
 (defn- store-certificate!
@@ -414,6 +492,63 @@
        :message (ex-message e)
        :reason (decisions/classify-error e)})))
 
+(defn- renew-certificate!
+  "Execute the certificate renewal workflow.
+
+  Similar to obtain but reuses domain info from the existing bundle.
+  Always generates a new private key (default behavior, key-reuse not implemented yet).
+
+  Returns a result map with :status (:success or :error) and :bundle on success."
+  [system cmd]
+  (try
+    (let [domain (:domain cmd)
+          resolved-config (config/resolve-config system domain)
+          issuers (config/select-issuer resolved-config)
+          issuer (first issuers)
+          issuer-key (or (:issuer-key issuer)
+                         (config/issuer-key-from-url (:directory-url issuer)))
+          solvers (get-in system [:config :solvers])
+          key-type (or (:key-type resolved-config) :p256)
+          ;; Create session for this issuer
+          session (create-acme-session system issuer)
+          ;; Always generate new keypair (key-reuse is false by default)
+          cert-keypair (keygen/generate key-type)
+          ;; Renew certificate using same domain
+          [_session result] (certificate/obtain-for-sans
+                             (lease/background)
+                             session
+                             [domain]
+                             cert-keypair
+                             solvers)
+          ;; Extract certificate data
+          cert-data (first (:certificates result))
+          chain-pem (:chain-pem cert-data)
+          key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
+          ;; Parse the certificate for bundle creation
+          parsed (cert-parse/parse-pem-chain chain-pem)
+          certs (::specs/certificates parsed)
+          ^java.security.cert.X509Certificate first-cert (first certs)
+          not-before (.toInstant (.getNotBefore first-cert))
+          not-after (.toInstant (.getNotAfter first-cert))
+          ;; Create bundle
+          bundle {:names [domain]
+                  :certificate certs
+                  :private-key (.getPrivate cert-keypair)
+                  :not-before not-before
+                  :not-after not-after
+                  :issuer-key issuer-key
+                  :hash (cache/hash-certificate (mapv (fn [^java.security.cert.X509Certificate c]
+                                                        (.getEncoded c))
+                                                      certs))
+                  :managed true}]
+      ;; Store to storage
+      (store-certificate! system domain issuer-key chain-pem key-pem [domain])
+      {:status :success :bundle bundle})
+    (catch Exception e
+      {:status :error
+       :message (ex-message e)
+       :reason (decisions/classify-error e)})))
+
 ;; =============================================================================
 ;; Command Execution
 ;; =============================================================================
@@ -423,7 +558,7 @@
   [system cmd]
   (case (:command cmd)
     :obtain-certificate (obtain-certificate! system cmd)
-    :renew-certificate {:status :error :message "Not implemented"}
+    :renew-certificate (renew-certificate! system cmd)
     :fetch-ocsp {:status :error :message "Not implemented"}
     {:status :error :message "Unknown command"}))
 

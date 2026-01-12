@@ -302,7 +302,7 @@
 (deftest classify-error-returns-acme-error-for-4xx-responses
   (testing "Exception with 400 status and ACME problem type is classified as :acme-error"
     (let [ex (ex-info "Bad request" {:status 400
-                                      :type "urn:ietf:params:acme:error:malformed"})]
+                                     :type "urn:ietf:params:acme:error:malformed"})]
       (is (= :acme-error (decisions/classify-error ex)))))
 
   (testing "Exception with 403 status is classified as :acme-error"

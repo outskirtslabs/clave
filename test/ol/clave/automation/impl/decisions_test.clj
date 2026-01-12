@@ -256,3 +256,23 @@
       (is (= 2 (count commands)))
       (is (some #(= :renew-certificate (:command %)) commands))
       (is (some #(= :fetch-ocsp (:command %)) commands)))))
+
+;; =============================================================================
+;; fast-command? tests
+;; =============================================================================
+
+(deftest fast-command?-returns-true-for-fetch-ocsp
+  (testing ":fetch-ocsp is a fast command"
+    (is (true? (decisions/fast-command? {:command :fetch-ocsp})))))
+
+(deftest fast-command?-returns-true-for-check-ari
+  (testing ":check-ari is a fast command"
+    (is (true? (decisions/fast-command? {:command :check-ari})))))
+
+(deftest fast-command?-returns-false-for-obtain-certificate
+  (testing ":obtain-certificate is not a fast command"
+    (is (false? (decisions/fast-command? {:command :obtain-certificate})))))
+
+(deftest fast-command?-returns-false-for-renew-certificate
+  (testing ":renew-certificate is not a fast command"
+    (is (false? (decisions/fast-command? {:command :renew-certificate})))))

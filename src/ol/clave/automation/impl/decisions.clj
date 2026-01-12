@@ -157,3 +157,20 @@
       (conj {:command :fetch-ocsp
              :domain domain
              :bundle bundle}))))
+
+(def ^:private fast-commands
+  "Commands that complete quickly (no ACME protocol interaction)."
+  #{:fetch-ocsp :check-ari})
+
+(defn fast-command?
+  "Check if a command is fast (no ACME protocol interaction).
+
+  Fast commands include:
+  - `:fetch-ocsp` - fetches OCSP response from responder
+  - `:check-ari` - checks ARI renewal info
+
+  | key | description |
+  |-----|-------------|
+  | `cmd` | Command descriptor with `:command` key |"
+  [cmd]
+  (boolean (fast-commands (:command cmd))))

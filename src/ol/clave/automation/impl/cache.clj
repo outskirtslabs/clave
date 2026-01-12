@@ -5,7 +5,9 @@
   iteration for maintenance loop. Certificates are indexed by SAN
   for efficient domain-based lookups."
   (:require
-   [clojure.string :as str]))
+   [clojure.string :as str])
+  (:import
+   [java.security MessageDigest]))
 
 (defn cache-certificate
   "Add or update a certificate in the cache.
@@ -84,3 +86,41 @@
            (if (get-in cache [:certs hash])
              (assoc-in cache [:certs hash :ocsp-staple] ocsp-response)
              cache))))
+
+(defn newer-than-cache?
+  "Check if a stored certificate is newer than the cached version.
+
+  Compares certificates by their `:not-before` timestamp. Returns true
+  if the stored certificate was issued after the cached one.
+
+  | key | description |
+  |-----|-------------|
+  | `stored-bundle` | Certificate bundle from storage |
+  | `cached-bundle` | Certificate bundle from cache |"
+  [stored-bundle cached-bundle]
+  (let [stored-not-before (:not-before stored-bundle)
+        cached-not-before (:not-before cached-bundle)]
+    (.isAfter stored-not-before cached-not-before)))
+
+(defn- bytes->hex
+  "Convert byte array to hex string."
+  [^bytes ba]
+  (let [sb (StringBuilder.)]
+    (doseq [b ba]
+      (.append sb (format "%02x" (bit-and b 0xff))))
+    (.toString sb)))
+
+(defn hash-certificate
+  "Compute a consistent hash of certificate chain bytes.
+
+  Uses SHA-256 to produce a unique identifier for a certificate chain.
+  The hash is stable: same input always produces the same output.
+
+  | key | description |
+  |-----|-------------|
+  | `cert-chain` | Vector of byte arrays (certificate chain in DER or PEM format) |"
+  [cert-chain]
+  (let [digest (MessageDigest/getInstance "SHA-256")]
+    (doseq [^bytes cert cert-chain]
+      (.update digest cert))
+    (bytes->hex (.digest digest))))

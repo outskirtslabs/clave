@@ -37,14 +37,45 @@
   Default 0.5 = refresh at 50% of validity window."
   0.5)
 
-(defn- ari-suggests-renewal?
+(def ^:dynamic *short-lived-threshold-ms*
+  "Threshold for short-lived certificates (7 days in ms).
+  Certificates shorter than this use different renewal logic."
+  (* 7 24 60 60 1000))
+
+(defn ari-suggests-renewal?
   "Check if ARI data suggests renewal is due.
 
-  Returns true if ARI selected-time is in the past or at current time."
+  Returns true if ARI selected-time is in the past or at current time.
+  Returns false if no ARI data or no selected-time is present.
+
+  | key | description |
+  |-----|-------------|
+  | `bundle` | Certificate bundle with optional `:ari-data` |
+  | `now` | Current instant |"
   [bundle now]
-  (when-let [ari-data (:ari-data bundle)]
-    (when-let [selected-time (:selected-time ari-data)]
-      (not (.isAfter ^Instant selected-time ^Instant now)))))
+  (boolean
+   (when-let [ari-data (:ari-data bundle)]
+     (when-let [selected-time (:selected-time ari-data)]
+       (not (.isAfter ^Instant selected-time ^Instant now))))))
+
+(defn calculate-ari-renewal-time
+  "Calculate a random time within the ARI suggested renewal window.
+
+  Uses the provided seed for deterministic random selection, enabling
+  testability. The same seed always produces the same result.
+
+  | key | description |
+  |-----|-------------|
+  | `ari-data` | ARI data with `:suggested-window` [start-instant end-instant] |
+  | `seed` | Random seed for deterministic selection |"
+  [ari-data seed]
+  (let [[start-instant end-instant] (:suggested-window ari-data)
+        start-ms (.toEpochMilli ^Instant start-instant)
+        end-ms (.toEpochMilli ^Instant end-instant)
+        window-ms (- end-ms start-ms)
+        rng (java.util.Random. seed)
+        offset-ms (long (* (.nextDouble rng) window-ms))]
+    (Instant/ofEpochMilli (+ start-ms offset-ms))))
 
 (defn needs-renewal?
   "Check if certificate needs renewal based on expiration and ARI.
@@ -332,3 +363,53 @@
        :data {:domain domain
               :command command
               :result result}})))
+
+;; =============================================================================
+;; Certificate Lifecycle
+;; =============================================================================
+
+(defn short-lived-cert?
+  "Check if a certificate is short-lived (< 7 days lifetime).
+
+  Short-lived certificates (like those from ACME staging or specialized CAs)
+  require different renewal timing logic.
+
+  | key | description |
+  |-----|-------------|
+  | `bundle` | Certificate bundle with `:not-before` and `:not-after` |"
+  [bundle]
+  (let [not-after ^Instant (:not-after bundle)
+        not-before ^Instant (:not-before bundle)
+        lifetime-ms (- (.toEpochMilli not-after) (.toEpochMilli not-before))]
+    (< lifetime-ms *short-lived-threshold-ms*)))
+
+;; =============================================================================
+;; Retry and Jitter
+;; =============================================================================
+
+(def retry-intervals
+  "Retry intervals following certmagic's backoff pattern (in milliseconds).
+  Starts at 1 minute, increases to 5 minutes, 30 minutes, 1 hour,
+  then caps at 6 hours for persistent failures."
+  [60000      ; 1 minute
+   60000      ; 1 minute
+   120000     ; 2 minutes
+   300000     ; 5 minutes
+   600000     ; 10 minutes
+   1800000    ; 30 minutes
+   3600000    ; 1 hour
+   3600000    ; 1 hour
+   21600000   ; 6 hours
+   21600000]) ; 6 hours (cap)
+
+(defn calculate-maintenance-jitter
+  "Calculate random jitter for maintenance loop scheduling.
+
+  Returns a random value in [0, maintenance-jitter) to spread out
+  maintenance operations and avoid thundering herd problems.
+
+  | key | description |
+  |-----|-------------|
+  | `maintenance-jitter` | Maximum jitter in milliseconds |"
+  [maintenance-jitter]
+  (long (* (rand) maintenance-jitter)))

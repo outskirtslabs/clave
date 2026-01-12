@@ -431,3 +431,116 @@
       (is (= :ocsp-failed (:type event)))
       (is (= "example.com" (get-in event [:data :domain])))
       (is (= "OCSP responder unreachable" (get-in event [:data :error]))))))
+
+;; =============================================================================
+;; calculate-ari-renewal-time tests
+;; =============================================================================
+
+(deftest calculate-ari-renewal-time-selects-within-window
+  (testing "Returned instant is within the suggested window"
+    (let [start-instant (Instant/parse "2026-02-01T00:00:00Z")
+          end-instant (Instant/parse "2026-02-10T00:00:00Z")
+          ari-data {:suggested-window [start-instant end-instant]}
+          result (decisions/calculate-ari-renewal-time ari-data 12345)]
+      (is (not (.isBefore result start-instant))
+          "Result should be >= start-instant")
+      (is (not (.isAfter result end-instant))
+          "Result should be <= end-instant"))))
+
+(deftest calculate-ari-renewal-time-different-seeds-different-times
+  (testing "Different seeds produce different random times"
+    (let [start-instant (Instant/parse "2026-02-01T00:00:00Z")
+          end-instant (Instant/parse "2026-03-01T00:00:00Z") ; wide window
+          ari-data {:suggested-window [start-instant end-instant]}
+          result1 (decisions/calculate-ari-renewal-time ari-data 1)
+          result2 (decisions/calculate-ari-renewal-time ari-data 2)]
+      (is (not= result1 result2)
+          "Different seeds should produce different times"))))
+
+;; =============================================================================
+;; ari-suggests-renewal? tests (public version)
+;; =============================================================================
+
+(deftest ari-suggests-renewal?-returns-true-when-selected-time-past
+  (testing "ARI selected-time in the past triggers renewal"
+    (let [now (Instant/parse "2026-01-15T00:00:00Z")
+          bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2026-04-01T00:00:00Z"
+                   :ari-data {:selected-time (Instant/parse "2026-01-14T00:00:00Z")}})]
+      (is (true? (decisions/ari-suggests-renewal? bundle now))))))
+
+(deftest ari-suggests-renewal?-returns-false-when-selected-time-future
+  (testing "ARI selected-time in the future does not trigger renewal"
+    (let [now (Instant/parse "2026-01-15T00:00:00Z")
+          bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2026-04-01T00:00:00Z"
+                   :ari-data {:selected-time (Instant/parse "2026-01-20T00:00:00Z")}})]
+      (is (false? (decisions/ari-suggests-renewal? bundle now))))))
+
+(deftest ari-suggests-renewal?-returns-false-when-no-ari-data
+  (testing "No ARI data means no ARI-driven renewal"
+    (let [now (Instant/parse "2026-01-15T00:00:00Z")
+          bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2026-04-01T00:00:00Z"
+                   :ari-data nil})]
+      (is (false? (decisions/ari-suggests-renewal? bundle now))))))
+
+;; =============================================================================
+;; short-lived-cert? tests
+;; =============================================================================
+
+(deftest short-lived-cert?-returns-true-for-short-lifetime
+  (testing "Certificate with 24-hour lifetime is short-lived"
+    (let [bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2026-01-02T00:00:00Z"})]
+      (is (true? (decisions/short-lived-cert? bundle)))))
+
+  (testing "Certificate with 6-day lifetime is short-lived"
+    (let [bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2026-01-07T00:00:00Z"})]
+      (is (true? (decisions/short-lived-cert? bundle))))))
+
+(deftest short-lived-cert?-returns-false-for-normal-lifetime
+  (testing "Certificate with 90-day lifetime is not short-lived"
+    (let [bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2026-04-01T00:00:00Z"})]
+      (is (false? (decisions/short-lived-cert? bundle)))))
+
+  (testing "Certificate with 10-day lifetime is not short-lived"
+    (let [bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2026-01-11T00:00:00Z"})]
+      (is (false? (decisions/short-lived-cert? bundle))))))
+
+;; =============================================================================
+;; calculate-maintenance-jitter tests
+;; =============================================================================
+
+(deftest calculate-maintenance-jitter-within-bounds
+  (testing "Jitter is within [0, maintenance-jitter) range"
+    (let [maintenance-jitter 300000] ; 5 minutes
+      (dotimes [_ 10]
+        (let [jitter (decisions/calculate-maintenance-jitter maintenance-jitter)]
+          (is (>= jitter 0))
+          (is (< jitter maintenance-jitter)))))))
+
+;; =============================================================================
+;; retry-intervals tests
+;; =============================================================================
+
+(deftest retry-intervals-follows-backoff-pattern
+  (testing "Retry intervals follow certmagic backoff pattern"
+    (let [intervals decisions/retry-intervals]
+      ;; First interval is 1 minute
+      (is (= 60000 (first intervals)))
+      ;; Intervals increase over time (check intervals 2-4)
+      (is (< (nth intervals 2) (nth intervals 3)))
+      (is (< (nth intervals 3) (nth intervals 4)))
+      ;; Final intervals cap at 6 hours
+      (is (= 21600000 (last intervals))))))

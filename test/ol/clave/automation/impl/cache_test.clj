@@ -168,3 +168,45 @@
         ;; Other bundle fields preserved
         (is (= "abc123" (:hash updated-bundle)))
         (is (= ["example.com"] (:names updated-bundle)))))))
+
+;; =============================================================================
+;; newer-than-cache? tests
+;; =============================================================================
+
+(deftest newer-than-cache?-returns-true-when-stored-is-newer
+  (testing "Returns true when stored cert has later not-before"
+    (let [now (Instant/now)
+          cached-bundle {:not-before (.minus now (Duration/ofDays 10))}
+          stored-bundle {:not-before (.minus now (Duration/ofDays 5))}]
+      (is (true? (cache/newer-than-cache? stored-bundle cached-bundle))))))
+
+(deftest newer-than-cache?-returns-false-when-stored-is-older
+  (testing "Returns false when stored cert has earlier not-before"
+    (let [now (Instant/now)
+          cached-bundle {:not-before (.minus now (Duration/ofDays 5))}
+          stored-bundle {:not-before (.minus now (Duration/ofDays 10))}]
+      (is (false? (cache/newer-than-cache? stored-bundle cached-bundle)))))
+
+  (testing "Returns false when stored cert has same not-before"
+    (let [now (Instant/now)
+          timestamp (.minus now (Duration/ofDays 5))
+          cached-bundle {:not-before timestamp}
+          stored-bundle {:not-before timestamp}]
+      (is (false? (cache/newer-than-cache? stored-bundle cached-bundle))))))
+
+;; =============================================================================
+;; hash-certificate tests
+;; =============================================================================
+
+(deftest hash-certificate-produces-consistent-hash
+  (testing "Same certificate data produces identical hash"
+    (let [cert-chain [(.getBytes "-----BEGIN CERTIFICATE-----\nMIIC..." "UTF-8")]]
+      (is (= (cache/hash-certificate cert-chain)
+             (cache/hash-certificate cert-chain))))))
+
+(deftest hash-certificate-produces-different-hashes
+  (testing "Different certificates produce different hashes"
+    (let [cert1 [(.getBytes "-----BEGIN CERTIFICATE-----\nMIIC1..." "UTF-8")]
+          cert2 [(.getBytes "-----BEGIN CERTIFICATE-----\nMIIC2..." "UTF-8")]]
+      (is (not= (cache/hash-certificate cert1)
+                (cache/hash-certificate cert2))))))

@@ -174,3 +174,161 @@
   | `cmd` | Command descriptor with `:command` key |"
   [cmd]
   (boolean (fast-commands (:command cmd))))
+
+;; =============================================================================
+;; Error Classification
+;; =============================================================================
+
+(def ^:private network-exception-types
+  "Exception types that indicate network-level failures."
+  #{java.net.ConnectException
+    java.net.UnknownHostException
+    java.net.SocketTimeoutException
+    java.net.SocketException
+    java.net.NoRouteToHostException})
+
+(defn classify-error
+  "Classify an exception into an error category.
+
+  Categories:
+  - `:network-error` - connection failures, DNS issues, timeouts
+  - `:rate-limited` - HTTP 429 responses
+  - `:acme-error` - ACME protocol errors (4xx responses)
+  - `:server-error` - server-side failures (5xx responses)
+  - `:config-error` - configuration problems
+  - `:storage-error` - I/O and storage failures
+  - `:unknown` - unrecognized exceptions
+
+  | key | description |
+  |-----|-------------|
+  | `ex` | Exception to classify |"
+  [ex]
+  (let [ex-class (class ex)
+        ex-data (when (instance? clojure.lang.IExceptionInfo ex)
+                  (ex-data ex))
+        status (:status ex-data)]
+    (cond
+      ;; Network exceptions by type
+      (network-exception-types ex-class)
+      :network-error
+
+      ;; Rate limited (429)
+      (= status 429)
+      :rate-limited
+
+      ;; Server errors (5xx)
+      (and status (>= status 500) (< status 600))
+      :server-error
+
+      ;; ACME/client errors (4xx)
+      (and status (>= status 400) (< status 500))
+      :acme-error
+
+      ;; Config error by type tag
+      (= :config-error (:type ex-data))
+      :config-error
+
+      ;; Storage/IO errors
+      (instance? java.io.IOException ex)
+      :storage-error
+
+      ;; Unknown
+      :else
+      :unknown)))
+
+(def ^:private retryable-error-types
+  "Error types that are worth retrying."
+  #{:network-error :rate-limited :server-error :storage-error})
+
+(defn retryable-error?
+  "Check if an error type should be retried.
+
+  Retryable errors:
+  - `:network-error` - transient network issues
+  - `:rate-limited` - should back off and retry
+  - `:server-error` - server may recover
+  - `:storage-error` - storage may become available
+
+  Non-retryable errors:
+  - `:acme-error` - client errors unlikely to succeed
+  - `:config-error` - configuration must be fixed
+  - `:unknown` - cannot determine if safe to retry
+
+  | key | description |
+  |-----|-------------|
+  | `error-type` | Error type keyword from `classify-error` |"
+  [error-type]
+  (boolean (retryable-error-types error-type)))
+
+;; =============================================================================
+;; Event Creation
+;; =============================================================================
+
+(defn event-for-result
+  "Create an event from a command result.
+
+  Event types by command and status:
+  - `:obtain-certificate` success -> `:certificate-obtained`
+  - `:renew-certificate` success -> `:certificate-renewed`
+  - `:obtain-certificate` error -> `:certificate-failed`
+  - `:renew-certificate` error -> `:certificate-failed`
+  - `:fetch-ocsp` success -> `:ocsp-stapled`
+  - `:fetch-ocsp` error -> `:ocsp-failed`
+
+  | key | description |
+  |-----|-------------|
+  | `cmd` | Command descriptor with `:command` and `:domain` |
+  | `result` | Result map with `:status` (`:success` or `:error`) |"
+  [cmd result]
+  (let [domain (:domain cmd)
+        command (:command cmd)
+        success? (= :success (:status result))
+        now (Instant/now)]
+    (cond
+      ;; Certificate obtained successfully
+      (and success? (= :obtain-certificate command))
+      (let [bundle (:bundle result)]
+        {:type :certificate-obtained
+         :timestamp now
+         :data {:domain domain
+                :names (:names bundle)
+                :not-after (:not-after bundle)}})
+
+      ;; Certificate renewed successfully
+      (and success? (= :renew-certificate command))
+      (let [bundle (:bundle result)]
+        {:type :certificate-renewed
+         :timestamp now
+         :data {:domain domain
+                :names (:names bundle)
+                :not-after (:not-after bundle)}})
+
+      ;; Certificate obtain/renew failed
+      (and (not success?) (#{:obtain-certificate :renew-certificate} command))
+      {:type :certificate-failed
+       :timestamp now
+       :data {:domain domain
+              :error (:message result)
+              :reason (:reason result)}}
+
+      ;; OCSP fetched successfully
+      (and success? (= :fetch-ocsp command))
+      {:type :ocsp-stapled
+       :timestamp now
+       :data {:domain domain
+              :next-update (get-in result [:ocsp-response :next-update])}}
+
+      ;; OCSP fetch failed
+      (and (not success?) (= :fetch-ocsp command))
+      {:type :ocsp-failed
+       :timestamp now
+       :data {:domain domain
+              :error (:message result)}}
+
+      ;; Default case
+      :else
+      {:type :unknown-event
+       :timestamp now
+       :data {:domain domain
+              :command command
+              :result result}})))

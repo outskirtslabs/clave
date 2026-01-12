@@ -276,3 +276,158 @@
 (deftest fast-command?-returns-false-for-renew-certificate
   (testing ":renew-certificate is not a fast command"
     (is (false? (decisions/fast-command? {:command :renew-certificate})))))
+
+;; =============================================================================
+;; classify-error tests
+;; =============================================================================
+
+(deftest classify-error-returns-network-error-for-connection-exceptions
+  (testing "java.net.ConnectException is classified as :network-error"
+    (let [ex (java.net.ConnectException. "Connection refused")]
+      (is (= :network-error (decisions/classify-error ex)))))
+
+  (testing "java.net.UnknownHostException is classified as :network-error"
+    (let [ex (java.net.UnknownHostException. "Unknown host")]
+      (is (= :network-error (decisions/classify-error ex)))))
+
+  (testing "java.net.SocketTimeoutException is classified as :network-error"
+    (let [ex (java.net.SocketTimeoutException. "Connection timed out")]
+      (is (= :network-error (decisions/classify-error ex))))))
+
+(deftest classify-error-returns-rate-limited-for-429-response
+  (testing "Exception with 429 status code is classified as :rate-limited"
+    (let [ex (ex-info "Rate limited" {:status 429})]
+      (is (= :rate-limited (decisions/classify-error ex))))))
+
+(deftest classify-error-returns-acme-error-for-4xx-responses
+  (testing "Exception with 400 status and ACME problem type is classified as :acme-error"
+    (let [ex (ex-info "Bad request" {:status 400
+                                      :type "urn:ietf:params:acme:error:malformed"})]
+      (is (= :acme-error (decisions/classify-error ex)))))
+
+  (testing "Exception with 403 status is classified as :acme-error"
+    (let [ex (ex-info "Forbidden" {:status 403})]
+      (is (= :acme-error (decisions/classify-error ex))))))
+
+(deftest classify-error-returns-server-error-for-5xx-responses
+  (testing "Exception with 500 status is classified as :server-error"
+    (let [ex (ex-info "Internal server error" {:status 500})]
+      (is (= :server-error (decisions/classify-error ex)))))
+
+  (testing "Exception with 503 status is classified as :server-error"
+    (let [ex (ex-info "Service unavailable" {:status 503})]
+      (is (= :server-error (decisions/classify-error ex))))))
+
+(deftest classify-error-returns-config-error-for-config-exceptions
+  (testing "Exception with :config-error type is classified as :config-error"
+    (let [ex (ex-info "Invalid config" {:type :config-error})]
+      (is (= :config-error (decisions/classify-error ex))))))
+
+(deftest classify-error-returns-storage-error-for-io-exceptions
+  (testing "java.io.IOException is classified as :storage-error"
+    (let [ex (java.io.IOException. "Disk full")]
+      (is (= :storage-error (decisions/classify-error ex))))))
+
+(deftest classify-error-returns-unknown-for-unrecognized-exceptions
+  (testing "Unrecognized exception is classified as :unknown"
+    (let [ex (RuntimeException. "Something unexpected")]
+      (is (= :unknown (decisions/classify-error ex))))))
+
+;; =============================================================================
+;; retryable-error? tests
+;; =============================================================================
+
+(deftest retryable-error?-returns-true-for-network-errors
+  (testing "Network errors are retryable"
+    (is (true? (decisions/retryable-error? :network-error)))))
+
+(deftest retryable-error?-returns-true-for-rate-limited
+  (testing "Rate limited errors are retryable"
+    (is (true? (decisions/retryable-error? :rate-limited)))))
+
+(deftest retryable-error?-returns-true-for-server-errors
+  (testing "Server errors (5xx) are retryable"
+    (is (true? (decisions/retryable-error? :server-error)))))
+
+(deftest retryable-error?-returns-true-for-storage-errors
+  (testing "Storage errors are retryable"
+    (is (true? (decisions/retryable-error? :storage-error)))))
+
+(deftest retryable-error?-returns-false-for-config-errors
+  (testing "Config errors are not retryable"
+    (is (false? (decisions/retryable-error? :config-error)))))
+
+(deftest retryable-error?-returns-false-for-acme-errors
+  (testing "ACME errors (4xx) are not retryable by default"
+    (is (false? (decisions/retryable-error? :acme-error)))))
+
+(deftest retryable-error?-returns-false-for-unknown-errors
+  (testing "Unknown errors are not retryable"
+    (is (false? (decisions/retryable-error? :unknown)))))
+
+;; =============================================================================
+;; event-for-result tests
+;; =============================================================================
+
+(deftest event-for-result-creates-certificate-obtained-on-obtain-success
+  (testing "Successful obtain creates :certificate-obtained event"
+    (let [cmd {:command :obtain-certificate
+               :domain "example.com"}
+          bundle {:names ["example.com" "www.example.com"]
+                  :not-after (Instant/parse "2026-04-01T00:00:00Z")}
+          result {:status :success :bundle bundle}
+          event (decisions/event-for-result cmd result)]
+      (is (= :certificate-obtained (:type event)))
+      (is (some? (:timestamp event)))
+      (is (= "example.com" (get-in event [:data :domain])))
+      (is (= ["example.com" "www.example.com"] (get-in event [:data :names])))
+      (is (= (Instant/parse "2026-04-01T00:00:00Z") (get-in event [:data :not-after]))))))
+
+(deftest event-for-result-creates-certificate-renewed-on-renew-success
+  (testing "Successful renew creates :certificate-renewed event"
+    (let [cmd {:command :renew-certificate
+               :domain "example.com"}
+          bundle {:names ["example.com"]
+                  :not-after (Instant/parse "2026-04-01T00:00:00Z")}
+          result {:status :success :bundle bundle}
+          event (decisions/event-for-result cmd result)]
+      (is (= :certificate-renewed (:type event)))
+      (is (= "example.com" (get-in event [:data :domain])))
+      (is (= ["example.com"] (get-in event [:data :names]))))))
+
+(deftest event-for-result-creates-certificate-failed-on-failure
+  (testing "Failed obtain creates :certificate-failed event"
+    (let [cmd {:command :obtain-certificate
+               :domain "example.com"}
+          result {:status :error
+                  :error-type :network-error
+                  :message "Connection refused"
+                  :reason :max-duration-exceeded}
+          event (decisions/event-for-result cmd result)]
+      (is (= :certificate-failed (:type event)))
+      (is (= "example.com" (get-in event [:data :domain])))
+      (is (= "Connection refused" (get-in event [:data :error])))
+      (is (= :max-duration-exceeded (get-in event [:data :reason]))))))
+
+(deftest event-for-result-creates-ocsp-stapled-on-ocsp-success
+  (testing "Successful OCSP fetch creates :ocsp-stapled event"
+    (let [cmd {:command :fetch-ocsp
+               :domain "example.com"}
+          ocsp-response {:next-update (Instant/parse "2026-01-15T12:00:00Z")}
+          result {:status :success :ocsp-response ocsp-response}
+          event (decisions/event-for-result cmd result)]
+      (is (= :ocsp-stapled (:type event)))
+      (is (= "example.com" (get-in event [:data :domain])))
+      (is (= (Instant/parse "2026-01-15T12:00:00Z") (get-in event [:data :next-update]))))))
+
+(deftest event-for-result-creates-ocsp-failed-on-ocsp-failure
+  (testing "Failed OCSP fetch creates :ocsp-failed event"
+    (let [cmd {:command :fetch-ocsp
+               :domain "example.com"}
+          result {:status :error
+                  :error-type :network-error
+                  :message "OCSP responder unreachable"}
+          event (decisions/event-for-result cmd result)]
+      (is (= :ocsp-failed (:type event)))
+      (is (= "example.com" (get-in event [:data :domain])))
+      (is (= "OCSP responder unreachable" (get-in event [:data :error]))))))

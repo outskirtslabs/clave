@@ -9,6 +9,7 @@
  :ol.clave.authorization-integration-test 2.72386165,
  :ol.clave.automation.impl.cache-test 0.1,
  :ol.clave.automation.impl.config-test 0.1,
+ :ol.clave.automation.impl.domain-test 0.1,
  :ol.clave.automation.impl.decisions-test 0.008197878,
  :ol.clave.certificate-integration-test 10.997112817,
  :ol.clave.challenge-test 0.038321533,

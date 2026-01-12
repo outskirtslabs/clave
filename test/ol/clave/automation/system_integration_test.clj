@@ -307,6 +307,64 @@
         (finally
           (automation/stop system))))))
 
+(deftest unmanage-domains-removes-domain-from-management
+  (testing "unmanage-domains removes domain from cache and emits event"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          issuer-key (config/issuer-key-from-url (pebble/uri))
+          ;; Create an HTTP-01 solver that works with pebble's challenge test server
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Step 1-2: Obtain certificate for domain
+          (automation/manage-domains system [domain])
+          ;; Consume domain-added event
+          (.poll queue 5 TimeUnit/SECONDS)
+          ;; Wait for certificate obtain to complete
+          (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
+            (is (= :certificate-obtained (:type cert-event))
+                "Should receive :certificate-obtained event"))
+          ;; Step 3: Verify certificate is in cache
+          (let [cert-bundle (automation/lookup-cert system domain)]
+            (is (some? cert-bundle) "Certificate should be in cache before unmanage"))
+          ;; Step 4: Call unmanage-domains
+          (automation/unmanage-domains system [domain])
+          ;; Step 5: Verify :domain-removed event is emitted
+          (let [removed-event (.poll queue 1 TimeUnit/SECONDS)]
+            (is (some? removed-event) "Should receive :domain-removed event")
+            (is (= :domain-removed (:type removed-event))
+                "Event type should be :domain-removed")
+            (is (= domain (get-in removed-event [:data :domain]))
+                "Event domain should match")
+            (is (instance? java.time.Instant (:timestamp removed-event))
+                "Event should have timestamp"))
+          ;; Step 6: Verify certificate is removed from cache
+          (is (nil? (automation/lookup-cert system domain))
+              "Certificate should be removed from cache after unmanage")
+          ;; Step 7: Verify certificate remains in storage
+          (let [cert-key (config/cert-storage-key issuer-key domain)]
+            (is (storage/exists? storage-impl nil cert-key)
+                "Certificate should remain in storage after unmanage"))
+          ;; Step 8-9: Verify list-domains no longer includes the domain
+          (let [managed (automation/list-domains system)]
+            (is (not (some #(= domain (:domain %)) managed))
+                "Domain should not appear in list-domains after unmanage")))
+        (finally
+          (automation/stop system))))))
+
 (deftest event-queue-bounded-drops-oldest-on-overflow
   (testing "Event queue drops oldest events when capacity is exceeded"
     (binding [system/*event-queue-capacity* 5]

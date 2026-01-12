@@ -321,6 +321,13 @@
    :timestamp (Instant/now)
    :data {:domain domain}})
 
+(defn- create-domain-removed-event
+  "Create a :domain-removed event."
+  [domain]
+  {:type :domain-removed
+   :timestamp (Instant/now)
+   :data {:domain domain}})
+
 ;; =============================================================================
 ;; Certificate Obtain Workflow
 ;; =============================================================================
@@ -467,10 +474,31 @@
                              :identifiers [domain]})))
 
 (defn unmanage-domains
-  "Removes domains from management."
-  [_system _domains]
-  ;; TODO: Implement
-  nil)
+  "Removes domains from management.
+
+  For each domain:
+  1. Finds the certificate bundle in the cache
+  2. Removes it from the cache
+  3. Cancels any in-flight commands for that domain
+  4. Emits a :domain-removed event
+
+  Certificates remain in storage but are no longer actively managed."
+  [system domains]
+  (let [cache-atom (:cache system)
+        ^ConcurrentHashMap in-flight (:in-flight system)]
+    (doseq [domain domains]
+      ;; Find the certificate bundle for this domain
+      (when-let [bundle (cache/lookup-cert cache-atom domain)]
+        ;; Remove from cache
+        (cache/remove-certificate cache-atom bundle))
+      ;; Cancel any in-flight commands for this domain
+      ;; Commands are keyed by [command-type domain]
+      (.remove in-flight [:obtain-certificate domain])
+      (.remove in-flight [:renew-certificate domain])
+      (.remove in-flight [:fetch-ocsp domain])
+      (.remove in-flight [:check-ari domain])
+      ;; Emit domain-removed event
+      (emit-event! system (create-domain-removed-event domain)))))
 
 (defn list-domains
   "Lists all managed domains with status."

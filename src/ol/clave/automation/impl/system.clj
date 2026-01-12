@@ -222,7 +222,7 @@
                       (try
                         ;; TODO: Implement maintenance loop body
                         (Thread/sleep (long (+ *maintenance-interval-ms*
-                                              (rand-int *maintenance-jitter-ms*))))
+                                               (rand-int *maintenance-jitter-ms*))))
                         (catch InterruptedException _
                           nil))
                       (recur)))))]
@@ -504,12 +504,12 @@
   "Lists all managed domains with status."
   [system]
   (let [{:keys [certs]} @(:cache system)]
-    (->> (vals certs)
-         (filter :managed)
-         (map (fn [bundle]
-                {:domain (first (:names bundle))
-                 :status (if (:not-after bundle) :valid :pending)
-                 :not-after (:not-after bundle)})))))
+    (vec (->> (vals certs)
+              (filter :managed)
+              (map (fn [bundle]
+                     {:domain (first (:names bundle))
+                      :status (if (:not-after bundle) :valid :pending)
+                      :not-after (:not-after bundle)}))))))
 
 (defn get-domain-status
   "Gets detailed status for a specific domain."

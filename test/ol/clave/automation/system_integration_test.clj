@@ -412,3 +412,148 @@
                       "Newer domains should be in the queue")))))
           (finally
             (automation/stop system)))))))
+
+(deftest list-domains-returns-all-managed-domains-with-status
+  (testing "list-domains returns all managed domains with correct status"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain1 "localhost"
+          ;; Create an HTTP-01 solver that works with pebble's challenge test server
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Obtain certificate for domain
+          (automation/manage-domains system [domain1])
+          ;; Consume events until we get certificate-obtained
+          (loop []
+            (let [event (.poll queue 30 TimeUnit/SECONDS)]
+              (when (and event (not= :certificate-obtained (:type event)))
+                (recur))))
+          ;; Step 3: Call list-domains
+          (let [domains (automation/list-domains system)]
+            ;; Step 4: Verify result is a vector of domain status maps
+            (is (vector? domains) "list-domains should return a vector")
+            ;; Step 5: Verify domain is in the list
+            (is (= 1 (count domains)) "Should have 1 managed domain")
+            ;; Step 6: Verify each entry has :domain, :status, :not-after keys
+            (let [entry (first domains)]
+              (is (contains? entry :domain) "Entry should have :domain key")
+              (is (contains? entry :status) "Entry should have :status key")
+              (is (contains? entry :not-after) "Entry should have :not-after key")
+              ;; Step 7: Verify status is :valid
+              (is (= :valid (:status entry)) "Status should be :valid")
+              (is (= domain1 (:domain entry)) "Domain should match")
+              (is (instance? java.time.Instant (:not-after entry))
+                  "not-after should be an Instant"))))
+        (finally
+          (automation/stop system))))))
+
+(deftest get-domain-status-returns-detailed-certificate-info
+  (testing "get-domain-status returns detailed certificate info"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          ;; Create an HTTP-01 solver that works with pebble's challenge test server
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Obtain certificate for domain
+          (automation/manage-domains system [domain])
+          ;; Consume events until we get certificate-obtained
+          (loop []
+            (let [event (.poll queue 30 TimeUnit/SECONDS)]
+              (when (and event (not= :certificate-obtained (:type event)))
+                (recur))))
+          ;; Step 3: Call get-domain-status
+          (let [status (automation/get-domain-status system domain)]
+            ;; Step 4: Verify result contains :domain, :status, :not-after
+            (is (some? status) "get-domain-status should return a map")
+            (is (= domain (:domain status)) ":domain should match")
+            (is (= :valid (:status status)) ":status should be :valid")
+            (is (some? (:not-after status)) ":not-after should be present")
+            (is (instance? java.time.Instant (:not-after status))
+                ":not-after should be an Instant")
+            ;; Step 5: Verify result contains :issuer
+            (is (some? (:issuer status)) ":issuer should be present")
+            ;; Step 6: Verify result contains :needs-renewal
+            (is (contains? status :needs-renewal) ":needs-renewal should be present")
+            (is (false? (:needs-renewal status)) ":needs-renewal should be false initially")))
+        (finally
+          (automation/stop system))))))
+
+(deftest has-valid-cert-returns-true-for-valid-certificate
+  (testing "has-valid-cert? returns true for valid certificate"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          ;; Create an HTTP-01 solver that works with pebble's challenge test server
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Obtain certificate for domain
+          (automation/manage-domains system [domain])
+          ;; Consume events until we get certificate-obtained
+          (loop []
+            (let [event (.poll queue 30 TimeUnit/SECONDS)]
+              (when (and event (not= :certificate-obtained (:type event)))
+                (recur))))
+          ;; Step 3-4: Call has-valid-cert? and verify it returns true
+          (is (true? (automation/has-valid-cert? system domain))
+              "has-valid-cert? should return true for managed domain"))
+        (finally
+          (automation/stop system))))))
+
+(deftest has-valid-cert-returns-false-for-unknown-domain
+  (testing "has-valid-cert? returns false for unknown domain"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          ;; Use a no-op solver since we don't need actual certificates
+          solver {:present (fn [_lease _chall _account-key] nil)
+                  :cleanup (fn [_lease _chall _state] nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        ;; Step 2-3: Call has-valid-cert? for unknown domain
+        (is (false? (automation/has-valid-cert? system "unknown.example.com"))
+            "has-valid-cert? should return false for unknown domain")
+        (finally
+          (automation/stop system))))))

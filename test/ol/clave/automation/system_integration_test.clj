@@ -3,6 +3,7 @@
   Tests run against Pebble ACME test server."
   (:require
    [clojure.set :as set]
+   [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.config :as config]
@@ -17,8 +18,8 @@
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
+   [java.nio.file Files Paths]
+   [java.nio.file.attribute FileAttribute PosixFilePermissions]
    [java.security.cert X509Certificate]
    [java.util.concurrent TimeUnit]))
 
@@ -925,3 +926,136 @@
                   "Private key should be reused on renewal"))))
         (finally
           (automation/stop system))))))
+
+(defn- posix-supported?
+  "Check if POSIX file permissions are supported on this system."
+  []
+  (try
+    (let [tmp (Files/createTempDirectory "posix-test" (make-array FileAttribute 0))]
+      (try
+        (Files/getPosixFilePermissions tmp (make-array java.nio.file.LinkOption 0))
+        true
+        (catch UnsupportedOperationException _ false)
+        (finally
+          (Files/delete tmp))))
+    (catch Exception _ false)))
+
+(deftest certificate-chain-is-complete-with-intermediates
+  (testing "Certificate chain includes leaf and intermediate certificates"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Step 1-2: Obtain certificate
+          (automation/manage-domains system [domain])
+          ;; Consume domain-added event
+          (.poll queue 5 TimeUnit/SECONDS)
+          ;; Wait for certificate obtain
+          (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
+            (is (= :certificate-obtained (:type cert-event))))
+          ;; Step 3: Get certificate from cache
+          (let [bundle (automation/lookup-cert system domain)
+                certs (:certificate bundle)]
+            ;; Step 4: Verify chain includes leaf certificate
+            (is (vector? certs) "Certificate chain should be a vector")
+            (is (>= (count certs) 1) "Chain should include at least the leaf certificate")
+            (let [^X509Certificate leaf-cert (first certs)
+                  ;; Verify leaf certificate is for our domain
+                  cn (.getName (.getSubjectX500Principal leaf-cert))
+                  ;; SANs from getSubjectAlternativeNames: list of [type, value]
+                  sans (try
+                         (->> (.getSubjectAlternativeNames leaf-cert)
+                              (filter #(= (first %) 2)) ; dNSName type = 2
+                              (map second))
+                         (catch Exception _ []))]
+              (is (or (str/includes? cn domain)
+                      (some #(= % domain) sans))
+                  "Leaf certificate should be for the requested domain"))
+            ;; Step 5: Verify chain includes intermediate certificate(s)
+            ;; Pebble returns leaf + intermediate by default
+            (is (>= (count certs) 2)
+                "Chain should include intermediate certificate(s)")
+            ;; Step 6: Verify chain can be validated (issuer/subject relationship)
+            (when (>= (count certs) 2)
+              (let [^X509Certificate leaf-cert (first certs)
+                    ^X509Certificate issuer-cert (second certs)]
+                ;; Verify leaf's issuer matches intermediate's subject
+                (is (= (.getIssuerX500Principal leaf-cert)
+                       (.getSubjectX500Principal issuer-cert))
+                    "Leaf certificate issuer should match intermediate subject")
+                ;; Try to verify leaf certificate signature with intermediate's public key
+                (try
+                  (.verify leaf-cert (.getPublicKey issuer-cert))
+                  ;; If verify doesn't throw, the signature is valid
+                  (is true "Leaf certificate signature should be valid")
+                  (catch Exception e
+                    (is false (str "Leaf certificate signature verification failed: " (.getMessage e)))))))))
+        (finally
+          (automation/stop system))))))
+
+(deftest storage-file-permissions-are-0600
+  (testing "Private key and certificate files have 0600 permissions"
+    (if-not (posix-supported?)
+      (println "Skipping file permissions test - POSIX not supported on this platform")
+      (let [storage-dir (temp-storage-dir)
+            storage-impl (file-storage/file-storage storage-dir)
+            domain "localhost"
+            issuer-key (config/issuer-key-from-url (pebble/uri))
+            solver {:present (fn [_lease chall account-key]
+                               (let [token (::specs/token chall)
+                                     key-auth (challenge/key-authorization chall account-key)]
+                                 (pebble/challtestsrv-add-http01 token key-auth)
+                                 {:token token}))
+                    :cleanup (fn [_lease _chall state]
+                               (pebble/challtestsrv-del-http01 (:token state))
+                               nil)}
+            config {:storage storage-impl
+                    :issuers [{:directory-url (pebble/uri)}]
+                    :solvers {:http-01 solver}
+                    :http-client pebble/http-client-opts}
+            system (automation/start config)]
+        (try
+          (let [queue (automation/get-event-queue system)]
+            ;; Step 1-2: Obtain certificate
+            (automation/manage-domains system [domain])
+            ;; Consume domain-added event
+            (.poll queue 5 TimeUnit/SECONDS)
+            ;; Wait for certificate obtain
+            (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
+              (is (= :certificate-obtained (:type cert-event))))
+            ;; Step 3-6: Check file permissions
+            (let [cert-key (config/cert-storage-key issuer-key domain)
+                  key-key (config/key-storage-key issuer-key domain)
+                  cert-path (Paths/get storage-dir (into-array String [cert-key]))
+                  key-path (Paths/get storage-dir (into-array String [key-key]))
+                  expected-perms (PosixFilePermissions/fromString "rw-------")]
+              ;; Step 3-4: Check private key file permissions
+              (is (Files/exists key-path (make-array java.nio.file.LinkOption 0))
+                  "Private key file should exist")
+              (let [key-perms (Files/getPosixFilePermissions key-path
+                                                             (make-array java.nio.file.LinkOption 0))]
+                (is (= expected-perms key-perms)
+                    "Private key file should have 0600 permissions (rw-------)"))
+              ;; Step 5-6: Check certificate file permissions
+              (is (Files/exists cert-path (make-array java.nio.file.LinkOption 0))
+                  "Certificate file should exist")
+              (let [cert-perms (Files/getPosixFilePermissions cert-path
+                                                              (make-array java.nio.file.LinkOption 0))]
+                (is (= expected-perms cert-perms)
+                    "Certificate file should have 0600 permissions (rw-------)"))))
+          (finally
+            (automation/stop system)))))))

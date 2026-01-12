@@ -124,3 +124,37 @@
     (doseq [^bytes cert cert-chain]
       (.update digest cert))
     (bytes->hex (.digest digest))))
+
+(defn handle-command-result
+  "Update cache based on command result.
+
+  Handles cache updates for different command types:
+  - `:obtain-certificate` success: adds new certificate to cache
+  - `:renew-certificate` success: removes old cert, adds new cert
+  - `:fetch-ocsp` success: updates OCSP staple in existing bundle
+
+  Does nothing on failure (`:status :error`).
+
+  | key | description |
+  |-----|-------------|
+  | `cache-atom` | Atom containing {:certs {} :index {}} |
+  | `cmd` | Command descriptor with `:command` and `:bundle` |
+  | `result` | Result map with `:status` and command-specific data |"
+  [cache-atom cmd result]
+  (when (= :success (:status result))
+    (case (:command cmd)
+      :obtain-certificate
+      (cache-certificate cache-atom (:bundle result))
+
+      :renew-certificate
+      (let [old-bundle (:bundle cmd)
+            new-bundle (:bundle result)]
+        (remove-certificate cache-atom old-bundle)
+        (cache-certificate cache-atom new-bundle))
+
+      :fetch-ocsp
+      (update-ocsp-staple cache-atom
+                          (:hash (:bundle cmd))
+                          (:ocsp-response result))
+
+      nil)))

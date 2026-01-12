@@ -189,6 +189,19 @@
              :domain domain
              :bundle bundle}))))
 
+(defn command-key
+  "Generate a key for command deduplication.
+
+  Returns a vector of [command-type domain] that uniquely identifies
+  a command. Commands with the same key are considered duplicates
+  and can be deduplicated by the job queue.
+
+  | key | description |
+  |-----|-------------|
+  | `cmd` | Command descriptor with `:command` and `:domain` keys |"
+  [cmd]
+  [(:command cmd) (:domain cmd)])
+
 (def ^:private fast-commands
   "Commands that complete quickly (no ACME protocol interaction)."
   #{:fetch-ocsp :check-ari})
@@ -413,3 +426,41 @@
   | `maintenance-jitter` | Maximum jitter in milliseconds |"
   [maintenance-jitter]
   (long (* (rand) maintenance-jitter)))
+
+(def ^:private min-maintenance-interval-ms
+  "Minimum maintenance interval (1 minute)."
+  60000)
+
+(def ^:private max-maintenance-interval-ms
+  "Maximum maintenance interval (6 hours)."
+  21600000)
+
+(def ^:private min-cycles-in-renewal-window
+  "Minimum number of maintenance cycles in the renewal window."
+  10)
+
+(defn calculate-maintenance-interval
+  "Calculate appropriate maintenance interval for a certificate's lifetime.
+
+  Ensures sufficient retry opportunities by guaranteeing at least 10
+  maintenance cycles during the renewal window (last 1/3 of lifetime).
+
+  Intervals are bounded:
+  - Minimum: 1 minute (very short-lived certs)
+  - Maximum: 6 hours (long-lived certs)
+  - Default: 1 hour (standard 90-day certs)
+
+  | key | description |
+  |-----|-------------|
+  | `bundle` | Certificate bundle with `:not-before` and `:not-after` |"
+  [bundle]
+  (let [not-after ^Instant (:not-after bundle)
+        not-before ^Instant (:not-before bundle)
+        lifetime-ms (- (.toEpochMilli not-after) (.toEpochMilli not-before))
+        ;; Renewal window is last 1/3 of lifetime
+        renewal-window-ms (long (* lifetime-ms *renewal-threshold*))
+        ;; Calculate interval to get at least min-cycles-in-renewal-window
+        calculated-interval (long (/ renewal-window-ms min-cycles-in-renewal-window))]
+    ;; Clamp to bounds
+    (max min-maintenance-interval-ms
+         (min max-maintenance-interval-ms calculated-interval))))

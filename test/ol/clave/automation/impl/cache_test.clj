@@ -210,3 +210,111 @@
           cert2 [(.getBytes "-----BEGIN CERTIFICATE-----\nMIIC2..." "UTF-8")]]
       (is (not= (cache/hash-certificate cert1)
                 (cache/hash-certificate cert2))))))
+
+;; =============================================================================
+;; handle-command-result tests
+;; =============================================================================
+
+(deftest handle-command-result-caches-on-obtain-success
+  (testing "Successful obtain adds certificate to cache"
+    (let [cache-atom (atom {:certs {} :index {}})
+          cmd {:command :obtain-certificate
+               :domain "example.com"
+               :identifiers ["example.com"]}
+          new-bundle (make-bundle {:hash "new123"
+                                   :names ["example.com"]})
+          result {:status :success
+                  :bundle new-bundle}]
+      (cache/handle-command-result cache-atom cmd result)
+      (let [{:keys [certs index]} @cache-atom]
+        (is (= new-bundle (get certs "new123")))
+        (is (= ["new123"] (get index "example.com")))))))
+
+(deftest handle-command-result-ignores-obtain-failure
+  (testing "Failed obtain does not modify cache"
+    (let [cache-atom (atom {:certs {} :index {}})
+          cmd {:command :obtain-certificate
+               :domain "example.com"}
+          result {:status :error
+                  :error-type :network-error
+                  :message "Connection refused"}]
+      (cache/handle-command-result cache-atom cmd result)
+      (let [{:keys [certs index]} @cache-atom]
+        (is (empty? certs))
+        (is (empty? index))))))
+
+(deftest handle-command-result-replaces-on-renew-success
+  (testing "Successful renew removes old cert and adds new cert"
+    (let [old-bundle (make-bundle {:hash "old123"
+                                   :names ["example.com"]})
+          cache-atom (atom {:certs {"old123" old-bundle}
+                            :index {"example.com" ["old123"]}})
+          cmd {:command :renew-certificate
+               :domain "example.com"
+               :bundle old-bundle}
+          new-bundle (make-bundle {:hash "new456"
+                                   :names ["example.com"]})
+          result {:status :success
+                  :bundle new-bundle}]
+      (cache/handle-command-result cache-atom cmd result)
+      (let [{:keys [certs index]} @cache-atom]
+        ;; Old cert removed
+        (is (nil? (get certs "old123")))
+        ;; New cert added
+        (is (= new-bundle (get certs "new456")))
+        ;; Index updated to new hash
+        (is (= ["new456"] (get index "example.com")))))))
+
+(deftest handle-command-result-ignores-renew-failure
+  (testing "Failed renew does not modify cache"
+    (let [old-bundle (make-bundle {:hash "old123"
+                                   :names ["example.com"]})
+          cache-atom (atom {:certs {"old123" old-bundle}
+                            :index {"example.com" ["old123"]}})
+          cmd {:command :renew-certificate
+               :domain "example.com"
+               :bundle old-bundle}
+          result {:status :error
+                  :error-type :network-error
+                  :message "Connection refused"}]
+      (cache/handle-command-result cache-atom cmd result)
+      (let [{:keys [certs index]} @cache-atom]
+        ;; Old cert still present
+        (is (= old-bundle (get certs "old123")))
+        (is (= ["old123"] (get index "example.com")))))))
+
+(deftest handle-command-result-updates-ocsp-on-fetch-success
+  (testing "Successful OCSP fetch updates staple in bundle"
+    (let [now (Instant/now)
+          bundle (make-bundle {:hash "abc123"
+                               :names ["example.com"]
+                               :ocsp-staple nil})
+          cache-atom (atom {:certs {"abc123" bundle}
+                            :index {"example.com" ["abc123"]}})
+          cmd {:command :fetch-ocsp
+               :domain "example.com"
+               :bundle bundle}
+          new-staple {:this-update now
+                      :next-update (.plus now (Duration/ofHours 12))}
+          result {:status :success
+                  :ocsp-response new-staple}]
+      (cache/handle-command-result cache-atom cmd result)
+      (let [updated-bundle (get-in @cache-atom [:certs "abc123"])]
+        (is (= new-staple (:ocsp-staple updated-bundle)))))))
+
+(deftest handle-command-result-ignores-ocsp-failure
+  (testing "Failed OCSP fetch does not modify cache"
+    (let [bundle (make-bundle {:hash "abc123"
+                               :names ["example.com"]
+                               :ocsp-staple nil})
+          cache-atom (atom {:certs {"abc123" bundle}
+                            :index {"example.com" ["abc123"]}})
+          cmd {:command :fetch-ocsp
+               :domain "example.com"
+               :bundle bundle}
+          result {:status :error
+                  :error-type :network-error
+                  :message "OCSP responder unreachable"}]
+      (cache/handle-command-result cache-atom cmd result)
+      (let [updated-bundle (get-in @cache-atom [:certs "abc123"])]
+        (is (nil? (:ocsp-staple updated-bundle)))))))

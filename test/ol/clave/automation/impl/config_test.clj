@@ -1,5 +1,6 @@
 (ns ol.clave.automation.impl.config-test
   (:require
+   [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
    [ol.clave.automation.impl.config :as config]))
 
@@ -144,3 +145,111 @@
   (testing "Default config has no cache capacity limit"
     (let [cfg (config/default-config)]
       (is (nil? (:cache-capacity cfg))))))
+
+;; =============================================================================
+;; sanitize-storage-key tests
+;; =============================================================================
+
+(deftest sanitize-storage-key-removes-parent-dir-traversal
+  (testing "Path traversal attempts are neutralized"
+    ;; Various path traversal patterns
+    (is (not (re-find #"\.\." (config/sanitize-storage-key "../dangerous"))))
+    (is (not (re-find #"\.\." (config/sanitize-storage-key "../../etc/passwd"))))
+    (is (not (re-find #"\.\." (config/sanitize-storage-key "foo/../bar"))))
+    (is (not (re-find #"\.\." (config/sanitize-storage-key "foo/bar/../baz"))))))
+
+(deftest sanitize-storage-key-handles-absolute-paths
+  (testing "Leading slashes are removed"
+    (let [result (config/sanitize-storage-key "/absolute/path")]
+      (is (not (str/starts-with? result "/"))))))
+
+(deftest sanitize-storage-key-preserves-normal-keys
+  (testing "Normal domain names are unchanged"
+    (is (= "example.com" (config/sanitize-storage-key "example.com")))
+    (is (= "www.example.com" (config/sanitize-storage-key "www.example.com")))
+    (is (= "sub.domain.example.com" (config/sanitize-storage-key "sub.domain.example.com")))))
+
+(deftest sanitize-storage-key-handles-wildcards
+  (testing "Wildcard domains are sanitized appropriately"
+    (let [result (config/sanitize-storage-key "*.example.com")]
+      ;; Should handle the asterisk but not break the key
+      (is (string? result))
+      (is (not (str/blank? result))))))
+
+(deftest sanitize-storage-key-handles-edge-cases
+  (testing "Empty and unusual inputs"
+    ;; Empty string - should return something non-nil
+    (is (string? (config/sanitize-storage-key "")))
+    ;; Only dots
+    (is (not (re-find #"^\.\." (config/sanitize-storage-key ".."))))
+    ;; Backslash variants (Windows path traversal)
+    (is (not (re-find #"\.\." (config/sanitize-storage-key "..\\..\\etc\\passwd"))))))
+
+;; =============================================================================
+;; select-chain tests
+;; =============================================================================
+
+;; Helper to make test chains
+(defn- make-chain
+  "Create a mock certificate chain for testing."
+  [certs]
+  {:chain certs
+   :root-name (:issuer (last certs))})
+
+(deftest select-chain-shortest-prefers-shorter-chain
+  (testing ":shortest preference selects the shorter chain"
+    (let [short-chain (make-chain [{:subject "Leaf" :issuer "Root A"}
+                                   {:subject "Root A" :issuer "Root A"}])
+          long-chain (make-chain [{:subject "Leaf" :issuer "Intermediate"}
+                                  {:subject "Intermediate" :issuer "Root B"}
+                                  {:subject "Root B" :issuer "Root B"}])
+          chains [long-chain short-chain]
+          result (config/select-chain :shortest chains)]
+      (is (= short-chain result))
+      (is (= 2 (count (:chain result)))))))
+
+(deftest select-chain-root-name-selects-matching-root
+  (testing "{:root name} preference selects chain with matching root"
+    (let [chain-a (make-chain [{:subject "Leaf" :issuer "Root A"}
+                               {:subject "Root A" :issuer "Root A"}])
+          chain-b (make-chain [{:subject "Leaf" :issuer "Root B"}
+                               {:subject "Root B" :issuer "Root B"}])
+          chains [chain-a chain-b]
+          result (config/select-chain {:root "Root B"} chains)]
+      (is (= chain-b result))
+      (is (= "Root B" (:root-name result))))))
+
+(deftest select-chain-any-returns-first-chain
+  (testing ":any preference returns first offered chain"
+    (let [chain-a (make-chain [{:subject "Leaf" :issuer "Root A"}
+                               {:subject "Root A" :issuer "Root A"}])
+          chain-b (make-chain [{:subject "Leaf" :issuer "Root B"}
+                               {:subject "Root B" :issuer "Root B"}])
+          chains [chain-a chain-b]
+          result (config/select-chain :any chains)]
+      (is (= chain-a result)))))
+
+(deftest select-chain-defaults-to-any
+  (testing "nil or missing preference defaults to :any behavior"
+    (let [chain-a (make-chain [{:subject "Leaf" :issuer "Root A"}])
+          chain-b (make-chain [{:subject "Leaf" :issuer "Root B"}])
+          chains [chain-a chain-b]]
+      (is (= chain-a (config/select-chain nil chains)))
+      (is (= chain-a (config/select-chain :any chains))))))
+
+(deftest select-chain-returns-nil-for-empty-chains
+  (testing "Empty chains list returns nil"
+    (is (nil? (config/select-chain :any [])))
+    (is (nil? (config/select-chain :shortest [])))
+    (is (nil? (config/select-chain {:root "X"} [])))))
+
+(deftest select-chain-root-fallback-to-first-when-not-found
+  (testing "When root name not found, returns first chain"
+    (let [chain-a (make-chain [{:subject "Leaf" :issuer "Root A"}
+                               {:subject "Root A" :issuer "Root A"}])
+          chain-b (make-chain [{:subject "Leaf" :issuer "Root B"}
+                               {:subject "Root B" :issuer "Root B"}])
+          chains [chain-a chain-b]
+          result (config/select-chain {:root "Nonexistent Root"} chains)]
+      ;; Falls back to first chain when not found
+      (is (= chain-a result)))))

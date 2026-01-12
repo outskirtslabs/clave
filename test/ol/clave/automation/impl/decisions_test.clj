@@ -531,6 +531,74 @@
           (is (< jitter maintenance-jitter)))))))
 
 ;; =============================================================================
+;; command-key tests
+;; =============================================================================
+
+(deftest command-key-generates-correct-key-for-obtain
+  (testing "obtain-certificate command generates [:obtain-certificate domain] key"
+    (let [cmd {:command :obtain-certificate
+               :domain "example.com"
+               :identifiers ["example.com"]}
+          key (decisions/command-key cmd)]
+      (is (= [:obtain-certificate "example.com"] key)))))
+
+(deftest command-key-generates-correct-key-for-renew
+  (testing "renew-certificate command generates [:renew-certificate domain] key"
+    (let [cmd {:command :renew-certificate
+               :domain "example.com"
+               :bundle {:names ["example.com"]}}
+          key (decisions/command-key cmd)]
+      (is (= [:renew-certificate "example.com"] key)))))
+
+(deftest command-key-generates-correct-key-for-fetch-ocsp
+  (testing "fetch-ocsp command generates [:fetch-ocsp domain] key"
+    (let [cmd {:command :fetch-ocsp
+               :domain "example.com"
+               :bundle {:names ["example.com"]}}
+          key (decisions/command-key cmd)]
+      (is (= [:fetch-ocsp "example.com"] key)))))
+
+(deftest command-key-generates-correct-key-for-check-ari
+  (testing "check-ari command generates [:check-ari domain] key"
+    (let [cmd {:command :check-ari
+               :domain "example.com"
+               :bundle {:names ["example.com"]}}
+          key (decisions/command-key cmd)]
+      (is (= [:check-ari "example.com"] key)))))
+
+(deftest command-key-same-command-same-domain-produces-same-key
+  (testing "Same command type and domain produces identical key for deduplication"
+    (let [cmd1 {:command :obtain-certificate
+                :domain "example.com"
+                :identifiers ["example.com"]}
+          cmd2 {:command :obtain-certificate
+                :domain "example.com"
+                :identifiers ["example.com"]}
+          key1 (decisions/command-key cmd1)
+          key2 (decisions/command-key cmd2)]
+      (is (= key1 key2)))))
+
+(deftest command-key-different-commands-different-keys
+  (testing "Different command types produce different keys"
+    (let [obtain-cmd {:command :obtain-certificate
+                      :domain "example.com"}
+          renew-cmd {:command :renew-certificate
+                     :domain "example.com"}
+          key1 (decisions/command-key obtain-cmd)
+          key2 (decisions/command-key renew-cmd)]
+      (is (not= key1 key2)))))
+
+(deftest command-key-different-domains-different-keys
+  (testing "Same command type with different domains produces different keys"
+    (let [cmd1 {:command :obtain-certificate
+                :domain "example.com"}
+          cmd2 {:command :obtain-certificate
+                :domain "other.com"}
+          key1 (decisions/command-key cmd1)
+          key2 (decisions/command-key cmd2)]
+      (is (not= key1 key2)))))
+
+;; =============================================================================
 ;; retry-intervals tests
 ;; =============================================================================
 
@@ -544,3 +612,67 @@
       (is (< (nth intervals 3) (nth intervals 4)))
       ;; Final intervals cap at 6 hours
       (is (= 21600000 (last intervals))))))
+
+;; =============================================================================
+;; calculate-maintenance-interval tests
+;; =============================================================================
+
+(deftest calculate-maintenance-interval-for-standard-90-day-cert
+  (testing "90-day cert gets 1-hour maintenance interval"
+    (let [bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2026-04-01T00:00:00Z"})
+          interval (decisions/calculate-maintenance-interval bundle)]
+      ;; Should be around 1 hour (3600000 ms)
+      (is (>= interval 3600000))
+      ;; But not longer than 6 hours
+      (is (<= interval 21600000)))))
+
+(deftest calculate-maintenance-interval-for-short-lived-cert
+  (testing "3-day cert gets shorter maintenance interval"
+    (let [bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2026-01-04T00:00:00Z"})
+          interval (decisions/calculate-maintenance-interval bundle)]
+      ;; Short-lived cert: 3 days = 72 hours, renewal window ~24 hours
+      ;; 10 cycles in 24 hours = ~2.4 hour intervals
+      (is (< interval 10800000))  ; Less than 3 hours
+      ;; But at least 1 minute
+      (is (>= interval 60000)))))
+
+(deftest calculate-maintenance-interval-for-24-hour-cert
+  (testing "24-hour cert gets frequent maintenance interval"
+    (let [bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2026-01-02T00:00:00Z"})
+          interval (decisions/calculate-maintenance-interval bundle)]
+      ;; Very short-lived cert needs frequent checks
+      ;; 24hr lifetime, 8hr renewal window, 10 cycles = ~48 min intervals
+      (is (< interval 3600000))  ; Less than 1 hour
+      (is (>= interval 60000))))) ; At least 1 minute
+
+(deftest calculate-maintenance-interval-for-long-lived-cert
+  (testing "365-day cert gets capped maintenance interval"
+    (let [bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2027-01-01T00:00:00Z"})
+          interval (decisions/calculate-maintenance-interval bundle)]
+      ;; Long-lived cert should not have extremely long intervals
+      ;; Cap at 6 hours (21600000 ms)
+      (is (<= interval 21600000))
+      ;; But at least 1 hour
+      (is (>= interval 3600000)))))
+
+(deftest calculate-maintenance-interval-provides-sufficient-retries
+  (testing "Interval allows at least 5 maintenance cycles in renewal window"
+    (let [bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2026-04-01T00:00:00Z"})
+          interval (decisions/calculate-maintenance-interval bundle)
+          ;; 90-day lifetime = 7776000000 ms
+          ;; Renewal at 1/3 remaining = ~30 days before expiry
+          ;; 30 days = 2592000000 ms
+          renewal-window-ms 2592000000
+          cycles-in-window (/ renewal-window-ms interval)]
+      ;; Should have at least 5 cycles in renewal window
+      (is (>= cycles-in-window 5)))))

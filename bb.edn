@@ -66,7 +66,7 @@
 
          qa
          {:doc     "Run full quality assurance: format, lint, and test"
-          :depends [fmt lint test]}
+          :depends [fmt lint test:parallel]}
 
          ci {:doc     "Ran by the CI"
              :depends [fmt:check lint test]}}}

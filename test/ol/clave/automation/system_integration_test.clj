@@ -1183,3 +1183,168 @@
                       "Cached certificate should match reloaded certificate"))))))
         (finally
           (automation/stop system))))))
+
+(deftest renew-managed-forces-renewal-of-all-certificates
+  (testing "renew-managed forces renewal of all certificates"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domains ["localhost" "example.localhost"]
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Step 1: Obtain certificates for multiple domains
+          (automation/manage-domains system domains)
+          ;; Wait for domain-added events
+          (doseq [_ domains]
+            (.poll queue 5 TimeUnit/SECONDS))
+          ;; Wait for both certificate-obtained events
+          (let [obtained-events (doall
+                                  (for [_ domains]
+                                    (loop [attempts 0]
+                                      (when (< attempts 12)
+                                        (let [evt (.poll queue 5 TimeUnit/SECONDS)]
+                                          (if (= :certificate-obtained (:type evt))
+                                            evt
+                                            (recur (inc attempts))))))))]
+            ;; Verify we got both certificates
+            (is (= 2 (count (filter some? obtained-events)))
+                "Should have obtained 2 certificates")
+            ;; Record original certificate hashes (more reliable than NotBefore dates)
+            (let [initial-hashes (into {}
+                                       (for [domain domains]
+                                         [domain (:hash (automation/lookup-cert system domain))]))]
+              ;; Step 3: Call renew-managed
+              (let [count (automation/renew-managed system)]
+                (is (= 2 count) "renew-managed should return count of renewed certs"))
+              ;; Step 4-5: Wait for certificate-renewed events
+              (let [renewed-events (doall
+                                     (for [_ domains]
+                                       (loop [attempts 0]
+                                         (when (< attempts 20)
+                                           (let [evt (.poll queue 5 TimeUnit/SECONDS)]
+                                             (if (= :certificate-renewed (:type evt))
+                                               evt
+                                               (recur (inc attempts))))))))]
+                (is (= 2 (count (filter some? renewed-events)))
+                    "Should have 2 certificate-renewed events")
+                ;; Step 6: Verify certificates were renewed (different hashes)
+                (doseq [domain domains]
+                  (let [new-bundle (automation/lookup-cert system domain)
+                        original-hash (get initial-hashes domain)]
+                    (is (some? new-bundle) (str "Bundle for " domain " should exist"))
+                    (when (and new-bundle original-hash)
+                      (is (not= original-hash (:hash new-bundle))
+                          (str domain " should have different certificate hash after renewal")))))))))
+        (finally
+          (automation/stop system))))))
+
+(deftest revoke-sends-revocation-request-to-ca
+  (testing "revoke sends revocation request to CA"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Step 1: Obtain certificate
+          (automation/manage-domains system [domain])
+          ;; Consume domain-added event
+          (.poll queue 5 TimeUnit/SECONDS)
+          ;; Wait for certificate-obtained
+          (loop [attempts 0]
+            (when (< attempts 12)
+              (let [evt (.poll queue 5 TimeUnit/SECONDS)]
+                (when-not (= :certificate-obtained (:type evt))
+                  (recur (inc attempts))))))
+          ;; Verify certificate exists
+          (let [bundle (automation/lookup-cert system domain)]
+            (is (some? bundle) "Certificate should exist before revoke")
+            ;; Step 2: Call revoke
+            (let [result (automation/revoke system domain {})]
+              ;; Step 3-4: Verify revocation request succeeded
+              (is (= :success (:status result)) "Revoke should succeed")
+              ;; Verify certificate removed from cache
+              (is (nil? (automation/lookup-cert system domain))
+                  "Certificate should be removed from cache after revoke"))))
+        (finally
+          (automation/stop system))))))
+
+(deftest revoke-with-remove-from-storage-deletes-files
+  (testing "revoke with remove-from-storage deletes files"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Step 1: Obtain certificate
+          (automation/manage-domains system [domain])
+          ;; Consume domain-added event
+          (.poll queue 5 TimeUnit/SECONDS)
+          ;; Wait for certificate-obtained
+          (loop [attempts 0]
+            (when (< attempts 12)
+              (let [evt (.poll queue 5 TimeUnit/SECONDS)]
+                (when-not (= :certificate-obtained (:type evt))
+                  (recur (inc attempts))))))
+          ;; Verify certificate exists
+          (let [bundle (automation/lookup-cert system domain)
+                issuer-key (:issuer-key bundle)]
+            (is (some? bundle) "Certificate should exist before revoke")
+            ;; Step 2: Verify certificate files exist in storage
+            ;; Use config functions to get correct storage paths
+            (let [cert-path (config/cert-storage-key issuer-key domain)
+                  key-path (config/key-storage-key issuer-key domain)]
+              (is (storage/exists? storage-impl nil cert-path)
+                  "Certificate file should exist in storage")
+              (is (storage/exists? storage-impl nil key-path)
+                  "Key file should exist in storage")
+              ;; Step 3: Call revoke with :remove-from-storage true
+              (let [result (automation/revoke system domain {:remove-from-storage true})]
+                (is (= :success (:status result)) "Revoke should succeed")
+                ;; Step 4: Verify certificate files are deleted
+                (is (not (storage/exists? storage-impl nil cert-path))
+                    "Certificate file should be deleted from storage")
+                (is (not (storage/exists? storage-impl nil key-path))
+                    "Key file should be deleted from storage")
+                ;; Step 5: Verify certificate is removed from cache
+                (is (nil? (automation/lookup-cert system domain))
+                    "Certificate should be removed from cache after revoke")))))
+        (finally
+          (automation/stop system))))))

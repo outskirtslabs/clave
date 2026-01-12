@@ -715,13 +715,88 @@
             @queue-atom)))))
 
 (defn renew-managed
-  "Forces renewal of all managed certificates."
-  [_system]
-  ;; TODO: Implement
-  nil)
+  "Forces renewal of all managed certificates.
+
+  Submits renewal commands for every managed certificate in the cache.
+  Commands are submitted asynchronously - this function returns immediately.
+
+  Returns the number of certificates queued for renewal."
+  [system]
+  (let [cache-atom (:cache system)
+        {:keys [certs]} @cache-atom
+        renewed (atom 0)]
+    (doseq [[_hash bundle] certs]
+      (when (:managed bundle)
+        (let [domain (first (:names bundle))]
+          (submit-command! system {:command :renew-certificate
+                                   :domain domain
+                                   :bundle bundle})
+          (swap! renewed inc))))
+    @renewed))
+
+(defn- delete-certificate-from-storage!
+  "Remove certificate files from storage."
+  [storage issuer-key domain]
+  (let [bg-lease (lease/background)
+        cert-key (config/cert-storage-key issuer-key domain)
+        key-key (config/key-storage-key issuer-key domain)
+        meta-key (config/meta-storage-key issuer-key domain)]
+    (storage/delete! storage bg-lease cert-key)
+    (storage/delete! storage bg-lease key-key)
+    (storage/delete! storage bg-lease meta-key)))
 
 (defn revoke
-  "Revokes a certificate."
-  [_system _certificate _opts]
-  ;; TODO: Implement
-  nil)
+  "Revokes a certificate.
+
+  The `certificate` parameter can be:
+  - A domain string - looks up the certificate from the cache
+  - A bundle map - uses the bundle directly
+
+  Options:
+  | key | description |
+  |-----|-------------|
+  | `:remove-from-storage` | When true, deletes certificate files from storage |
+  | `:reason` | RFC 5280 revocation reason code (0-6, 8-10) |
+
+  Returns:
+  - `{:status :success}` on successful revocation
+  - `{:status :error :message ...}` on failure"
+  [system certificate opts]
+  (let [;; Resolve certificate to a bundle
+        bundle (if (string? certificate)
+                 (cache/lookup-cert (:cache system) certificate)
+                 certificate)]
+    (if-not bundle
+      {:status :error
+       :message (str "Certificate not found: " certificate)}
+      (let [domain (first (:names bundle))
+            issuer-key (:issuer-key bundle)
+            certs (:certificate bundle)
+            ^java.security.cert.X509Certificate cert (first certs)
+            ;; Find the issuer config matching the issuer-key
+            issuers (get-in system [:config :issuers])
+            issuer-config (or (first (filter #(= issuer-key
+                                                  (or (:issuer-key %)
+                                                      (config/issuer-key-from-url (:directory-url %))))
+                                             issuers))
+                              (first issuers))]
+        (try
+          ;; Create session and revoke
+          (let [session (create-acme-session system issuer-config)
+                revoke-opts (when-let [reason (:reason opts)]
+                              {:reason reason})
+                [_session _] (cmd/revoke-certificate (lease/background)
+                                                     session
+                                                     cert
+                                                     revoke-opts)]
+            ;; Remove from cache
+            (cache/remove-certificate (:cache system) bundle)
+            ;; Remove from managed domains
+            (swap! (:managed-domains system) disj domain)
+            ;; Optionally remove from storage
+            (when (:remove-from-storage opts)
+              (delete-certificate-from-storage! (:storage system) issuer-key domain))
+            {:status :success})
+          (catch Exception e
+            {:status :error
+             :message (ex-message e)}))))))

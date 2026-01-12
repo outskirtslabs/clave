@@ -803,3 +803,47 @@
               oid (bc-get-signature-algorithm-oid bc-csr)]
           (is (= "1.3.101.112" oid)
               "Ed25519 should use OID 1.3.101.112"))))))
+
+;; -------------------------
+;; OCSP Must-Staple Extension Tests
+;; -------------------------
+
+(def ^:private tls-feature-oid
+  "TLS Feature extension OID (OCSP must-staple)"
+  "1.3.6.1.5.5.7.1.24")
+
+(defn- bc-has-tls-feature-extension?
+  "Check if CSR contains the TLS Feature extension (must-staple)."
+  [^PKCS10CertificationRequest csr]
+  (try
+    (let [attrs (.getAttributes csr PKCSObjectIdentifiers/pkcs_9_at_extensionRequest)]
+      (when (pos? (alength attrs))
+        (let [attr-values (.getAttrValues (aget attrs 0))
+              exts (Extensions/getInstance (.getObjectAt attr-values 0))
+              tls-ext (.getExtension exts (org.bouncycastle.asn1.ASN1ObjectIdentifier. tls-feature-oid))]
+          (some? tls-ext))))
+    (catch Exception _
+      false)))
+
+(deftest must-staple-extension-included-when-configured
+  (testing "TLS Feature extension is included when :must-staple true"
+    (let [kp (kg/generate :p256)
+          result (csr/create-csr kp ["test.example.com"] {:must-staple true})
+          bc-csr (bc-parse-csr (:csr-der result))]
+      (is (bc-has-tls-feature-extension? bc-csr)
+          "CSR should contain TLS Feature extension"))))
+
+(deftest must-staple-extension-excluded-when-not-configured
+  (testing "TLS Feature extension is NOT included when :must-staple false"
+    (let [kp (kg/generate :p256)
+          result (csr/create-csr kp ["test.example.com"] {:must-staple false})
+          bc-csr (bc-parse-csr (:csr-der result))]
+      (is (not (bc-has-tls-feature-extension? bc-csr))
+          "CSR should NOT contain TLS Feature extension")))
+
+  (testing "TLS Feature extension is NOT included by default"
+    (let [kp (kg/generate :p256)
+          result (csr/create-csr kp ["test.example.com"])
+          bc-csr (bc-parse-csr (:csr-der result))]
+      (is (not (bc-has-tls-feature-extension? bc-csr))
+          "CSR should NOT contain TLS Feature extension by default"))))

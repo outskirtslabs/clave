@@ -227,13 +227,26 @@
 ;; Attributes / Extensions
 ;; -------------------------
 
+(defn- build-tls-feature-extension
+  "Build TLS Feature extension for OCSP must-staple.
+
+  OID: 1.3.6.1.5.5.7.1.24
+  Value: SEQUENCE containing INTEGER 5 (status_request)"
+  []
+  (let [;; TLS Feature extension value: SEQUENCE { INTEGER 5 }
+        feature-value (der/der-sequence (der/der-integer 5))
+        ext-value (der/der-octet-string feature-value)]
+    ;; Extension: OID + OCTET STRING value (non-critical by default)
+    (der/der-sequence (der/der-oid "1.3.6.1.5.5.7.1.24") ext-value)))
+
 (defn- build-attributes
   "Build attributes [0] IMPLICIT SET OF Attribute.
 
   Includes extensionRequest with subjectAltName extension.
+  Optionally includes TLS Feature extension for OCSP must-staple.
 
   Note: sans cannot be empty (enforced by create-csr)."
-  [sans san-critical]
+  [sans san-critical must-staple]
   (let [general-names (encode-general-names sans)
         san-ext-value (der/der-octet-string general-names)
         ext-fields (if san-critical
@@ -243,7 +256,11 @@
                      [(der/der-oid "2.5.29.17")
                       san-ext-value])
         san-extension (apply der/der-sequence ext-fields)
-        extensions (der/der-sequence san-extension)
+        ;; Build extensions sequence, optionally including TLS Feature
+        all-extensions (if must-staple
+                         [san-extension (build-tls-feature-extension)]
+                         [san-extension])
+        extensions (apply der/der-sequence all-extensions)
         attribute (der/der-sequence
                    (der/der-oid "1.2.840.113549.1.9.14")
                    (der/der-set extensions))
@@ -343,6 +360,7 @@
                       {::errors/sans sans})))
   (let [opts (or opts {})
         use-cn? (get opts :use-cn? false)
+        must-staple (get opts :must-staple false)
         normalized-sans (normalize-sans sans)
 
         ;; Build subject DN (empty or CN from first DNS SAN, skipping IPs)
@@ -358,7 +376,8 @@
         spki (.getEncoded pub-key)
 
         ;; Build attributes with SANs (always non-critical per rfc)
-        attributes (build-attributes normalized-sans false)
+        ;; Include TLS Feature extension if must-staple is requested
+        attributes (build-attributes normalized-sans false must-staple)
 
         ;; Build CertificationRequestInfo
         version (der/der-integer 0)

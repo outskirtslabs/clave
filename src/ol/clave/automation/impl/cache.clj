@@ -7,7 +7,8 @@
   (:require
    [clojure.string :as str])
   (:import
-   [java.security MessageDigest]))
+   [java.security MessageDigest]
+   [java.security.cert X509Certificate]))
 
 (defn cache-certificate
   "Add or update a certificate in the cache.
@@ -124,6 +125,53 @@
     (doseq [^bytes cert cert-chain]
       (.update digest cert))
     (bytes->hex (.digest digest))))
+
+(defn- extract-sans
+  "Extract Subject Alternative Names from an X509 certificate.
+
+  Returns a vector of DNS names and IP addresses from the SAN extension.
+  SAN types: 2=DNS, 7=IP address."
+  [^X509Certificate cert]
+  (if-let [sans (.getSubjectAlternativeNames cert)]
+    (->> sans
+         (filter (fn [san]
+                   (let [type (first san)]
+                     ;; 2=DNS, 7=IP
+                     (or (= 2 type) (= 7 type)))))
+         (map second)
+         (map str)
+         vec)
+    []))
+
+(defn create-bundle
+  "Create a certificate bundle from ACME response data.
+
+  Extracts SANs, computes hash, and creates a complete bundle map
+  suitable for caching and TLS use.
+
+  | key | description |
+  |-----|-------------|
+  | `certs` | Vector of X509Certificate objects (chain) |
+  | `private-key` | Private key for the certificate |
+  | `issuer-key` | Identifier for the issuer (e.g., CA directory host) |"
+  [certs private-key issuer-key]
+  (let [^X509Certificate leaf-cert (first certs)
+        ;; Extract SANs from leaf certificate
+        names (extract-sans leaf-cert)
+        ;; Compute hash from DER-encoded certificates
+        cert-bytes (mapv #(.getEncoded ^X509Certificate %) certs)
+        hash (hash-certificate cert-bytes)
+        ;; Extract validity dates
+        not-before (.toInstant (.getNotBefore leaf-cert))
+        not-after (.toInstant (.getNotAfter leaf-cert))]
+    {:hash hash
+     :names names
+     :certificate certs
+     :private-key private-key
+     :not-before not-before
+     :not-after not-after
+     :issuer-key issuer-key
+     :managed true}))
 
 (defn handle-command-result
   "Update cache based on command result.

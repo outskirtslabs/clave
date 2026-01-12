@@ -206,3 +206,87 @@
                 "Private key should be persisted to storage")))
         (finally
           (automation/stop system))))))
+
+(deftest manage-domains-with-tls-alpn01-solver
+  (testing "manage-domains triggers immediate certificate obtain with TLS-ALPN-01"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          issuer-key (config/issuer-key-from-url (pebble/uri))
+          ;; Create a TLS-ALPN-01 solver that works with pebble's challenge test server
+          solver {:present (fn [_lease chall account-key]
+                             (let [key-auth (challenge/key-authorization chall account-key)]
+                               ;; TLS-ALPN-01 uses the domain as the host
+                               (pebble/challtestsrv-add-tlsalpn01 domain key-auth)
+                               {:domain domain}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-tlsalpn01 (:domain state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:tls-alpn-01 solver}
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        ;; Get event queue before calling manage-domains
+        (let [queue (automation/get-event-queue system)]
+          ;; Call manage-domains
+          (automation/manage-domains system [domain])
+          ;; Step 4: Verify :domain-added event is emitted
+          (let [domain-added-event (.poll queue 5 TimeUnit/SECONDS)]
+            (is (some? domain-added-event) "Should receive :domain-added event")
+            (is (= :domain-added (:type domain-added-event))
+                "First event should be :domain-added")
+            (is (= domain (get-in domain-added-event [:data :domain]))
+                "Event domain should match"))
+          ;; Wait for certificate obtain to complete and verify event
+          (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
+            (is (some? cert-event) "Should receive certificate event")
+            (is (= :certificate-obtained (:type cert-event))
+                "Event should be :certificate-obtained")
+            (is (= domain (get-in cert-event [:data :domain]))
+                "Certificate event domain should match"))
+          ;; Verify certificate is in cache via lookup-cert
+          (let [cert-bundle (automation/lookup-cert system domain)
+                certs (:certificate cert-bundle)
+                ^java.security.cert.X509Certificate first-cert (first certs)
+                ^java.security.PrivateKey private-key (:private-key cert-bundle)]
+            (is (some? cert-bundle) "Certificate should be in cache")
+            (is (= [domain] (:names cert-bundle)) "Certificate SANs should match")
+            (is (some? (:certificate cert-bundle)) "Bundle should have certificate")
+            (is (some? (:private-key cert-bundle)) "Bundle should have private key")
+            ;; Verify certificate chain is valid
+            (is (vector? certs) "Certificate chain should be a vector")
+            (is (pos? (count certs)) "Certificate chain should not be empty")
+            (is (instance? java.security.cert.X509Certificate first-cert)
+                "First cert should be X509Certificate")
+            ;; Verify certificate is not expired and not yet valid issues
+            (let [now (java.util.Date.)]
+              (is (not (.after (.getNotBefore first-cert) now))
+                  "Certificate should be valid (not in future)")
+              (is (.after (.getNotAfter first-cert) now)
+                  "Certificate should not be expired"))
+            ;; Verify private key matches certificate
+            ;; Sign with private key and verify with public key from certificate
+            (let [cert-public-key (.getPublicKey first-cert)
+                  key-algo (.getAlgorithm private-key)]
+              (when (not= "EdDSA" key-algo)
+                (let [sig-algo (if (= "EC" key-algo) "SHA256withECDSA" "SHA256withRSA")
+                      signature (doto (java.security.Signature/getInstance sig-algo)
+                                  (.initSign private-key)
+                                  (.update (.getBytes "test data")))
+                      sig-bytes (.sign signature)
+                      verifier (doto (java.security.Signature/getInstance sig-algo)
+                                 (.initVerify cert-public-key)
+                                 (.update (.getBytes "test data")))]
+                  (is (.verify verifier sig-bytes)
+                      "Private key should match certificate public key")))))
+          ;; Verify certificate is persisted to storage
+          (let [cert-key (config/cert-storage-key issuer-key domain)
+                key-key (config/key-storage-key issuer-key domain)]
+            (is (storage/exists? storage-impl nil cert-key)
+                "Certificate should be persisted to storage")
+            (is (storage/exists? storage-impl nil key-key)
+                "Private key should be persisted to storage")))
+        (finally
+          (automation/stop system))))))

@@ -1,4 +1,4 @@
-(ns ol.clave.automation.system-test
+(ns ol.clave.automation.system-integration-test
   "Integration tests for the automation system lifecycle.
   Tests run against Pebble ACME test server."
   (:require
@@ -163,11 +163,40 @@
             (is (= domain (get-in cert-event [:data :domain]))
                 "Certificate event domain should match"))
           ;; Step 7: Verify certificate is in cache via lookup-cert
-          (let [cert-bundle (automation/lookup-cert system domain)]
+          (let [cert-bundle (automation/lookup-cert system domain)
+                certs (:certificate cert-bundle)
+                ^java.security.cert.X509Certificate first-cert (first certs)
+                ^java.security.PrivateKey private-key (:private-key cert-bundle)]
             (is (some? cert-bundle) "Certificate should be in cache")
             (is (= [domain] (:names cert-bundle)) "Certificate SANs should match")
             (is (some? (:certificate cert-bundle)) "Bundle should have certificate")
-            (is (some? (:private-key cert-bundle)) "Bundle should have private key"))
+            (is (some? (:private-key cert-bundle)) "Bundle should have private key")
+            ;; Step 10: Verify certificate chain is valid
+            (is (vector? certs) "Certificate chain should be a vector")
+            (is (pos? (count certs)) "Certificate chain should not be empty")
+            (is (instance? java.security.cert.X509Certificate first-cert)
+                "First cert should be X509Certificate")
+            ;; Verify certificate is not expired and not yet valid issues
+            (let [now (java.util.Date.)]
+              (is (not (.after (.getNotBefore first-cert) now))
+                  "Certificate should be valid (not in future)")
+              (is (.after (.getNotAfter first-cert) now)
+                  "Certificate should not be expired"))
+            ;; Step 11: Verify private key matches certificate
+            ;; Sign with private key and verify with public key from certificate
+            (let [cert-public-key (.getPublicKey first-cert)
+                  key-algo (.getAlgorithm private-key)]
+              (when (not= "EdDSA" key-algo)
+                (let [sig-algo (if (= "EC" key-algo) "SHA256withECDSA" "SHA256withRSA")
+                      signature (doto (java.security.Signature/getInstance sig-algo)
+                                  (.initSign private-key)
+                                  (.update (.getBytes "test data")))
+                      sig-bytes (.sign signature)
+                      verifier (doto (java.security.Signature/getInstance sig-algo)
+                                 (.initVerify cert-public-key)
+                                 (.update (.getBytes "test data")))]
+                  (is (.verify verifier sig-bytes)
+                      "Private key should match certificate public key")))))
           ;; Step 8: Verify certificate is persisted to storage
           (let [cert-key (config/cert-storage-key issuer-key domain)
                 key-key (config/key-storage-key issuer-key domain)]

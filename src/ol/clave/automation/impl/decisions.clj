@@ -377,6 +377,23 @@
               :command command
               :result result}})))
 
+(defn create-certificate-loaded-event
+  "Create an event for a certificate loaded from storage.
+
+  Used during startup when loading existing certificates.
+
+  | key | description |
+  |-----|-------------|
+  | `bundle` | Certificate bundle with `:names`, `:not-after` |"
+  [bundle]
+  (let [domain (first (:names bundle))
+        now (Instant/now)]
+    {:type :certificate-loaded
+     :timestamp now
+     :data {:domain domain
+            :names (:names bundle)
+            :not-after (:not-after bundle)}}))
+
 ;; =============================================================================
 ;; Certificate Lifecycle
 ;; =============================================================================

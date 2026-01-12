@@ -4,14 +4,20 @@
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.automation :as automation]
+   [ol.clave.automation.impl.config :as config]
+   [ol.clave.certificate :as certificate]
+   [ol.clave.certificate.impl.keygen :as keygen]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
    [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]))
+   [java.nio.file.attribute FileAttribute]
+   [java.security.cert X509Certificate]))
 
-(use-fixtures :once pebble/pebble-fixture)
+;; Use pebble-challenge-fixture because some tests need the challenge test server
+(use-fixtures :once pebble/pebble-challenge-fixture)
 
 (defn- temp-storage-dir
   "Creates a temporary directory for storage tests."
@@ -72,3 +78,44 @@
       (is (thrown-with-msg? Exception #"[Ss]torage"
                             (automation/start config))
           "Startup should fail with storage error"))))
+
+(deftest system-loads-certificates-from-storage-on-startup
+  (testing "Certificates stored from previous session are loaded on startup"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          issuer-key (config/issuer-key-from-url (pebble/uri))
+          initial-config {:storage storage-impl
+                          :issuers [{:directory-url (pebble/uri)}]
+                          :http-client pebble/http-client-opts}
+          ;; Get a real certificate from Pebble via test utilities
+          test-session (test-util/fresh-session)
+          [_session ^X509Certificate cert cert-keypair] (test-util/issue-certificate test-session)
+          ;; Convert to PEM format using keygen/pem-encode
+          cert-pem (keygen/pem-encode "CERTIFICATE" (.getEncoded cert))
+          key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
+          meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+          ;; Store using expected key format
+          cert-key (config/cert-storage-key issuer-key domain)
+          key-key (config/key-storage-key issuer-key domain)
+          meta-key (config/meta-storage-key issuer-key domain)]
+      ;; Store the certificate manually (simulating what obtain does)
+      (storage/store-string! storage-impl nil cert-key cert-pem)
+      (storage/store-string! storage-impl nil key-key key-pem)
+      (storage/store-string! storage-impl nil meta-key meta-json)
+      ;; Start a new system with storage containing the certificate
+      (let [system (automation/start initial-config)]
+        (try
+          ;; 1. Verify certificate is loaded into cache (available via lookup-cert)
+          (let [cert-bundle (automation/lookup-cert system domain)]
+            (is (some? cert-bundle) "Certificate should be loaded from storage")
+            (is (= [domain] (:names cert-bundle)) "Certificate SANs should match")
+            (is (= issuer-key (:issuer-key cert-bundle)) "Issuer key should match"))
+          ;; 2. Verify :certificate-loaded event was emitted
+          (let [queue (automation/get-event-queue system)
+                event (.poll queue 100 java.util.concurrent.TimeUnit/MILLISECONDS)]
+            (is (some? event) "Should have received an event")
+            (is (= :certificate-loaded (:type event)) "Event type should be :certificate-loaded")
+            (is (= domain (get-in event [:data :domain])) "Event domain should match"))
+          (finally
+            (automation/stop system)))))))

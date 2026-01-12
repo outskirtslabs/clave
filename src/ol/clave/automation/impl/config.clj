@@ -103,6 +103,86 @@
       ;; Remove trailing slashes
       (str/replace #"/+$" "")))
 
+;; =============================================================================
+;; Storage Key Generation
+;; =============================================================================
+
+(defn- safe-storage-key
+  "Sanitize a value for use in storage key paths.
+
+  Applies transformations to make the key filesystem-safe:
+  - Lowercase
+  - Replace * with wildcard_
+  - Remove unsafe characters"
+  [s]
+  (-> (str s)
+      clojure.string/lower-case
+      (str/replace "*" "wildcard_")
+      (str/replace #"[^a-z0-9._-]" "")))
+
+(defn issuer-key-from-url
+  "Extract issuer key from directory URL.
+
+  Returns the hostname from the URL, which serves as a unique
+  identifier for the issuer.
+
+  | key | description |
+  |-----|-------------|
+  | `url` | ACME directory URL |"
+  [url]
+  (let [uri (java.net.URI. url)]
+    (.getHost uri)))
+
+(defn cert-storage-key
+  "Generate storage key for a certificate PEM file.
+
+  Format: `certificates/{issuer-key}/{domain}/{domain}.crt`
+
+  | key | description |
+  |-----|-------------|
+  | `issuer-key` | Issuer identifier (hostname from directory URL) |
+  | `domain` | Primary domain name |"
+  [issuer-key domain]
+  (let [safe-domain (safe-storage-key domain)]
+    (str "certificates/" issuer-key "/" safe-domain "/" safe-domain ".crt")))
+
+(defn key-storage-key
+  "Generate storage key for a private key PEM file.
+
+  Format: `certificates/{issuer-key}/{domain}/{domain}.key`
+
+  | key | description |
+  |-----|-------------|
+  | `issuer-key` | Issuer identifier (hostname from directory URL) |
+  | `domain` | Primary domain name |"
+  [issuer-key domain]
+  (let [safe-domain (safe-storage-key domain)]
+    (str "certificates/" issuer-key "/" safe-domain "/" safe-domain ".key")))
+
+(defn meta-storage-key
+  "Generate storage key for certificate metadata JSON file.
+
+  Format: `certificates/{issuer-key}/{domain}/{domain}.json`
+
+  | key | description |
+  |-----|-------------|
+  | `issuer-key` | Issuer identifier (hostname from directory URL) |
+  | `domain` | Primary domain name |"
+  [issuer-key domain]
+  (let [safe-domain (safe-storage-key domain)]
+    (str "certificates/" issuer-key "/" safe-domain "/" safe-domain ".json")))
+
+(defn certs-prefix
+  "Generate storage prefix for listing certificates under an issuer.
+
+  Format: `certificates/{issuer-key}`
+
+  | key | description |
+  |-----|-------------|
+  | `issuer-key` | Issuer identifier (hostname from directory URL) |"
+  [issuer-key]
+  (str "certificates/" issuer-key))
+
 (defn select-chain
   "Select a certificate chain based on preference.
 

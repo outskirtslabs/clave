@@ -4,10 +4,18 @@
   The system map contains all components and is passed to internal functions.
   Components access what they need via destructuring."
   (:require
+   [clojure.data.json :as json]
+   [clojure.string :as str]
    [ol.clave.automation.impl.cache :as cache]
    [ol.clave.automation.impl.config :as config]
+   [ol.clave.automation.impl.decisions :as decisions]
+   [ol.clave.certificate.impl.parse :as cert-parse]
+   [ol.clave.specs :as specs]
    [ol.clave.storage :as storage])
   (:import
+   [java.security KeyFactory]
+   [java.security.spec PKCS8EncodedKeySpec]
+   [java.util Base64]
    [java.util.concurrent ConcurrentHashMap Executors LinkedBlockingQueue Semaphore]))
 
 (set! *warn-on-reflection* true)
@@ -85,6 +93,116 @@
    :http-client (:http-client config)
    :maintenance-thread (atom nil)})
 
+;; =============================================================================
+;; Certificate Loading from Storage
+;; =============================================================================
+
+(def ^:private pem-key-pattern
+  #"(?s)-----BEGIN PRIVATE KEY-----\s*(.*?)\s*-----END PRIVATE KEY-----")
+
+(defn- parse-private-key-pem
+  "Parse a PEM-encoded private key into a PrivateKey object."
+  [pem-string]
+  (let [matcher (re-matcher pem-key-pattern pem-string)]
+    (when (.find matcher)
+      (let [base64-content (.replaceAll (.group matcher 1) "\\s" "")
+            key-bytes (.decode (Base64/getDecoder) base64-content)
+            key-spec (PKCS8EncodedKeySpec. key-bytes)]
+        ;; Try EC first (most common for ACME), then RSA
+        (try
+          (.generatePrivate (KeyFactory/getInstance "EC") key-spec)
+          (catch Exception _
+            (try
+              (.generatePrivate (KeyFactory/getInstance "RSA") key-spec)
+              (catch Exception _
+                (.generatePrivate (KeyFactory/getInstance "Ed25519") key-spec)))))))))
+
+(defn- load-certificate-bundle
+  "Load a certificate bundle from storage.
+
+  Returns a bundle map or nil if loading fails."
+  [storage issuer-key domain]
+  (try
+    (let [cert-key (config/cert-storage-key issuer-key domain)
+          key-key (config/key-storage-key issuer-key domain)
+          meta-key (config/meta-storage-key issuer-key domain)
+          cert-pem (storage/load-string storage nil cert-key)
+          key-pem (storage/load-string storage nil key-key)
+          meta-json (try
+                      (json/read-str (storage/load-string storage nil meta-key)
+                                     :key-fn keyword)
+                      (catch Exception _ {}))
+          parsed-cert (cert-parse/parse-pem-chain cert-pem)
+          certs (::specs/certificates parsed-cert)
+          ^java.security.cert.X509Certificate first-cert (first certs)
+          private-key (parse-private-key-pem key-pem)
+          ;; Extract SANs from certificate
+          sans (or (:names meta-json)
+                   (when first-cert
+                     (let [cn (.getSubjectX500Principal first-cert)]
+                       [(.toString cn)])))
+          not-before (when first-cert (.toInstant (.getNotBefore first-cert)))
+          not-after (when first-cert (.toInstant (.getNotAfter first-cert)))]
+      {:names sans
+       :certificate certs
+       :private-key private-key
+       :not-before not-before
+       :not-after not-after
+       :issuer-key issuer-key
+       :hash (cache/hash-certificate (mapv (fn [^java.security.cert.X509Certificate c]
+                                             (.getEncoded c))
+                                           certs))
+       :managed true})
+    (catch Exception _e
+      nil)))
+
+(defn- list-stored-domains
+  "List all domains stored under an issuer key.
+
+  Returns a sequence of domain names."
+  [storage issuer-key]
+  (try
+    (let [prefix (config/certs-prefix issuer-key)]
+      (when (storage/exists? storage nil prefix)
+        (let [entries (storage/list storage nil prefix false)]
+          ;; Each entry is like "certificates/issuer/domain"
+          ;; We want just the domain part
+          (->> entries
+               (map #(last (str/split % #"/")))
+               (distinct)))))
+    (catch Exception _
+      nil)))
+
+(defn- load-all-certificates!
+  "Load all existing certificates from storage.
+
+  Returns a sequence of loaded bundles."
+  [system]
+  (let [storage (:storage system)
+        issuers (get-in system [:config :issuers])
+        loaded-bundles (atom [])]
+    (doseq [issuer issuers]
+      (let [issuer-key (or (:issuer-key issuer)
+                           (config/issuer-key-from-url (:directory-url issuer)))]
+        (when-let [domains (list-stored-domains storage issuer-key)]
+          (doseq [domain domains]
+            (when-let [bundle (load-certificate-bundle storage issuer-key domain)]
+              ;; Add to cache
+              (cache/cache-certificate (:cache system) bundle)
+              ;; Emit event if queue exists
+              (when-let [queue @(:event-queue system)]
+                (let [event (decisions/create-certificate-loaded-event bundle)]
+                  (.offer ^LinkedBlockingQueue queue event)))
+              (swap! loaded-bundles conj bundle))))))
+    @loaded-bundles))
+
+(defn- emit-certificate-loaded-event!
+  "Emit a certificate-loaded event for a bundle."
+  [system bundle]
+  (when-let [queue @(:event-queue system)]
+    (let [event (decisions/create-certificate-loaded-event bundle)]
+      (.offer ^LinkedBlockingQueue queue event))))
+
 (defn- start-maintenance-loop!
   "Starts the maintenance loop on a virtual thread.
   Returns the thread."
@@ -122,8 +240,16 @@
   (validate-storage! (:storage config))
   ;; Merge with defaults
   (let [merged-config (merge-with-defaults config)
-        system (create-system-state merged-config)]
-    ;; TODO: Load existing certificates from storage
+        system (create-system-state merged-config)
+        ;; Initialize event queue before loading certificates
+        ;; so events can be emitted during loading
+        _ (reset! (:event-queue system)
+                  (LinkedBlockingQueue. (int *event-queue-capacity*)))
+        ;; Load existing certificates from storage
+        loaded-bundles (load-all-certificates! system)]
+    ;; Emit certificate-loaded events for each bundle
+    (doseq [bundle loaded-bundles]
+      (emit-certificate-loaded-event! system bundle))
     ;; Start maintenance loop
     (start-maintenance-loop! system)
     ;; Mark as started

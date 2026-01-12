@@ -676,3 +676,35 @@
           cycles-in-window (/ renewal-window-ms interval)]
       ;; Should have at least 5 cycles in renewal window
       (is (>= cycles-in-window 5)))))
+
+;; =============================================================================
+;; certificate-loaded event tests
+;; =============================================================================
+
+(deftest create-certificate-loaded-event-has-correct-type
+  (testing "Event has :certificate-loaded type"
+    (let [bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2026-04-01T00:00:00Z"
+                   :names ["example.com" "www.example.com"]})
+          event (decisions/create-certificate-loaded-event bundle)]
+      (is (= :certificate-loaded (:type event))))))
+
+(deftest create-certificate-loaded-event-includes-domain-data
+  (testing "Event includes domain and names in data"
+    (let [bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2026-04-01T00:00:00Z"
+                   :names ["example.com" "www.example.com"]})
+          event (decisions/create-certificate-loaded-event bundle)]
+      (is (= "example.com" (get-in event [:data :domain])))
+      (is (= ["example.com" "www.example.com"] (get-in event [:data :names]))))))
+
+(deftest create-certificate-loaded-event-includes-timestamp
+  (testing "Event has a timestamp"
+    (let [bundle (make-bundle
+                  {:not-before "2026-01-01T00:00:00Z"
+                   :not-after "2026-04-01T00:00:00Z"})
+          event (decisions/create-certificate-loaded-event bundle)]
+      (is (some? (:timestamp event)))
+      (is (instance? Instant (:timestamp event))))))

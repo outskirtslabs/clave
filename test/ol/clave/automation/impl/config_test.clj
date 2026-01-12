@@ -253,3 +253,47 @@
           result (config/select-chain {:root "Nonexistent Root"} chains)]
       ;; Falls back to first chain when not found
       (is (= chain-a result)))))
+
+;; =============================================================================
+;; Storage key generation tests
+;; =============================================================================
+
+(deftest cert-storage-key-generates-correct-path
+  (testing "Certificate storage key follows certmagic format"
+    (let [issuer-key "acme-v02.api.letsencrypt.org"
+          domain "example.com"
+          result (config/cert-storage-key issuer-key domain)]
+      (is (= "certificates/acme-v02.api.letsencrypt.org/example.com/example.com.crt" result)))))
+
+(deftest key-storage-key-generates-correct-path
+  (testing "Private key storage key follows certmagic format"
+    (let [issuer-key "acme-v02.api.letsencrypt.org"
+          domain "example.com"
+          result (config/key-storage-key issuer-key domain)]
+      (is (= "certificates/acme-v02.api.letsencrypt.org/example.com/example.com.key" result)))))
+
+(deftest meta-storage-key-generates-correct-path
+  (testing "Metadata storage key follows certmagic format"
+    (let [issuer-key "acme-v02.api.letsencrypt.org"
+          domain "example.com"
+          result (config/meta-storage-key issuer-key domain)]
+      (is (= "certificates/acme-v02.api.letsencrypt.org/example.com/example.com.json" result)))))
+
+(deftest storage-keys-handle-wildcards
+  (testing "Wildcard domains are sanitized in storage keys"
+    (let [issuer-key "test-issuer"
+          domain "*.example.com"
+          cert-key (config/cert-storage-key issuer-key domain)
+          key-key (config/key-storage-key issuer-key domain)]
+      ;; Asterisks should be replaced (typically with wildcard_)
+      (is (not (re-find #"\*" cert-key)))
+      (is (not (re-find #"\*" key-key))))))
+
+(deftest issuer-key-from-url-extracts-hostname
+  (testing "Issuer key is extracted from directory URL"
+    (is (= "acme-v02.api.letsencrypt.org"
+           (config/issuer-key-from-url "https://acme-v02.api.letsencrypt.org/directory")))
+    (is (= "acme-staging-v02.api.letsencrypt.org"
+           (config/issuer-key-from-url "https://acme-staging-v02.api.letsencrypt.org/directory")))
+    (is (= "localhost"
+           (config/issuer-key-from-url "https://localhost:14000/dir")))))

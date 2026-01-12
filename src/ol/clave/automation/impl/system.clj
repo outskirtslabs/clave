@@ -449,12 +449,14 @@
 
 (defn- try-obtain-from-issuer
   "Try to obtain a certificate from a single issuer.
+
+  When `existing-keypair` is provided, reuses that key instead of generating a new one.
   Returns {:status :success :bundle ...} on success, or {:status :error ...} on failure."
-  [system domain issuer solvers key-type]
+  [system domain issuer solvers key-type existing-keypair]
   (let [issuer-key (or (:issuer-key issuer)
                        (config/issuer-key-from-url (:directory-url issuer)))
         session (create-acme-session system issuer)
-        cert-keypair (keygen/generate key-type)
+        ^java.security.KeyPair cert-keypair (or existing-keypair (keygen/generate key-type))
         [_session result] (certificate/obtain-for-sans
                            (lease/background)
                            session
@@ -504,7 +506,7 @@
              :reason :config-error})
         (let [issuer (first remaining-issuers)
               result (try
-                       (try-obtain-from-issuer system domain issuer solvers key-type)
+                       (try-obtain-from-issuer system domain issuer solvers key-type nil)
                        (catch Exception e
                          {:status :error
                           :message (ex-message e)
@@ -518,16 +520,25 @@
   "Execute the certificate renewal workflow.
 
   Similar to obtain but reuses domain info from the existing bundle.
-  Always generates a new private key (default behavior, key-reuse not implemented yet).
+  When `:key-reuse` is true in config, reuses the existing private key.
   Tries each configured issuer in order until one succeeds.
 
   Returns a result map with :status (:success or :error) and :bundle on success."
   [system cmd]
   (let [domain (:domain cmd)
+        bundle (:bundle cmd)
         resolved-config (config/resolve-config system domain)
         issuers (config/select-issuer resolved-config)
         solvers (get-in system [:config :solvers])
-        key-type (or (:key-type resolved-config) :p256)]
+        key-type (or (:key-type resolved-config) :p256)
+        key-reuse? (:key-reuse resolved-config)
+        ;; If key-reuse is enabled, construct keypair from existing key and cert
+        existing-keypair (when (and key-reuse? bundle)
+                           (let [private-key (:private-key bundle)
+                                 certs (:certificate bundle)
+                                 ^java.security.cert.X509Certificate first-cert (first certs)
+                                 public-key (.getPublicKey first-cert)]
+                             (java.security.KeyPair. public-key private-key)))]
     ;; Try each issuer in order (same logic as obtain)
     (loop [remaining-issuers issuers
            last-error nil]
@@ -538,7 +549,7 @@
              :reason :config-error})
         (let [issuer (first remaining-issuers)
               result (try
-                       (try-obtain-from-issuer system domain issuer solvers key-type)
+                       (try-obtain-from-issuer system domain issuer solvers key-type existing-keypair)
                        (catch Exception e
                          {:status :error
                           :message (ex-message e)

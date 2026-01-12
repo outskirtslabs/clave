@@ -873,3 +873,55 @@
                   "New private key should be different from initial"))))
         (finally
           (automation/stop system))))))
+
+(deftest private-key-reused-on-renewal-when-configured
+  (testing "Renewal reuses private key when :key-reuse is true"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :solvers {:http-01 solver}
+                  :key-reuse true  ;; Enable key reuse
+                  :http-client pebble/http-client-opts}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Obtain initial certificate
+          (automation/manage-domains system [domain])
+          ;; Consume domain-added event
+          (.poll queue 5 TimeUnit/SECONDS)
+          ;; Wait for certificate obtain
+          (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
+            (is (= :certificate-obtained (:type cert-event))))
+          ;; Get initial private key encoded bytes
+          (let [initial-bundle (automation/lookup-cert system domain)
+                ^java.security.PrivateKey initial-key (:private-key initial-bundle)
+                initial-encoded (.getEncoded initial-key)]
+            (is (some? initial-key) "Initial bundle should have private key")
+            ;; Force renewal with threshold > 1.0
+            (binding [decisions/*renewal-threshold* 1.01]
+              (automation/trigger-maintenance! system)
+              ;; Wait for renewal
+              (loop [attempts 0]
+                (when (< attempts 10)
+                  (let [evt (.poll queue 5 TimeUnit/SECONDS)]
+                    (when-not (= :certificate-renewed (:type evt))
+                      (recur (inc attempts)))))))
+            ;; Verify private key is the same
+            (let [new-bundle (automation/lookup-cert system domain)
+                  ^java.security.PrivateKey new-key (:private-key new-bundle)
+                  new-encoded (.getEncoded new-key)]
+              (is (some? new-key) "Renewed bundle should have private key")
+              (is (java.util.Arrays/equals ^bytes initial-encoded ^bytes new-encoded)
+                  "Private key should be reused on renewal"))))
+        (finally
+          (automation/stop system))))))

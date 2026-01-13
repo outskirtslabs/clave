@@ -171,6 +171,25 @@
     (catch Exception _
       nil)))
 
+(defn- load-ari-data
+  "Load ARI (ACME Renewal Information) data from storage if it exists.
+
+  Returns the ARI data map with suggested-window, selected-time, and retry-after,
+  or nil if not found or loading fails."
+  [storage issuer-key domain]
+  (try
+    (let [ari-key (config/ari-storage-key issuer-key domain)]
+      (when (storage/exists? storage nil ari-key)
+        (let [ari-json (json/read-str (storage/load-string storage nil ari-key)
+                                      :key-fn keyword)]
+          (when ari-json
+            {:suggested-window [(some-> (:suggested-window-start ari-json) Instant/parse)
+                                (some-> (:suggested-window-end ari-json) Instant/parse)]
+             :selected-time (some-> (:selected-time ari-json) Instant/parse)
+             :retry-after (some-> (:retry-after ari-json) Instant/parse)}))))
+    (catch Exception _
+      nil)))
+
 (defn- load-certificate-bundle
   "Load a certificate bundle from storage.
 
@@ -218,7 +237,9 @@
             not-before (.toInstant (.getNotBefore first-cert))
             not-after (.toInstant (.getNotAfter first-cert))
             ;; Load OCSP staple if it exists
-            ocsp-staple (load-ocsp-staple storage issuer-key domain)]
+            ocsp-staple (load-ocsp-staple storage issuer-key domain)
+            ;; Load ARI data if it exists
+            ari-data (load-ari-data storage issuer-key domain)]
         {:names sans
          :certificate certs
          :private-key private-key
@@ -226,6 +247,7 @@
          :not-after not-after
          :issuer-key issuer-key
          :ocsp-staple ocsp-staple
+         :ari-data ari-data
          :hash (cache/hash-certificate (mapv (fn [^java.security.cert.X509Certificate c]
                                                (.getEncoded c))
                                              certs))

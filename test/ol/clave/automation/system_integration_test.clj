@@ -1577,3 +1577,97 @@
                       "Domain C should be processed")))
               (finally
                 (automation/stop system)))))))))
+
+(deftest config-fn-timeout-skips-domain-without-crash
+  (testing "Maintenance loop skips domain when config-fn times out"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          ;; Two domains: X will timeout, Y will succeed
+          domain-x "timeout.localhost"
+          domain-y "normal.localhost"
+          issuer-key (config/issuer-key-from-url (pebble/uri))
+          ;; Create solver
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          ;; Get real certificates for both domains
+          test-session (test-util/fresh-session)]
+      ;; Pre-store certificates for both domains
+      (doseq [domain [domain-x domain-y]]
+        (let [[_session ^X509Certificate cert cert-keypair] (test-util/issue-certificate test-session)
+              cert-pem (keygen/pem-encode "CERTIFICATE" (.getEncoded cert))
+              key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
+              meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+              cert-key (config/cert-storage-key issuer-key domain)
+              key-key (config/key-storage-key issuer-key domain)
+              meta-key (config/meta-storage-key issuer-key domain)]
+          (storage/store-string! storage-impl nil cert-key cert-pem)
+          (storage/store-string! storage-impl nil key-key key-pem)
+          (storage/store-string! storage-impl nil meta-key meta-json)))
+      ;; Config-fn that sleeps 60 seconds for domain X (will timeout)
+      (let [timeout-config-fn (fn [domain]
+                                (when (= domain domain-x)
+                                  ;; Sleep longer than the timeout
+                                  (Thread/sleep 60000))
+                                ;; Return nil for all domains (use global config)
+                                nil)]
+        ;; Use 1-second timeout and high renewal threshold to force renewal
+        (binding [system/*config-fn-timeout-ms* 1000
+                  decisions/*renewal-threshold* 1.01]
+          ;; Capture println output to verify warning
+          (let [captured-output (java.io.StringWriter.)]
+            (binding [*out* captured-output]
+              (let [config {:storage storage-impl
+                            :issuers [{:directory-url (pebble/uri)}]
+                            :solvers {:http-01 solver}
+                            :http-client pebble/http-client-opts
+                            :skip-domain-validation true
+                            :config-fn timeout-config-fn}
+                    system (automation/start config)]
+                (try
+                  (let [queue (automation/get-event-queue system)]
+                    ;; Consume the initial certificate-loaded events (2 certs)
+                    (dotimes [_ 2]
+                      (.poll queue 5 TimeUnit/SECONDS))
+                    ;; Trigger maintenance loop
+                    (automation/trigger-maintenance! system)
+                    ;; Wait a bit for the timeout to trigger and domain Y to be processed
+                    (Thread/sleep 3000)
+                    ;; Collect events from maintenance
+                    (let [events (loop [events []
+                                        attempts 0]
+                                   (if (>= attempts 10)
+                                     events
+                                     (let [evt (.poll queue 2 TimeUnit/SECONDS)]
+                                       (if evt
+                                         (recur (conj events evt) (inc attempts))
+                                         events))))
+                          ;; Get the captured output as a string
+                          output-str (.toString captured-output)
+                          ;; Check which domains got renewed or had events
+                          event-domains (->> events
+                                             (map #(get-in % [:data :domain]))
+                                             (remove nil?)
+                                             set)]
+                      ;; Verify warning was logged for timeout
+                      (is (str/includes? output-str "Config-fn timeout")
+                          "Should log warning about config-fn timeout")
+                      (is (str/includes? output-str domain-x)
+                          "Warning should mention the timing-out domain")
+                      ;; Verify domain Y was processed (renewal event or some activity)
+                      (is (or (contains? event-domains domain-y)
+                              (some #(= domain-y (get-in % [:data :domain])) events))
+                          "Domain Y should be processed despite X's timeout")
+                      ;; Domain X should NOT have any successful events
+                      ;; (it should have been skipped due to timeout)
+                      (is (not (some #(and (= :certificate-renewed (:type %))
+                                           (= domain-x (get-in % [:data :domain])))
+                                     events))
+                          "Domain X should not have renewal event due to timeout")))
+                  (finally
+                    (automation/stop system)))))))))))

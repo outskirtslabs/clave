@@ -54,6 +54,11 @@
   "Timeout for graceful shutdown in milliseconds (30 seconds)."
   30000)
 
+(def ^:dynamic *config-fn-timeout-ms*
+  "Timeout for config-fn calls in milliseconds (5 seconds).
+  If config-fn takes longer than this, the domain is skipped."
+  5000)
+
 ;; Forward declaration for functions that have cyclic dependencies
 (declare submit-command!)
 
@@ -222,12 +227,36 @@
     (let [event (decisions/create-certificate-loaded-event bundle)]
       (.offer ^LinkedBlockingQueue queue event))))
 
+(defn- resolve-config-with-timeout
+  "Resolve config for a domain with a timeout.
+
+  Returns the resolved config or throws an exception if config-fn times out.
+  Uses a future with deref timeout for safe cancellation."
+  [system domain timeout-ms]
+  (let [config-fn (:config-fn system)]
+    (if-not config-fn
+      ;; No config-fn, just return global config directly
+      (:config system)
+      ;; Use future with timeout for config-fn call
+      (let [f (future (config/resolve-config system domain))
+            result (deref f timeout-ms ::timeout)]
+        (if (= result ::timeout)
+          (do
+            ;; Cancel the future (interrupt the thread if possible)
+            (future-cancel f)
+            (throw (ex-info "Config-fn timeout" {:domain domain
+                                                  :timeout-ms timeout-ms})))
+          result)))))
+
 (defn- run-maintenance-cycle!
   "Execute a single maintenance cycle.
 
   Iterates all managed certificates in the cache and checks if any
   maintenance is needed. Submits commands for certificates that need
-  renewal or OCSP refresh."
+  renewal or OCSP refresh.
+
+  If config-fn takes longer than `*config-fn-timeout-ms*`, the domain
+  is skipped and a warning is logged."
   [system]
   (let [cache-atom (:cache system)
         {:keys [certs]} @cache-atom
@@ -236,7 +265,7 @@
       (when (:managed bundle)
         (try
           (let [domain (first (:names bundle))
-                resolved-config (config/resolve-config system domain)
+                resolved-config (resolve-config-with-timeout system domain *config-fn-timeout-ms*)
                 commands (decisions/check-cert-maintenance bundle resolved-config now)]
             ;; Submit each command to the queue
             (doseq [cmd commands]

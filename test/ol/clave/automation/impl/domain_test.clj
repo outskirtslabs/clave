@@ -49,6 +49,37 @@
     (is (nil? (domain/validate-domain "deep.sub.example.com" {})))))
 
 ;; =============================================================================
+;; validate-domain tests - directory traversal prevention
+;; =============================================================================
+
+(deftest validate-domain-rejects-directory-traversal
+  ;; Test #149: Directory traversal in storage key is prevented
+  (testing "Domain with parent directory references is rejected"
+    (let [result (domain/validate-domain "../../../etc/passwd" {})]
+      (is (= :invalid-domain (:error result)))
+      (is (= "../../../etc/passwd" (:domain result)))
+      (is (re-find #"directory traversal" (:message result)))))
+
+  (testing "Domain with forward slashes is rejected"
+    (let [result (domain/validate-domain "foo/bar.com" {})]
+      (is (= :invalid-domain (:error result)))
+      (is (re-find #"directory traversal" (:message result)))))
+
+  (testing "Domain with backslashes is rejected"
+    (let [result (domain/validate-domain "foo\\bar.com" {})]
+      (is (= :invalid-domain (:error result)))
+      (is (re-find #"directory traversal" (:message result)))))
+
+  (testing "Domain with double dots in the middle is rejected"
+    (let [result (domain/validate-domain "foo..bar.com" {})]
+      (is (= :invalid-domain (:error result)))
+      (is (re-find #"directory traversal" (:message result)))))
+
+  (testing "Simple .. is rejected"
+    (let [result (domain/validate-domain ".." {})]
+      (is (= :invalid-domain (:error result))))))
+
+;; =============================================================================
 ;; validate-domain tests - IP address handling
 ;; =============================================================================
 
@@ -170,5 +201,23 @@
           (let [error (first (:errors result))]
             (is (= :invalid-domain (:error error)))
             (is (re-find #"DNS-01" (:message error)))))
+        (finally
+          (automation/stop system)))))
+
+  ;; Test #149: Directory traversal in storage key is prevented
+  (testing "manage-domains rejects directory traversal patterns"
+    (let [storage-dir (create-temp-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          config {:storage storage-impl
+                  :issuers [{:directory-url "https://acme-v02.api.letsencrypt.org/directory"}]
+                  :solvers {:http-01 {:solver :placeholder}}}
+          system (automation/start config)]
+      (try
+        ;; Test with classic directory traversal attack
+        (let [result (automation/manage-domains system ["../../../etc/passwd"])]
+          (is (some? result) "Error map should be returned")
+          (let [error (first (:errors result))]
+            (is (= :invalid-domain (:error error)))
+            (is (re-find #"directory traversal" (:message error)))))
         (finally
           (automation/stop system))))))

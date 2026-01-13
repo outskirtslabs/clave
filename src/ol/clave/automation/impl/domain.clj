@@ -33,6 +33,14 @@
   [config]
   (contains? (get config :solvers {}) :dns-01))
 
+(defn- directory-traversal?
+  "Check if domain contains directory traversal patterns.
+  These are security risks and clearly not valid domain names."
+  [domain]
+  (or (str/includes? domain "..")
+      (str/includes? domain "/")
+      (str/includes? domain "\\")))
+
 (defn validate-domain
   "Validate a domain name for ACME certificate issuance.
 
@@ -48,6 +56,7 @@
   - .local, .internal, .test TLDs
   - IP addresses without HTTP-01 or TLS-ALPN-01 solver
   - Wildcard domains without DNS-01 solver
+  - Directory traversal patterns (.., /, \\)
 
   | key | description |
   |-----|-------------|
@@ -55,6 +64,12 @@
   | `config` | Configuration with :solvers map |"
   [domain config]
   (cond
+    ;; Reject directory traversal patterns (security risk)
+    (directory-traversal? domain)
+    {:error :invalid-domain
+     :domain domain
+     :message (str domain " contains directory traversal patterns (.., /, \\) which are not valid in domain names")}
+
     ;; Reject localhost
     (= domain "localhost")
     {:error :invalid-domain

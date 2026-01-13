@@ -174,7 +174,9 @@
 (defn- load-certificate-bundle
   "Load a certificate bundle from storage.
 
-  Returns a bundle map or nil if loading fails."
+  Returns a bundle map or nil if loading fails.
+  Verifies that the private key matches the certificate's public key.
+  Returns nil if the keypair verification fails."
   [storage issuer-key domain]
   (try
     (let [cert-key (config/cert-storage-key issuer-key domain)
@@ -190,26 +192,37 @@
           certs (::specs/certificates parsed-cert)
           ^java.security.cert.X509Certificate first-cert (first certs)
           private-key (parse-private-key-pem key-pem)
-          ;; Extract SANs from certificate
-          sans (or (:names meta-json)
-                   (when first-cert
-                     (let [cn (.getSubjectX500Principal first-cert)]
-                       [(.toString cn)])))
-          not-before (when first-cert (.toInstant (.getNotBefore first-cert)))
-          not-after (when first-cert (.toInstant (.getNotAfter first-cert)))
-          ;; Load OCSP staple if it exists
-          ocsp-staple (load-ocsp-staple storage issuer-key domain)]
-      {:names sans
-       :certificate certs
-       :private-key private-key
-       :not-before not-before
-       :not-after not-after
-       :issuer-key issuer-key
-       :ocsp-staple ocsp-staple
-       :hash (cache/hash-certificate (mapv (fn [^java.security.cert.X509Certificate c]
-                                             (.getEncoded c))
-                                           certs))
-       :managed true})
+          ;; Verify that the private key matches the certificate's public key
+          public-key (when first-cert (.getPublicKey first-cert))]
+      ;; Verify keypair before proceeding
+      (when (and private-key public-key)
+        (try
+          (crypto/verify-keypair private-key public-key)
+          (catch Exception e
+            ;; Key mismatch detected - log error and return nil
+            (println "ERROR: Key mismatch for domain" domain
+                     "- private key does not match certificate." (ex-message e))
+            (throw e))))
+      (let [;; Extract SANs from certificate
+            sans (or (:names meta-json)
+                     (when first-cert
+                       (let [cn (.getSubjectX500Principal first-cert)]
+                         [(.toString cn)])))
+            not-before (when first-cert (.toInstant (.getNotBefore first-cert)))
+            not-after (when first-cert (.toInstant (.getNotAfter first-cert)))
+            ;; Load OCSP staple if it exists
+            ocsp-staple (load-ocsp-staple storage issuer-key domain)]
+        {:names sans
+         :certificate certs
+         :private-key private-key
+         :not-before not-before
+         :not-after not-after
+         :issuer-key issuer-key
+         :ocsp-staple ocsp-staple
+         :hash (cache/hash-certificate (mapv (fn [^java.security.cert.X509Certificate c]
+                                               (.getEncoded c))
+                                             certs))
+         :managed true}))
     (catch Exception _e
       nil)))
 

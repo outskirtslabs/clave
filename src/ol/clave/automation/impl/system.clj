@@ -304,12 +304,30 @@
                                                   :timeout-ms timeout-ms})))
           result)))))
 
+(defn- certificate-exists-in-storage?
+  "Check if a certificate exists in storage for the given bundle.
+
+  Returns true if the certificate file exists in storage for the bundle's
+  issuer-key and domain, false otherwise."
+  [system bundle]
+  (let [storage (:storage system)
+        issuer-key (:issuer-key bundle)
+        domain (first (:names bundle))
+        cert-key (config/cert-storage-key issuer-key domain)]
+    (try
+      (storage/exists? storage nil cert-key)
+      (catch Exception _
+        false))))
+
 (defn- run-maintenance-cycle!
   "Execute a single maintenance cycle.
 
   Iterates all managed certificates in the cache and checks if any
   maintenance is needed. Submits commands for certificates that need
   renewal or OCSP refresh.
+
+  Also checks for storage consistency: if a certificate is in the cache
+  but no longer exists in storage, triggers a re-obtain to restore it.
 
   If config-fn takes longer than `*config-fn-timeout-ms*`, the domain
   is skipped and a warning is logged."
@@ -320,12 +338,23 @@
     (doseq [[_hash bundle] certs]
       (when (:managed bundle)
         (try
-          (let [domain (first (:names bundle))
-                resolved-config (resolve-config-with-timeout system domain *config-fn-timeout-ms*)
-                commands (decisions/check-cert-maintenance bundle resolved-config now)]
-            ;; Submit each command to the queue
-            (doseq [cmd commands]
-              (submit-command! system cmd)))
+          (let [domain (first (:names bundle))]
+            ;; Check storage consistency first
+            (if (certificate-exists-in-storage? system bundle)
+              ;; Certificate exists in storage - run normal maintenance
+              (let [resolved-config (resolve-config-with-timeout system domain *config-fn-timeout-ms*)
+                    commands (decisions/check-cert-maintenance bundle resolved-config now)]
+                ;; Submit each command to the queue
+                (doseq [cmd commands]
+                  (submit-command! system cmd)))
+              ;; Certificate missing from storage - trigger re-obtain
+              (do
+                (println "Certificate for" domain "missing from storage, triggering re-obtain")
+                ;; Remove stale bundle from cache
+                (cache/remove-certificate cache-atom bundle)
+                ;; Submit obtain command to get a fresh certificate
+                (submit-command! system {:command :obtain-certificate
+                                         :domain domain}))))
           (catch Exception e
             ;; Log and continue - don't let one domain break others
             (println "Error in maintenance cycle for"

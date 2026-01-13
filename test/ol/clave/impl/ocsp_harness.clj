@@ -145,9 +145,12 @@
                        (.getEncoded (.getPublic ca-keypair)))
                       digest-calc)]
     ;; Add response for each requested serial
+    ;; Support "*" as wildcard default for any unconfigured serial
     (doseq [serial serial-numbers]
       (let [cert-id (CertificateID. digest-calc ca-holder serial)
-            status-config (get responses (.toString serial) :unknown)
+            status-config (or (get responses (.toString serial))
+                              (get responses "*")
+                              :unknown)
             cert-status (status->certificate-status status-config)]
         (.addResponse resp-builder cert-id cert-status now next-update nil)))
     ;; Sign and build response

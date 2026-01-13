@@ -153,7 +153,7 @@
                      :as :bytes})
           status (:status response)]
       (if (<= 200 status 299)
-        (let [body-bytes (:body-bytes response)
+        (let [body-bytes (:body response)
               parsed (parse-ocsp-response body-bytes)]
           (if (= :error (:status parsed))
             {:status :error

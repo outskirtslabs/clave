@@ -228,7 +228,9 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                  :skip-domain-validation true
+                  ;; Disable OCSP for this test - it's about domain management, not OCSP
+                  :ocsp {:enabled false}}
           system (automation/start config)]
       (try
         (let [queue (automation/get-event-queue system)]

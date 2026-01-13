@@ -687,14 +687,43 @@
     :fetch-ocsp (fetch-ocsp! system cmd)
     {:status :error :message "Unknown command"}))
 
+(defn- should-fetch-ocsp?
+  "Check if OCSP should be fetched after certificate operation.
+
+  Returns true when:
+  - Command was :obtain-certificate or :renew-certificate
+  - Result status is :success
+  - OCSP is enabled in config
+  - Certificate is not short-lived"
+  [system cmd result]
+  (let [cmd-type (:command cmd)
+        success? (= :success (:status result))
+        config (:config system)
+        ocsp-enabled? (get-in config [:ocsp :enabled] false)
+        bundle (:bundle result)]
+    (and success?
+         (contains? #{:obtain-certificate :renew-certificate} cmd-type)
+         ocsp-enabled?
+         bundle
+         (not (decisions/short-lived-cert? bundle)))))
+
 (defn- on-command-complete!
-  "Handle command completion - update cache and emit event."
+  "Handle command completion - update cache and emit event.
+
+  After successful certificate obtain/renewal, queues OCSP fetch if enabled."
   [system cmd result]
   ;; Update cache on success
   (cache/handle-command-result (:cache system) cmd result)
   ;; Emit event
   (let [event (decisions/event-for-result cmd result)]
-    (emit-event! system event)))
+    (emit-event! system event))
+  ;; Queue OCSP fetch after successful certificate obtain/renewal
+  (when (should-fetch-ocsp? system cmd result)
+    (let [bundle (:bundle result)
+          domain (:domain cmd)]
+      (submit-command! system {:command :fetch-ocsp
+                               :domain domain
+                               :bundle bundle}))))
 
 (defn- submit-command!
   "Submit a command for async execution with deduplication.

@@ -5,6 +5,7 @@
    [clojure.test :refer [deftest is testing]]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.config :as config]
+   [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.acme.impl.http.impl :as http]
    [ol.clave.impl.pebble-harness :as pebble]
@@ -125,7 +126,36 @@
               (let [bundle (automation/lookup-cert system test-domain)]
                 (is (some? bundle) "Certificate should be in cache")
                 (is (= issuer-key-b (:issuer-key bundle))
-                    "Bundle issuer-key should be Pebble B")))
+                    "Bundle issuer-key should be Pebble B")
+                ;; Steps 11-12: Force renewal and verify fallback still works
+                (let [old-hash (:hash bundle)]
+                  ;; Force renewal by setting threshold > 1.0 (always needs renewal)
+                  (binding [decisions/*renewal-threshold* 1.01]
+                    (automation/trigger-maintenance! system)
+                    ;; Wait for renewal event, skipping other events (like ocsp-failed)
+                    (let [renewal-event (loop [deadline (+ (System/currentTimeMillis) 30000)]
+                                          (when (< (System/currentTimeMillis) deadline)
+                                            (if-let [evt (.poll queue 500 TimeUnit/MILLISECONDS)]
+                                              (if (= :certificate-renewed (:type evt))
+                                                evt
+                                                (recur deadline))
+                                              (recur deadline))))]
+                      (is (some? renewal-event)
+                          "Should receive renewal event")
+                      (when renewal-event
+                        (is (= :certificate-renewed (:type renewal-event))
+                            "Should be :certificate-renewed event")
+                        ;; Verify renewal also used Pebble B (not A)
+                        (is (= issuer-key-b (get-in renewal-event [:data :issuer-key]))
+                            "Renewal should also come from Pebble B")
+                        ;; Verify new certificate has different hash
+                        (let [renewed-bundle (automation/lookup-cert system test-domain)]
+                          (is (some? renewed-bundle)
+                              "Renewed certificate should be available")
+                          (is (not= old-hash (:hash renewed-bundle))
+                              "Renewed certificate should have different hash")
+                          (is (= issuer-key-b (:issuer-key renewed-bundle))
+                              "Renewed bundle issuer should be Pebble B"))))))))
             (finally
               (automation/stop system))))
         (finally

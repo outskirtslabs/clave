@@ -220,6 +220,22 @@
   (let [safe-domain (safe-storage-key domain)]
     (str "certificates/" issuer-key "/" safe-domain "/" safe-domain ".ocsp")))
 
+(defn compromised-key-storage-key
+  "Generate storage key for archiving a compromised private key.
+
+  Format: `keys/{domain}.compromised.{timestamp}`
+
+  Compromised keys are archived for audit purposes and never reused.
+
+  | key | description |
+  |-----|-------------|
+  | `domain` | Primary domain name |
+  | `timestamp` | ISO-8601 timestamp when key was marked compromised |"
+  [domain timestamp]
+  (let [safe-domain (safe-storage-key domain)
+        ts-str (str timestamp)]
+    (str "keys/" safe-domain ".compromised." ts-str)))
+
 (defn select-chain
   "Select a certificate chain based on preference.
 

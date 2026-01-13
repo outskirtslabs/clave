@@ -749,20 +749,39 @@
                        :unspecified)
           :revocation-time (:revocation-time ocsp-response)}})
 
+(defn- archive-compromised-key!
+  "Archive a compromised private key to storage for audit purposes.
+
+  Stores the key in PEM format at keys/{domain}.compromised.{timestamp}"
+  [system domain private-key timestamp]
+  (when private-key
+    (let [storage (:storage system)
+          archive-key (config/compromised-key-storage-key domain timestamp)
+          key-pem (crypto/encode-private-key-pem private-key)]
+      (storage/store-string! storage nil archive-key key-pem))))
+
 (defn- handle-ocsp-revocation!
   "Handle certificate revocation detected via OCSP.
 
   1. Emits :certificate-revoked event
-  2. Evicts revoked certificate from cache
-  3. Triggers automatic renewal"
+  2. If key compromise, archives the compromised key
+  3. Evicts revoked certificate from cache
+  4. Triggers automatic renewal"
   [system domain bundle ocsp-response]
-  ;; Emit revocation event
-  (emit-event! system (create-certificate-revoked-event domain ocsp-response))
-  ;; Evict revoked certificate from cache
-  (cache/remove-certificate (:cache system) bundle)
-  ;; Submit obtain-certificate command for automatic renewal
-  (submit-command! system {:command :obtain-certificate
-                           :domain domain}))
+  (let [reason-code (:revocation-reason ocsp-response)
+        key-compromise? (= 1 reason-code)
+        timestamp (java.time.Instant/now)]
+    ;; Emit revocation event
+    (emit-event! system (create-certificate-revoked-event domain ocsp-response))
+    ;; Archive compromised key for audit if key compromise
+    (when key-compromise?
+      (archive-compromised-key! system domain (:private-key bundle) timestamp))
+    ;; Evict revoked certificate from cache
+    (cache/remove-certificate (:cache system) bundle)
+    ;; Submit obtain-certificate command for automatic renewal
+    ;; Note: This will generate a new key since key-reuse defaults to false
+    (submit-command! system {:command :obtain-certificate
+                             :domain domain})))
 
 ;; =============================================================================
 ;; Command Execution

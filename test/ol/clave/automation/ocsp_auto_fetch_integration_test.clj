@@ -261,3 +261,72 @@
                         "New certificate should have different hash (old cert evicted)")))))))
         (finally
           (automation/stop system))))))
+
+(defn- key-fingerprint
+  "Get a fingerprint of a private key for comparison."
+  [private-key]
+  (when private-key
+    (let [encoded (.getEncoded ^java.security.PrivateKey private-key)
+          digest (java.security.MessageDigest/getInstance "SHA-256")]
+      (.digest digest encoded))))
+
+(deftest key-compromise-revocation-generates-new-private-key
+  (testing "Key compromise revocation archives old key and generates new private key"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          solver (make-http01-solver)
+          _ (ocsp-harness/clear-ocsp-responses!)
+          _ (ocsp-harness/set-ocsp-response! "*" :good)
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :http-client pebble/http-client-opts
+                  :skip-domain-validation true
+                  :solvers {:http-01 solver}
+                  :ocsp {:enabled true}}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Step 1-2: Obtain certificate and record key fingerprint
+          (automation/manage-domains system [domain])
+          (let [initial-events (collect-events queue 5 15000)]
+            (is (some #(= :certificate-obtained (:type %)) initial-events)
+                "Should obtain initial certificate")
+            (let [old-bundle (automation/lookup-cert system domain)
+                  old-key-fp (key-fingerprint (:private-key old-bundle))]
+              (is (some? old-bundle) "Should have certificate")
+              (is (some? old-key-fp) "Should have private key fingerprint")
+              ;; Step 3: Configure OCSP to return revoked with keyCompromise reason
+              (ocsp-harness/clear-ocsp-responses!)
+              (ocsp-harness/set-ocsp-response! "*" {:revoked :key-compromise})
+              ;; Step 4: Trigger OCSP refresh
+              (binding [decisions/*ocsp-refresh-threshold* 0]
+                (automation/trigger-maintenance! system)
+                ;; Step 5-7: Wait for events and verify
+                (let [events (collect-events queue 10 20000)
+                      revoked-evt (first (filter #(= :certificate-revoked (:type %)) events))
+                      obtained-evt (first (filter #(= :certificate-obtained (:type %)) events))]
+                  ;; Step 5: Verify :certificate-revoked event has :reason :key-compromise
+                  (is (some? revoked-evt)
+                      (str "Should emit :certificate-revoked event. Got: " (mapv :type events)))
+                  (when revoked-evt
+                    (is (= :key-compromise (get-in revoked-evt [:data :reason]))
+                        "Revoked event should have :key-compromise reason"))
+                  ;; Step 6: Verify new certificate is obtained
+                  (is (some? obtained-evt)
+                      "Should emit :certificate-obtained event for renewal")
+                  ;; Step 7: Verify new certificate has different key fingerprint
+                  (let [new-bundle (automation/lookup-cert system domain)
+                        new-key-fp (key-fingerprint (:private-key new-bundle))]
+                    (is (some? new-bundle) "Should have new certificate")
+                    (is (some? new-key-fp) "New cert should have private key")
+                    (is (not (java.util.Arrays/equals ^bytes old-key-fp ^bytes new-key-fp))
+                        "New certificate should have different private key"))
+                  ;; Step 8: Verify compromised key was moved to audit file
+                  (let [keys-prefix "keys/"
+                        entries (storage/list storage-impl nil keys-prefix false)
+                        compromised-keys (filter #(re-find #"\.compromised\." %) entries)]
+                    (is (pos? (count compromised-keys))
+                        (str "Should have archived compromised key. Entries: " entries))))))))
+        (finally
+          (automation/stop system))))))

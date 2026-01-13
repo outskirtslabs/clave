@@ -122,6 +122,10 @@
                     "Key file should be deleted from storage")
                 ;; Step 5: Verify certificate is removed from cache
                 (is (nil? (automation/lookup-cert system domain))
-                    "Certificate should be removed from cache after revoke")))))
+                    "Certificate should be removed from cache after revoke")
+                ;; Step 6: Verify domain is no longer in list-domains
+                (let [domains (automation/list-domains system)]
+                  (is (not (some #(= domain (:domain %)) domains))
+                      "Domain should not appear in list-domains after revoke"))))))
         (finally
           (automation/stop system))))))

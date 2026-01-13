@@ -411,3 +411,80 @@
         ;; bundle1 should be updated
         (is (= {:updated true} (:ocsp-staple (get certs "hash1")))
             "Bundle should be updated")))))
+
+;; =============================================================================
+;; Concurrent cache updates tests
+;; =============================================================================
+
+(deftest concurrent-cache-updates-are-atomic
+  (testing "Concurrent cache-certificate calls maintain consistency"
+    ;; Step 1: Create cache with initial certificate
+    (let [initial-bundle (make-bundle {:hash "initial" :names ["initial.com"]})
+          cache-atom (atom {:certs {"initial" initial-bundle}
+                            :index {"initial.com" ["initial"]}
+                            :capacity nil})
+          ;; Step 2: Create 100 unique bundles for concurrent updates
+          bundles (mapv (fn [i]
+                          (make-bundle {:hash (str "hash" i)
+                                        :names [(str "domain" i ".com")]}))
+                        (range 100))
+          ;; Create futures for concurrent execution
+          futures (mapv (fn [bundle]
+                          (future (cache/cache-certificate cache-atom bundle)))
+                        bundles)]
+      ;; Wait for all futures to complete
+      (doseq [f futures]
+        @f)
+      ;; Step 3: Verify final cache state is consistent
+      (let [{:keys [certs index]} @cache-atom]
+        ;; Should have initial + 100 = 101 certificates
+        (is (= 101 (count certs))
+            "Cache should have all 101 certificates")
+        ;; Step 4: Verify no partially updated states
+        ;; Every hash should have a complete bundle
+        (is (every? (fn [[hash bundle]]
+                      (and (= hash (:hash bundle))
+                           (seq (:names bundle))))
+                    certs)
+            "All bundles should be complete")
+        ;; Step 5: Verify index correctly references all certificates
+        ;; Each domain should point to exactly one hash
+        (is (= 101 (count index))
+            "Index should have 101 domain entries")
+        ;; Verify each index entry points to valid cert
+        (is (every? (fn [[_domain hashes]]
+                      (and (= 1 (count hashes))
+                           (contains? certs (first hashes))))
+                    index)
+            "Each index entry should point to exactly one valid certificate")
+        ;; Verify all original hashes are present
+        (is (contains? certs "initial") "Initial certificate should be present")
+        (doseq [i (range 100)]
+          (is (contains? certs (str "hash" i))
+              (str "Certificate hash" i " should be present")))))))
+
+(deftest concurrent-updates-to-same-domain-maintain-consistency
+  (testing "Concurrent updates for the same domain name maintain consistent index"
+    ;; Create multiple bundles all claiming the same domain
+    (let [cache-atom (atom {:certs {} :index {} :capacity nil})
+          bundles (mapv (fn [i]
+                          (make-bundle {:hash (str "hash" i)
+                                        :names ["shared.com"]}))
+                        (range 50))
+          futures (mapv (fn [bundle]
+                          (future (cache/cache-certificate cache-atom bundle)))
+                        bundles)]
+      ;; Wait for all futures
+      (doseq [f futures]
+        @f)
+      ;; Verify consistency
+      (let [{:keys [certs index]} @cache-atom]
+        ;; Should have all 50 certificates
+        (is (= 50 (count certs))
+            "Cache should have all 50 certificates")
+        ;; shared.com index should have all 50 hashes
+        (is (= 50 (count (get index "shared.com")))
+            "Index for shared.com should have all 50 hash references")
+        ;; All hashes in index should be valid
+        (is (every? #(contains? certs %) (get index "shared.com"))
+            "All index entries should reference valid certificates")))))

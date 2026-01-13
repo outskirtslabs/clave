@@ -1513,13 +1513,15 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          ;; Get real certificates for all domains
-          test-session (test-util/fresh-session)]
+          ;; Generate valid test certificates for all domains
+          ;; Using generate-test-certificate avoids Pebble authorization reuse issues
+          not-before (-> (Instant/now) (.minus 1 ChronoUnit/DAYS))
+          not-after (-> (Instant/now) (.plus 89 ChronoUnit/DAYS))]
       ;; Pre-store certificates for all domains
       (doseq [domain domains]
-        (let [[_session ^X509Certificate cert cert-keypair] (test-util/issue-certificate test-session)
-              cert-pem (keygen/pem-encode "CERTIFICATE" (.getEncoded cert))
-              key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
+        (let [test-cert (test-util/generate-test-certificate domain not-before not-after)
+              cert-pem (:certificate-pem test-cert)
+              key-pem (:private-key-pem test-cert)
               meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
               cert-key (config/cert-storage-key issuer-key domain)
               key-key (config/key-storage-key issuer-key domain)
@@ -1597,13 +1599,15 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          ;; Get real certificates for both domains
-          test-session (test-util/fresh-session)]
+          ;; Generate valid test certificates for both domains
+          ;; Using generate-test-certificate avoids Pebble authorization reuse issues
+          not-before (-> (Instant/now) (.minus 1 ChronoUnit/DAYS))
+          not-after (-> (Instant/now) (.plus 89 ChronoUnit/DAYS))]
       ;; Pre-store certificates for both domains
       (doseq [domain [domain-x domain-y]]
-        (let [[_session ^X509Certificate cert cert-keypair] (test-util/issue-certificate test-session)
-              cert-pem (keygen/pem-encode "CERTIFICATE" (.getEncoded cert))
-              key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
+        (let [test-cert (test-util/generate-test-certificate domain not-before not-after)
+              cert-pem (:certificate-pem test-cert)
+              key-pem (:private-key-pem test-cert)
               meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
               cert-key (config/cert-storage-key issuer-key domain)
               key-key (config/key-storage-key issuer-key domain)

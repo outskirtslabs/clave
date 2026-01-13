@@ -27,6 +27,7 @@
  :ol.clave.automation.maintenance-loop-integration-test 40.99689912,
  :ol.clave.automation.ocsp-auto-fetch-integration-test 23.307186139,
  :ol.clave.automation.ocsp-integration-test 8.197386933,
+ :ol.clave.automation.ocsp-override-integration-test 0.1,
  :ol.clave.automation.private-key-integration-test 40.038716422,
  :ol.clave.automation.revocation-integration-test 11.05984678,
  :ol.clave.automation.storage-integration-test 10.973604424,

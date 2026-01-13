@@ -64,6 +64,10 @@
   "The CA keypair used to sign OCSP responses."
   nil)
 
+(def ^:dynamic *ocsp-request-count*
+  "Atom tracking the number of OCSP requests received."
+  nil)
+
 ;; =============================================================================
 ;; OCSP response creation
 ;; =============================================================================
@@ -166,11 +170,14 @@
 
 (defn- ocsp-handler
   "Ring handler for OCSP requests."
-  [responses-atom ca-holder ca-keypair request]
+  [responses-atom request-count-atom ca-holder ca-keypair request]
   (let [content-type (get-in request [:headers "content-type"])]
     (if (and (= (:request-method request) :post)
              (= content-type "application/ocsp-request"))
       (try
+        ;; Track request count
+        (when request-count-atom
+          (swap! request-count-atom inc))
         (let [body-bytes (if (bytes? (:body request))
                            (:body request)
                            (let [baos (ByteArrayOutputStream.)]
@@ -242,6 +249,19 @@
       (throw (ex-info "OCSP CA cert not configured. Wrap test in ocsp-fixture."
                       {:var '*ocsp-ca-cert*}))))
 
+(defn get-request-count
+  "Returns the number of OCSP requests received by the mock responder."
+  []
+  (if *ocsp-request-count*
+    @*ocsp-request-count*
+    0))
+
+(defn reset-request-count!
+  "Resets the OCSP request counter to zero."
+  []
+  (when *ocsp-request-count*
+    (reset! *ocsp-request-count* 0)))
+
 ;; =============================================================================
 ;; Fixture
 ;; =============================================================================
@@ -254,19 +274,22 @@
   - *ocsp-url* - full URL
   - *ocsp-responses* - atom for response config
   - *ocsp-ca-cert* - CA certificate holder
-  - *ocsp-ca-keypair* - CA keypair"
+  - *ocsp-ca-keypair* - CA keypair
+  - *ocsp-request-count* - atom tracking request count"
   [f]
   (let [port (allocate-ocsp-port)
         url (str "http://localhost:" port)
         responses (atom {})
+        request-count (atom 0)
         ca-keypair (generate-ca-keypair)
         ca-holder (create-test-ca-cert ca-keypair)
-        handler (partial ocsp-handler responses ca-holder ca-keypair)
+        handler (partial ocsp-handler responses request-count ca-holder ca-keypair)
         server (run-jetty handler {:port port :join? false :daemon? true})]
     (try
       (binding [*ocsp-port* port
                 *ocsp-url* url
                 *ocsp-responses* responses
+                *ocsp-request-count* request-count
                 *ocsp-ca-cert* ca-holder
                 *ocsp-ca-keypair* ca-keypair]
         (f))
@@ -304,3 +327,37 @@
   issued by Pebble will point to our mock OCSP responder."
   [f]
   (with-ocsp-and-pebble f))
+
+;; Fake OCSP URL for testing responder-overrides
+(def fake-ocsp-url
+  "A fake OCSP URL that will be embedded in certificates for override testing.
+  This URL points to a non-existent server."
+  "http://localhost:19999/ocsp")
+
+(defn with-ocsp-override-test
+  "Run function f with OCSP responder and Pebble configured for override testing.
+
+  Unlike `with-ocsp-and-pebble`, this configures Pebble to embed a FAKE
+  OCSP URL in certificates (one that doesn't exist). Tests should then
+  use `responder-overrides` to redirect to `*ocsp-url*`.
+
+  This setup allows verifying that responder-overrides actually works:
+  - Without override: OCSP fetch fails (fake URL unreachable)
+  - With override: OCSP fetch succeeds (redirected to mock)"
+  [f]
+  (with-ocsp-responder
+    (fn []
+      (let [pebble (requiring-resolve 'ol.clave.impl.pebble-harness/with-pebble)]
+        (pebble {:env {"PEBBLE_VA_NOSLEEP" "1"}
+                 :with-challtestsrv true
+                 ;; Embed fake URL in certs - tests must use override to reach mock
+                 :config-overrides {:pebble {:ocspResponderURL fake-ocsp-url}}}
+                f)))))
+
+(defn ocsp-override-test-fixture
+  "Test fixture for responder-overrides testing.
+
+  Starts Pebble with a fake OCSP URL embedded in certificates.
+  Tests must configure `responder-overrides` to redirect to `*ocsp-url*`."
+  [f]
+  (with-ocsp-override-test f))

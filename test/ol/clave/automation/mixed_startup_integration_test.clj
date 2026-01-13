@@ -5,7 +5,6 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.config :as config]
-   [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]
@@ -126,6 +125,7 @@
                   "Should have certificate-loaded events for all three distinct domains"))
             ;; Verify all three are in cache (check immediately after start)
             ;; Note: The expired cert may be quickly renewed by maintenance loop
+            ;; Also note: The renewal cert may be renewed very quickly before we check
             (let [valid-bundle (automation/lookup-cert system valid-domain)
                   renewal-bundle (automation/lookup-cert system renewal-domain)]
               (is (some? valid-bundle) "Valid certificate A should be in cache")
@@ -134,12 +134,11 @@
               (when valid-bundle
                 (is (.isAfter ^Instant (:not-after valid-bundle) now)
                     "Certificate A should not be expired"))
-              ;; Verify renewal cert needs renewal (< 1/3 lifetime remaining)
+              ;; Verify renewal cert is valid (don't check needs-renewal? as the
+              ;; maintenance loop may have already renewed it by this point)
               (when renewal-bundle
                 (is (.isAfter ^Instant (:not-after renewal-bundle) now)
-                    "Certificate C should not be expired")
-                (is (decisions/needs-renewal? renewal-bundle now)
-                    "Certificate C should need renewal")))
+                    "Certificate C should not be expired")))
             ;; Step 10: Wait for automatic renewal of expired cert B
             ;; The maintenance loop runs immediately and will detect expired certs
             (let [renewal-events (loop [attempts 0

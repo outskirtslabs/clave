@@ -11,6 +11,7 @@
    [ol.clave.automation.impl.cache :as cache]
    [ol.clave.automation.impl.config :as config]
    [ol.clave.automation.impl.decisions :as decisions]
+   [ol.clave.automation.impl.domain :as domain]
    [ol.clave.certificate :as certificate]
    [ol.clave.certificate.impl.keygen :as keygen]
    [ol.clave.certificate.impl.parse :as cert-parse]
@@ -635,17 +636,47 @@
                    (reify Runnable (run [_] (task-fn)))))))))
 
 (defn manage-domains
-  "Adds domains to management, triggering immediate certificate obtain."
+  "Adds domains to management, triggering immediate certificate obtain.
+
+  Validates each domain before adding. Invalid domains are rejected
+  immediately with a clear error.
+
+  Returns:
+  - `nil` if all domains are valid and were queued for certificate obtain
+  - Error map with `:errors` vector if any domains are invalid
+
+  Error format:
+  ```clojure
+  {:errors [{:error :invalid-domain
+             :domain \"localhost\"
+             :message \"localhost is not a valid ACME domain...\"}]}
+  ```
+
+  Note: Validation can be bypassed with `:skip-domain-validation true` in
+  the system config. This is intended for testing only."
   [system domains]
-  (doseq [domain domains]
-    ;; Track as managed domain
-    (swap! (:managed-domains system) conj domain)
-    ;; Emit domain-added event
-    (emit-event! system (create-domain-added-event domain))
-    ;; Submit obtain-certificate command
-    (submit-command! system {:command :obtain-certificate
-                             :domain domain
-                             :identifiers [domain]})))
+  (let [config (:config system)
+        skip-validation? (:skip-domain-validation config)
+        ;; Validate all domains first, before making any changes (unless skipped)
+        validation-results (if skip-validation?
+                             (map (fn [d] [d nil]) domains)
+                             (map (fn [d] [d (domain/validate-domain d config)]) domains))
+        errors (keep (fn [[_ err]] err) validation-results)]
+    (if (seq errors)
+      ;; Return errors immediately - don't add any domains
+      {:errors (vec errors)}
+      ;; All domains are valid - proceed with adding them
+      (do
+        (doseq [d domains]
+          ;; Track as managed domain
+          (swap! (:managed-domains system) conj d)
+          ;; Emit domain-added event
+          (emit-event! system (create-domain-added-event d))
+          ;; Submit obtain-certificate command
+          (submit-command! system {:command :obtain-certificate
+                                   :domain d
+                                   :identifiers [d]}))
+        nil))))
 
 (defn unmanage-domains
   "Removes domains from management.

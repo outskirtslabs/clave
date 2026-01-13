@@ -36,8 +36,12 @@
 (defn validate-domain
   "Validate a domain name for ACME certificate issuance.
 
-  Returns nil if the domain is valid, or :invalid-domain if it cannot
+  Returns nil if the domain is valid, or an error map if it cannot
   receive ACME certificates.
+
+  Error map structure:
+  - `:error` - always `:invalid-domain`
+  - `:message` - human-readable explanation
 
   Invalid domains include:
   - localhost
@@ -53,21 +57,29 @@
   (cond
     ;; Reject localhost
     (= domain "localhost")
-    :invalid-domain
+    {:error :invalid-domain
+     :domain domain
+     :message "localhost is not a valid ACME domain - ACME certificates require publicly resolvable domain names"}
 
     ;; Reject invalid TLDs
     (some #(str/ends-with? domain %) invalid-tlds)
-    :invalid-domain
+    {:error :invalid-domain
+     :domain domain
+     :message (str domain " uses a reserved TLD that cannot receive ACME certificates - .local, .internal, and .test domains are not publicly resolvable")}
 
     ;; IP addresses need HTTP-01 or TLS-ALPN-01 solver
     (ip-address? domain)
     (when-not (has-ip-capable-solver? config)
-      :invalid-domain)
+      {:error :invalid-domain
+       :domain domain
+       :message (str "IP address " domain " requires HTTP-01 or TLS-ALPN-01 solver - DNS-01 cannot validate IP addresses")})
 
     ;; Wildcards need DNS-01 solver
     (wildcard? domain)
     (when-not (has-dns01-solver? config)
-      :invalid-domain)
+      {:error :invalid-domain
+       :domain domain
+       :message (str "Wildcard domain " domain " requires DNS-01 solver - HTTP-01 and TLS-ALPN-01 cannot validate wildcards")})
 
     ;; Valid domain
     :else nil))

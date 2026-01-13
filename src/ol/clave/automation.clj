@@ -87,8 +87,21 @@
 (defn manage-domains
   "Adds domains to management, triggering immediate certificate obtain.
 
-  Returns immediately. Certificate obtainment happens asynchronously.
-  Events are emitted as domains are processed.
+  Validates each domain before adding. Invalid domains are rejected
+  immediately with a clear error.
+
+  Returns:
+  - `nil` if all domains are valid and were queued for certificate obtain
+  - Error map with `:errors` vector if any domains are invalid
+
+  Invalid domains include:
+  - localhost
+  - .local, .internal, .test TLDs
+  - IP addresses without HTTP-01 or TLS-ALPN-01 solver
+  - Wildcard domains without DNS-01 solver
+
+  Validation can be bypassed by setting `:skip-domain-validation true`
+  in the automation config (testing only).
 
   | key | description |
   |-----|-------------|

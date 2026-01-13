@@ -9,7 +9,6 @@
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.specs :as specs]
-   [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
    [java.nio.file Files Paths]

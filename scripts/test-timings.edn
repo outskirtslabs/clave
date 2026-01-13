@@ -13,6 +13,7 @@
  :ol.clave.automation.certificate-validation-integration-test
  21.056932766,
  :ol.clave.automation.domain-management-integration-test 33.54497944,
+ :ol.clave.automation.error-handling-integration-test 0.1,
  :ol.clave.automation.events-integration-test 10.839821562,
  :ol.clave.automation.impl.bundle-test 0.010665624,
  :ol.clave.automation.impl.cache-test 0.019599943,

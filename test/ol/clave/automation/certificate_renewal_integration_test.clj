@@ -4,7 +4,6 @@
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.automation :as automation]
-   [ol.clave.automation.impl.config :as config]
    [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.impl.pebble-harness :as pebble]

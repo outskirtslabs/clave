@@ -66,6 +66,10 @@
   "Key used for storage validation on startup."
   ".clave-storage-test")
 
+(def ^:private system-lock-name
+  "Lock name used to prevent multiple systems on same storage."
+  "clave-system")
+
 (def ^:private storage-test-value
   "Value used for storage validation."
   (.getBytes "clave-storage-test" "UTF-8"))
@@ -104,6 +108,7 @@
    :event-queue (atom nil)  ;; Lazily created
    :shutdown? (atom false)
    :started? (atom false)
+   :holds-lock? (atom false)  ;; Tracks if we hold the system lock
    :executor (Executors/newVirtualThreadPerTaskExecutor)
    :fast-semaphore (Semaphore. *fast-semaphore-permits*)
    :slow-semaphore (Semaphore. *slow-semaphore-permits*)
@@ -308,20 +313,31 @@
   "Starts the automation system.
 
   1. Validates configuration
-  2. Initializes job queue (executor, semaphores, in-flight map)
-  3. Validates storage is functional
-  4. Loads existing certificates from storage (synchronous)
-  5. Populates cache with loaded certificates
-  6. Starts maintenance loop (async)
-  7. Returns system handle"
+  2. Acquires system lock (prevents double start)
+  3. Initializes job queue (executor, semaphores, in-flight map)
+  4. Validates storage is functional
+  5. Loads existing certificates from storage (synchronous)
+  6. Populates cache with loaded certificates
+  7. Starts maintenance loop (async)
+  8. Returns system handle
+
+  Throws if another system is already running on the same storage."
   [config]
   (when-not (:storage config)
     (throw (ex-info "Storage is required" {:type :config-error})))
   ;; Validate storage first
   (validate-storage! (:storage config))
+  ;; Try to acquire system lock to prevent double start
+  (let [storage (:storage config)]
+    (when-not (storage/try-lock! storage nil system-lock-name)
+      (throw (ex-info "Another automation system is already running on this storage"
+                      {:type :already-started
+                       :storage storage}))))
   ;; Merge with defaults
   (let [merged-config (merge-with-defaults config)
         system (create-system-state merged-config)
+        ;; Mark that we hold the lock
+        _ (reset! (:holds-lock? system) true)
         ;; Initialize event queue before loading certificates
         ;; so events can be emitted during loading
         _ (reset! (:event-queue system)
@@ -344,7 +360,8 @@
   2. Stops accepting new job submissions
   3. Waits for in-flight jobs to complete (with timeout)
   4. Shuts down executor
-  5. Closes event queue"
+  5. Closes event queue
+  6. Releases system lock"
   [system]
   (when system
     ;; Signal shutdown
@@ -362,6 +379,11 @@
     ;; Close event queue if created
     (when-let [queue @(:event-queue system)]
       (.offer ^LinkedBlockingQueue queue :ol.clave/shutdown))
+    ;; Release system lock if we hold it
+    (when-let [holds-lock? (:holds-lock? system)]
+      (when @holds-lock?
+        (storage/unlock! (:storage system) nil system-lock-name)
+        (reset! holds-lock? false)))
     nil))
 
 (defn started?

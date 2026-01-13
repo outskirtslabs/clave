@@ -2,8 +2,12 @@
   "Unit tests for automation system lifecycle behavior."
   (:require
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.automation.impl.system :as system])
+   [ol.clave.automation :as automation]
+   [ol.clave.automation.impl.system :as system]
+   [ol.clave.storage.file :as file-storage])
   (:import
+   [java.nio.file Files]
+   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent Executors LinkedBlockingQueue TimeUnit]))
 
 ;; =============================================================================
@@ -207,3 +211,84 @@
                   (str "Thread should exit quickly after interrupt, took " elapsed "ms"))
               (is (not (.isAlive thread))
                   "Thread should be dead after shutdown"))))))))
+
+;; =============================================================================
+;; Double Start Prevention Tests
+;; =============================================================================
+
+(defn- create-temp-dir
+  "Create a temporary directory for test storage."
+  []
+  (str (Files/createTempDirectory "clave-test-" (into-array FileAttribute []))))
+
+(deftest double-start-is-rejected
+  (testing "Starting a second system on the same storage is rejected"
+    ;; Step 1: Create temp storage directory
+    (let [temp-dir (create-temp-dir)
+          storage (file-storage/file-storage temp-dir)
+          config {:storage storage
+                  :issuers [{:directory-url "https://localhost:14000/dir"}]}]
+      (try
+        ;; Step 2: Start first system
+        (let [system1 (automation/start config)]
+          (try
+            ;; Verify first system is started
+            (is (automation/started? system1)
+                "First system should be in started state")
+            ;; Step 3: Try to start second system on same storage
+            (let [second-start-error (try
+                                       (automation/start config)
+                                       nil ;; Should not reach here
+                                       (catch clojure.lang.ExceptionInfo e
+                                         e))]
+              ;; Step 4: Verify second start failed with clear error
+              (is (some? second-start-error)
+                  "Second start should throw an exception")
+              (is (= :already-started (:type (ex-data second-start-error)))
+                  "Exception should have :type :already-started")
+              (is (re-find #"already running" (ex-message second-start-error))
+                  "Error message should indicate another system is already running")
+              ;; Step 5: Verify original system continues operating
+              (is (automation/started? system1)
+                  "Original system should still be running after failed second start"))
+            (finally
+              ;; Step 6: Clean up
+              (automation/stop system1))))
+        (finally
+          ;; Clean up temp dir
+          (try
+            (run! #(Files/deleteIfExists (.toPath (java.io.File. %)))
+                  [(str temp-dir "/.locks/clave-system.lock")
+                   (str temp-dir "/.locks")
+                   temp-dir])
+            (catch Exception _)))))))
+
+(deftest start-succeeds-after-proper-stop
+  (testing "System can be restarted after proper shutdown"
+    ;; Step 1: Create temp storage directory
+    (let [temp-dir (create-temp-dir)
+          storage (file-storage/file-storage temp-dir)
+          config {:storage storage
+                  :issuers [{:directory-url "https://localhost:14000/dir"}]}]
+      (try
+        ;; Step 2: Start and stop first system
+        (let [system1 (automation/start config)]
+          (is (automation/started? system1) "First system should start")
+          (automation/stop system1)
+          (is (not (automation/started? system1)) "First system should be stopped"))
+        ;; Step 3: Start second system after first is stopped
+        (let [system2 (automation/start config)]
+          (try
+            ;; Step 4: Verify second system starts successfully
+            (is (automation/started? system2)
+                "Second system should start successfully after first is stopped")
+            (finally
+              (automation/stop system2))))
+        (finally
+          ;; Clean up temp dir
+          (try
+            (run! #(Files/deleteIfExists (.toPath (java.io.File. %)))
+                  [(str temp-dir "/.locks/clave-system.lock")
+                   (str temp-dir "/.locks")
+                   temp-dir])
+            (catch Exception _)))))))

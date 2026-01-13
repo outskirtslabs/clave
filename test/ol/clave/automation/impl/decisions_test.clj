@@ -203,6 +203,38 @@
           config {:ocsp {:enabled true}}]
       (is (false? (decisions/needs-ocsp-refresh? bundle config now))))))
 
+(deftest needs-ocsp-refresh?-returns-false-for-short-lived-cert
+  (testing "Short-lived certificate (< 7 days) never needs OCSP refresh"
+    (let [now (Instant/now)
+          ;; 24-hour certificate (well under 7-day threshold)
+          bundle (make-bundle
+                  {:not-before (.minus now (Duration/ofHours 12))
+                   :not-after (.plus now (Duration/ofHours 12))
+                   :ocsp-staple nil})
+          config {:ocsp {:enabled true}}]
+      (is (false? (decisions/needs-ocsp-refresh? bundle config now))
+          "Short-lived cert should skip OCSP even with nil staple")))
+
+  (testing "6-day certificate skips OCSP refresh"
+    (let [now (Instant/now)
+          bundle (make-bundle
+                  {:not-before now
+                   :not-after (.plus now (Duration/ofDays 6))
+                   :ocsp-staple nil})
+          config {:ocsp {:enabled true}}]
+      (is (false? (decisions/needs-ocsp-refresh? bundle config now))
+          "6-day cert should skip OCSP (under 7-day threshold)")))
+
+  (testing "8-day certificate still triggers OCSP refresh"
+    (let [now (Instant/now)
+          bundle (make-bundle
+                  {:not-before now
+                   :not-after (.plus now (Duration/ofDays 8))
+                   :ocsp-staple nil})
+          config {:ocsp {:enabled true}}]
+      (is (true? (decisions/needs-ocsp-refresh? bundle config now))
+          "8-day cert is not short-lived, should trigger OCSP refresh"))))
+
 ;; =============================================================================
 ;; check-cert-maintenance tests
 ;; =============================================================================

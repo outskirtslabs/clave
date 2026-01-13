@@ -42,6 +42,9 @@
   Certificates shorter than this use different renewal logic."
   (* 7 24 60 60 1000))
 
+;; Forward declaration for functions used before definition
+(declare short-lived-cert?)
+
 (defn ari-suggests-renewal?
   "Check if ARI data suggests renewal is due.
 
@@ -148,9 +151,15 @@
 
   Returns true if:
   - OCSP is enabled in config AND
+  - Certificate is not short-lived (>= 7 days) AND
   - Staple is nil OR past 50% of validity window
 
-  Returns false if OCSP is disabled.
+  Returns false if:
+  - OCSP is disabled, OR
+  - Certificate is short-lived (< 7 days lifetime)
+
+  Short-lived certificates don't benefit from OCSP stapling because
+  the certificate will expire before the OCSP response provides value.
 
   | key | description |
   |-----|-------------|
@@ -159,7 +168,8 @@
   | `now` | Current instant |"
   [bundle config now]
   (let [ocsp-enabled (get-in config [:ocsp :enabled] true)]
-    (if ocsp-enabled
+    (if (and ocsp-enabled
+             (not (short-lived-cert? bundle)))
       (let [staple (:ocsp-staple bundle)]
         (or (nil? staple)
             (boolean (ocsp-expiring-soon? staple now))))

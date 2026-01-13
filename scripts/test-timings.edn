@@ -25,6 +25,7 @@
  :ol.clave.automation.issuer-fallback-integration-test 13.262429435,
  :ol.clave.automation.key-type-integration-test 0.1,
  :ol.clave.automation.maintenance-loop-integration-test 27.980317994,
+ :ol.clave.automation.ocsp-integration-test 0.1,
  :ol.clave.automation.private-key-integration-test 26.865994627,
  :ol.clave.automation.revocation-integration-test 3.482873662,
  :ol.clave.automation.storage-integration-test 11.453297778,

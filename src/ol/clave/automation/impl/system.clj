@@ -653,17 +653,19 @@
 
   When `existing-keypair` is provided, reuses that key instead of generating a new one.
   Returns {:status :success :bundle ...} on success, or {:status :error ...} on failure."
-  [system domain issuer solvers key-type existing-keypair]
+  [system domain issuer solvers key-type existing-keypair opts]
   (let [issuer-key (or (:issuer-key issuer)
                        (config/issuer-key-from-url (:directory-url issuer)))
         session (create-acme-session system issuer)
         ^java.security.KeyPair cert-keypair (or existing-keypair (keygen/generate key-type))
+        obtain-opts (select-keys opts [:preferred-challenges])
         [_session result] (certificate/obtain-for-sans
                            (lease/background)
                            session
                            [domain]
                            cert-keypair
-                           solvers)
+                           solvers
+                           obtain-opts)
         cert-data (first (:certificates result))
         chain-pem (:chain-pem cert-data)
         key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
@@ -695,7 +697,10 @@
         resolved-config (config/resolve-config system domain)
         issuers (config/select-issuer resolved-config)
         solvers (get-in system [:config :solvers])
-        key-type (or (:key-type resolved-config) :p256)]
+        key-type (or (:key-type resolved-config) :p256)
+        preferred-challenges (get-in system [:config :preferred-challenges])
+        obtain-opts (cond-> {}
+                      preferred-challenges (assoc :preferred-challenges preferred-challenges))]
     ;; Try each issuer in order
     (loop [remaining-issuers issuers
            last-error nil]
@@ -707,7 +712,7 @@
              :reason :config-error})
         (let [issuer (first remaining-issuers)
               result (try
-                       (try-obtain-from-issuer system domain issuer solvers key-type nil)
+                       (try-obtain-from-issuer system domain issuer solvers key-type nil obtain-opts)
                        (catch Exception e
                          {:status :error
                           :message (ex-message e)
@@ -733,6 +738,9 @@
         solvers (get-in system [:config :solvers])
         key-type (or (:key-type resolved-config) :p256)
         key-reuse? (:key-reuse resolved-config)
+        preferred-challenges (get-in system [:config :preferred-challenges])
+        obtain-opts (cond-> {}
+                      preferred-challenges (assoc :preferred-challenges preferred-challenges))
         ;; If key-reuse is enabled, construct keypair from existing key and cert
         existing-keypair (when (and key-reuse? bundle)
                            (let [private-key (:private-key bundle)
@@ -750,7 +758,7 @@
              :reason :config-error})
         (let [issuer (first remaining-issuers)
               result (try
-                       (try-obtain-from-issuer system domain issuer solvers key-type existing-keypair)
+                       (try-obtain-from-issuer system domain issuer solvers key-type existing-keypair obtain-opts)
                        (catch Exception e
                          {:status :error
                           :message (ex-message e)

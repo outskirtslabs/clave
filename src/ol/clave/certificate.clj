@@ -126,6 +126,38 @@
         ;; Log cleanup error but don't propagate
         (println "Warning: cleanup failed for challenge" (::specs/type challenge) "-" (ex-message e))))))
 
+(defn- present-challenges!
+  "Present challenges for all pending authorizations.
+
+  Returns {:status :success :presented [...] :selected [...]} on success,
+  or {:status :error :failed-type type :error exception} on failure."
+  [the-lease authzs solvers preferred-challenges failed-challenges account-key]
+  (let [pending-authzs (filterv #(= "pending" (::specs/status %)) authzs)
+        selected (doall
+                  (for [authz pending-authzs]
+                    (let [[challenge-type challenge] (select-challenge authz solvers preferred-challenges failed-challenges)]
+                      {:authz authz
+                       :challenge-type challenge-type
+                       :challenge (assoc challenge :authorization authz)
+                       :solver (get solvers challenge-type)})))
+        presented (atom [])]
+    (try
+      ;; Try to present all challenges
+      (doseq [{:keys [solver challenge challenge-type]} selected]
+        (let [state ((:present solver) the-lease challenge account-key)]
+          (swap! presented conj
+                 {:solver solver :challenge challenge :state state :challenge-type challenge-type})))
+      {:status :success :presented @presented :selected selected}
+      (catch Exception e
+        ;; Clean up any already-presented challenges
+        (cleanup-all! the-lease @presented)
+        ;; Return error with the failed challenge type
+        (let [failed-type (some (fn [{:keys [challenge-type]}]
+                                  (when-not (some #(= challenge-type (:challenge-type %)) @presented)
+                                    challenge-type))
+                                selected)]
+          {:status :error :failed-type failed-type :error e})))))
+
 (defn- wait-for-order-ready
   "Poll order until it reaches 'ready' status (ready for finalization)."
   [the-lease session order-url poll-timeout poll-interval]
@@ -218,23 +250,48 @@
                  authz-urls authz-urls
                  authzs []]
             (if (empty? authz-urls)
-              ;; Process authorizations
-              (let [;; Phase 4: Challenge Selection
-                    ;; Filter out already-valid authorizations - they don't need challenges solved
-                    pending-authzs (filterv #(= "pending" (::specs/status %)) authzs)
-                    selected (for [authz pending-authzs]
-                               (let [[challenge-type challenge] (select-challenge authz solvers preferred-challenges {})]
-                                 {:authz authz
-                                  :challenge-type challenge-type
-                                  :challenge (assoc challenge :authorization authz)
-                                  :solver (get solvers challenge-type)}))
-                    ;; Phase 5: Challenge Presentation
-                    _ (doseq [{:keys [solver challenge]} selected]
-                        (let [state ((:present solver) the-lease challenge account-key)]
-                          (swap! presented-challenges conj
-                                 {:solver solver :challenge challenge :state state})))
+              ;; Process authorizations with fallback support
+              (let [pending-authzs (filterv #(= "pending" (::specs/status %)) authzs)
+                    ;; Phase 4-5: Challenge Selection and Presentation with retry
+                    ;; Try up to 3 times with different solver types on failure
+                    max-solver-retries 3
+                    {:keys [presented selected last-error]}
+                    (loop [failed-challenges {}
+                           retries 0]
+                      (let [result (try
+                                     (present-challenges! the-lease authzs solvers
+                                                          preferred-challenges failed-challenges
+                                                          account-key)
+                                     (catch Exception e
+                                       ;; No compatible challenge type available
+                                       {:status :error :error e :no-fallback true}))]
+                        (cond
+                          (= :success (:status result))
+                          {:presented (:presented result) :selected (:selected result)}
+
+                          (:no-fallback result)
+                          {:last-error (:error result)}
+
+                          (>= retries max-solver-retries)
+                          {:last-error (:error result)}
+
+                          :else
+                          ;; Solver failed - record failed type and retry
+                          (let [failed-type (:failed-type result)
+                                new-failed (if failed-type
+                                             (reduce (fn [m authz]
+                                                       (let [id (challenge/identifier authz)]
+                                                         (update m id (fnil conj #{}) failed-type)))
+                                                     failed-challenges
+                                                     pending-authzs)
+                                             failed-challenges)]
+                            (recur new-failed (inc retries))))))
+                    _ (when last-error
+                        (throw last-error))
+                    ;; Track presented challenges for cleanup
+                    _ (reset! presented-challenges presented)
                     ;; Phase 6: Propagation Waiting
-                    _ (doseq [{:keys [solver challenge state]} @presented-challenges]
+                    _ (doseq [{:keys [solver challenge state]} presented]
                         (when-let [wait-fn (:wait solver)]
                           (wait-fn the-lease challenge state)))
                     ;; Phase 7: Challenge Initiation
@@ -329,6 +386,7 @@
   | `sans`       | Vector of SAN strings (domains, IPs)           |
   | `cert-key`   | KeyPair for certificate                        |
   | `solvers`    | Map of challenge type keyword to solver map    |
+  | `opts`       | Optional configuration map (see [[obtain]])    |
 
   Returns `[updated-session result]` as with [[obtain-certificate]].
 
@@ -340,9 +398,20 @@
     [\"example.com\" \"www.example.com\"]
     cert-key
     {:http-01 http-solver})
+
+  ;; With options
+  (obtain-certificate-for-sans
+    (lease/background)
+    session
+    [\"example.com\"]
+    cert-key
+    {:http-01 http-solver :tls-alpn-01 tls-solver}
+    {:preferred-challenges [:http-01 :tls-alpn-01]})
   ```"
-  [the-lease session sans cert-key solvers]
-  (obtain the-lease session (identifiers-from-sans sans) cert-key solvers {}))
+  ([the-lease session sans cert-key solvers]
+   (obtain the-lease session (identifiers-from-sans sans) cert-key solvers {}))
+  ([the-lease session sans cert-key solvers opts]
+   (obtain the-lease session (identifiers-from-sans sans) cert-key solvers opts)))
 
 (defn csr
   "Generate a PKCS#10 CSR from a KeyPair

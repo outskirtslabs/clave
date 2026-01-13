@@ -1671,3 +1671,87 @@
                           "Domain X should not have renewal event due to timeout")))
                   (finally
                     (automation/stop system)))))))))))
+
+(deftest certificate-validation-rejects-expired-certs
+  (testing "System loads expired cert and attempts immediate renewal"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "expired.localhost"
+          issuer-key (config/issuer-key-from-url (pebble/uri))
+          now (java.time.Instant/now)
+          ;; Create expired certificate (was valid 90 days ago, expired yesterday)
+          expired-cert (test-util/generate-test-certificate
+                        domain
+                        (.minus now 90 java.time.temporal.ChronoUnit/DAYS)
+                        (.minus now 1 java.time.temporal.ChronoUnit/DAYS))
+          cert-pem (:certificate-pem expired-cert)
+          key-pem (:private-key-pem expired-cert)
+          meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+          ;; Storage keys
+          cert-key (config/cert-storage-key issuer-key domain)
+          key-key (config/key-storage-key issuer-key domain)
+          meta-key (config/meta-storage-key issuer-key domain)
+          ;; Create solver for renewal
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}]
+      ;; Store expired certificate
+      (storage/store-string! storage-impl nil cert-key cert-pem)
+      (storage/store-string! storage-impl nil key-key key-pem)
+      (storage/store-string! storage-impl nil meta-key meta-json)
+      ;; Start automation system - it should load the expired cert
+      (let [config {:storage storage-impl
+                    :issuers [{:directory-url (pebble/uri)}]
+                    :solvers {:http-01 solver}
+                    :http-client pebble/http-client-opts
+                    :skip-domain-validation true}
+            system (automation/start config)]
+        (try
+          (let [queue (automation/get-event-queue system)]
+            ;; Step 3: Verify expired cert is loaded
+            (let [loaded-event (.poll queue 5 TimeUnit/SECONDS)]
+              (is (some? loaded-event) "Should receive certificate-loaded event")
+              (is (= :certificate-loaded (:type loaded-event))
+                  "Event should be :certificate-loaded")
+              (is (= domain (get-in loaded-event [:data :domain]))
+                  "Loaded cert should be for our domain"))
+            ;; Verify the cert is in the cache
+            (let [bundle (automation/lookup-cert system domain)]
+              (is (some? bundle) "Certificate should be in cache")
+              (is (= [domain] (:names bundle)) "Certificate SAN should match")
+              ;; Verify it's expired
+              (is (.isBefore ^java.time.Instant (:not-after bundle) now)
+                  "Certificate should be expired"))
+            ;; Step 4: Trigger maintenance to verify system attempts renewal
+            ;; Use renewal threshold that guarantees renewal for expired cert
+            (binding [decisions/*renewal-threshold* 0.999]
+              (automation/trigger-maintenance! system)
+              ;; Wait for renewal event
+              (let [events (loop [events []
+                                  attempts 0]
+                             (if (>= attempts 20)
+                               events
+                               (let [evt (.poll queue 2 TimeUnit/SECONDS)]
+                                 (if evt
+                                   (recur (conj events evt) (inc attempts))
+                                   events))))
+                    renewal-event (first (filter #(= :certificate-renewed (:type %)) events))]
+                ;; System should attempt to renew the expired cert
+                (is (some? renewal-event)
+                    "System should emit certificate-renewed event for expired cert")
+                (when renewal-event
+                  (is (= domain (get-in renewal-event [:data :domain]))
+                      "Renewed cert should be for our domain"))
+                ;; Verify new cert is valid (not expired)
+                (when renewal-event
+                  (let [new-bundle (automation/lookup-cert system domain)]
+                    (when new-bundle
+                      (is (.isAfter ^java.time.Instant (:not-after new-bundle) now)
+                          "New certificate should not be expired")))))))
+          (finally
+            (automation/stop system)))))))

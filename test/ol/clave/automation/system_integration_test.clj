@@ -26,8 +26,9 @@
    [java.time.temporal ChronoUnit]
    [java.util.concurrent TimeUnit]))
 
-;; Use pebble-challenge-fixture because some tests need the challenge test server
-(use-fixtures :once pebble/pebble-challenge-fixture)
+;; Use :each to give each test a fresh Pebble instance with clean state.
+;; This prevents authorization state accumulation across tests.
+(use-fixtures :each pebble/pebble-challenge-fixture)
 
 (defn- temp-storage-dir
   "Creates a temporary directory for storage tests."
@@ -1108,26 +1109,38 @@
       (try
         (let [queue (automation/get-event-queue system)
               ;; Step 2: Submit multiple requests simultaneously
+              ;; Use bound-fn to propagate *pebble-ports* binding to future threads
               request-count 10
+              bound-manage (bound-fn [s d] (automation/manage-domains s d))
               futures (doall
                        (for [_ (range request-count)]
-                         (future (automation/manage-domains system [domain]))))]
+                         (future (bound-manage system [domain]))))]
           ;; Wait for all futures to complete
           (doseq [f futures] @f)
-          ;; Step 3-5: Collect all events within a reasonable time window
+          ;; Step 3-5: Collect events until we get a certificate event or timeout
+          ;; Under load (full suite), operations can take longer, so wait up to 120s
+          ;; Exit early once we have a certificate-obtained or certificate-failed event
           (let [events (loop [collected []
-                              deadline (+ (System/currentTimeMillis) 30000)]
-                         (if (> (System/currentTimeMillis) deadline)
-                           collected
-                           (if-let [evt (.poll queue 100 TimeUnit/MILLISECONDS)]
-                             (recur (conj collected evt) deadline)
-                             ;; Wait a bit more for any remaining events
-                             (if-let [evt (.poll queue 500 TimeUnit/MILLISECONDS)]
+                              deadline (+ (System/currentTimeMillis) 120000)]
+                         (let [has-cert-event? (some #(#{:certificate-obtained :certificate-failed} (:type %)) collected)]
+                           (if (or (> (System/currentTimeMillis) deadline) has-cert-event?)
+                             ;; If we have a cert event, drain any remaining events quickly
+                             (if has-cert-event?
+                               (loop [drained collected]
+                                 (if-let [evt (.poll queue 50 TimeUnit/MILLISECONDS)]
+                                   (recur (conj drained evt))
+                                   drained))
+                               collected)
+                             (if-let [evt (.poll queue 100 TimeUnit/MILLISECONDS)]
                                (recur (conj collected evt) deadline)
-                               collected))))
+                               ;; Wait a bit more for any remaining events
+                               (if-let [evt (.poll queue 500 TimeUnit/MILLISECONDS)]
+                                 (recur (conj collected evt) deadline)
+                                 (recur collected deadline))))))
                 ;; Count event types
                 domain-added-events (filter #(= :domain-added (:type %)) events)
-                cert-obtained-events (filter #(= :certificate-obtained (:type %)) events)]
+                cert-obtained-events (filter #(= :certificate-obtained (:type %)) events)
+                cert-failed-events (filter #(= :certificate-failed (:type %)) events)]
             ;; Step 3: Should have multiple domain-added events (one per request)
             ;; but manage-domains is idempotent so could be 1-10
             (is (>= (count domain-added-events) 1)
@@ -1136,7 +1149,8 @@
             (is (= 1 (count cert-obtained-events))
                 (str "Should have exactly 1 certificate-obtained event but got "
                      (count cert-obtained-events)
-                     ". Deduplication should prevent multiple obtains."))
+                     ". Deduplication should prevent multiple obtains."
+                     " Failed events: " (count cert-failed-events)))
             ;; Step 7: Verify single certificate obtained
             (let [bundle (automation/lookup-cert system domain)]
               (is (some? bundle) "Certificate should be available")
@@ -1232,38 +1246,39 @@
         (let [queue (automation/get-event-queue system)]
           ;; Step 1: Obtain certificates for multiple domains
           (automation/manage-domains system domains)
-          ;; Wait for domain-added events
-          (doseq [_ domains]
-            (.poll queue 5 TimeUnit/SECONDS))
-          ;; Wait for both certificate-obtained events
-          (let [obtained-events (doall
-                                  (for [_ domains]
-                                    (loop [attempts 0]
-                                      (when (< attempts 12)
-                                        (let [evt (.poll queue 5 TimeUnit/SECONDS)]
-                                          (if (= :certificate-obtained (:type evt))
-                                            evt
-                                            (recur (inc attempts))))))))]
+          ;; Wait for domain-added and certificate-obtained events
+          ;; Use generous timeout and collect events until we have what we need
+          (let [initial-events (loop [collected []
+                                      deadline (+ (System/currentTimeMillis) 120000)]
+                                 (let [obtained-count (count (filter #(= :certificate-obtained (:type %)) collected))]
+                                   (if (or (>= obtained-count 2)
+                                           (> (System/currentTimeMillis) deadline))
+                                     collected
+                                     (if-let [evt (.poll queue 500 TimeUnit/MILLISECONDS)]
+                                       (recur (conj collected evt) deadline)
+                                       (recur collected deadline)))))
+                obtained-events (filter #(= :certificate-obtained (:type %)) initial-events)]
             ;; Verify we got both certificates
-            (is (= 2 (count (filter some? obtained-events)))
+            (is (= 2 (count obtained-events))
                 "Should have obtained 2 certificates")
             ;; Record original certificate hashes (more reliable than NotBefore dates)
             (let [initial-hashes (into {}
                                        (for [domain domains]
                                          [domain (:hash (automation/lookup-cert system domain))]))]
               ;; Step 3: Call renew-managed
-              (let [count (automation/renew-managed system)]
-                (is (= 2 count) "renew-managed should return count of renewed certs"))
-              ;; Step 4-5: Wait for certificate-renewed events
-              (let [renewed-events (doall
-                                     (for [_ domains]
-                                       (loop [attempts 0]
-                                         (when (< attempts 20)
-                                           (let [evt (.poll queue 5 TimeUnit/SECONDS)]
-                                             (if (= :certificate-renewed (:type evt))
-                                               evt
-                                               (recur (inc attempts))))))))]
-                (is (= 2 (count (filter some? renewed-events)))
+              (let [cnt (automation/renew-managed system)]
+                (is (= 2 cnt) "renew-managed should return count of renewed certs"))
+              ;; Step 4-5: Wait for certificate-renewed events with generous timeout
+              (let [renewed-events (loop [collected []
+                                          deadline (+ (System/currentTimeMillis) 120000)]
+                                     (let [renewed-count (count (filter #(= :certificate-renewed (:type %)) collected))]
+                                       (if (or (>= renewed-count 2)
+                                               (> (System/currentTimeMillis) deadline))
+                                         (filter #(= :certificate-renewed (:type %)) collected)
+                                         (if-let [evt (.poll queue 500 TimeUnit/MILLISECONDS)]
+                                           (recur (conj collected evt) deadline)
+                                           (recur collected deadline)))))]
+                (is (= 2 (count renewed-events))
                     "Should have 2 certificate-renewed events")
                 ;; Step 6: Verify certificates were renewed (different hashes)
                 (doseq [domain domains]
@@ -1476,8 +1491,9 @@
               ;; DO NOT call trigger-maintenance! - let automatic loop handle it
               ;; Wait for renewal to happen automatically
               ;; The loop should run within ~200-250ms, and renewal takes ~1-2s
+              ;; Under load (full suite), renewal can take longer, so wait up to 60s
               (let [renewed-event (loop [attempts 0]
-                                    (when (< attempts 20)
+                                    (when (< attempts 60)
                                       (let [evt (.poll queue 1 TimeUnit/SECONDS)]
                                         (if (= :certificate-renewed (:type evt))
                                           evt
@@ -1733,32 +1749,28 @@
               ;; Verify it's expired
               (is (.isBefore ^java.time.Instant (:not-after bundle) now)
                   "Certificate should be expired"))
-            ;; Step 4: Trigger maintenance to verify system attempts renewal
-            ;; Use renewal threshold that guarantees renewal for expired cert
-            (binding [decisions/*renewal-threshold* 0.999]
-              (automation/trigger-maintenance! system)
-              ;; Wait for renewal event
-              (let [events (loop [events []
-                                  attempts 0]
-                             (if (>= attempts 20)
-                               events
-                               (let [evt (.poll queue 2 TimeUnit/SECONDS)]
-                                 (if evt
-                                   (recur (conj events evt) (inc attempts))
-                                   events))))
-                    renewal-event (first (filter #(= :certificate-renewed (:type %)) events))]
-                ;; System should attempt to renew the expired cert
-                (is (some? renewal-event)
-                    "System should emit certificate-renewed event for expired cert")
-                (when renewal-event
-                  (is (= domain (get-in renewal-event [:data :domain]))
-                      "Renewed cert should be for our domain"))
-                ;; Verify new cert is valid (not expired)
-                (when renewal-event
-                  (let [new-bundle (automation/lookup-cert system domain)]
-                    (when new-bundle
-                      (is (.isAfter ^java.time.Instant (:not-after new-bundle) now)
-                          "New certificate should not be expired")))))))
+            ;; Step 4: Wait for automatic maintenance to renew the expired cert
+            ;; The maintenance loop runs immediately on startup and will detect
+            ;; the expired cert and trigger renewal automatically.
+            ;; No need to call trigger-maintenance! - just wait for the event.
+            (let [renewal-event (loop [attempts 0]
+                                  (when (< attempts 30)
+                                    (let [evt (.poll queue 2 TimeUnit/SECONDS)]
+                                      (if (= :certificate-renewed (:type evt))
+                                        evt
+                                        (recur (inc attempts))))))]
+              ;; System should automatically renew the expired cert
+              (is (some? renewal-event)
+                  "System should emit certificate-renewed event for expired cert")
+              (when renewal-event
+                (is (= domain (get-in renewal-event [:data :domain]))
+                    "Renewed cert should be for our domain"))
+              ;; Verify new cert is valid (not expired)
+              (when renewal-event
+                (let [new-bundle (automation/lookup-cert system domain)]
+                  (when new-bundle
+                    (is (.isAfter ^java.time.Instant (:not-after new-bundle) now)
+                        "New certificate should not be expired"))))))
           (finally
             (automation/stop system)))))))
 

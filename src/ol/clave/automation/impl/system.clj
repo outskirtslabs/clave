@@ -683,6 +683,12 @@
                                      (try
                                        (let [result (execute-command! system cmd)]
                                          (on-command-complete! system cmd result))
+                                       (catch Exception e
+                                         ;; On error, emit a failure event instead of swallowing
+                                         (on-command-complete! system cmd
+                                                               {:status :error
+                                                                :message (ex-message e)
+                                                                :reason (decisions/classify-error e)}))
                                        (finally
                                          (.release ^Semaphore semaphore)))
                                      (finally

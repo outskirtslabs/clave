@@ -1494,3 +1494,86 @@
                     "Should have some delay from interval (not instant)")))
             (finally
               (automation/stop system))))))))
+
+(deftest maintenance-loop-continues-when-one-domain-fails
+  (testing "Maintenance loop continues processing other domains when one throws"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          ;; Three domains: A, B, C - B will fail
+          domains ["a.localhost" "b.localhost" "c.localhost"]
+          issuer-key (config/issuer-key-from-url (pebble/uri))
+          ;; Create solver
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          ;; Get real certificates for all domains
+          test-session (test-util/fresh-session)]
+      ;; Pre-store certificates for all domains
+      (doseq [domain domains]
+        (let [[_session ^X509Certificate cert cert-keypair] (test-util/issue-certificate test-session)
+              cert-pem (keygen/pem-encode "CERTIFICATE" (.getEncoded cert))
+              key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
+              meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+              cert-key (config/cert-storage-key issuer-key domain)
+              key-key (config/key-storage-key issuer-key domain)
+              meta-key (config/meta-storage-key issuer-key domain)]
+          (storage/store-string! storage-impl nil cert-key cert-pem)
+          (storage/store-string! storage-impl nil key-key key-pem)
+          (storage/store-string! storage-impl nil meta-key meta-json)))
+      ;; Config-fn that throws for domain B
+      (let [failing-config-fn (fn [domain]
+                                (when (= domain "b.localhost")
+                                  (throw (ex-info "Simulated config failure" {:domain domain})))
+                                ;; Return nil for other domains (use global config)
+                                nil)]
+        ;; Use high renewal threshold to force renewal attempts
+        (binding [decisions/*renewal-threshold* 1.01]
+          (let [config {:storage storage-impl
+                        :issuers [{:directory-url (pebble/uri)}]
+                        :solvers {:http-01 solver}
+                        :http-client pebble/http-client-opts
+                        :skip-domain-validation true
+                        :config-fn failing-config-fn}
+                system (automation/start config)]
+            (try
+              (let [queue (automation/get-event-queue system)]
+                ;; Consume the initial certificate-loaded events (3 certs)
+                (dotimes [_ 3]
+                  (.poll queue 5 TimeUnit/SECONDS))
+                ;; Trigger maintenance loop
+                (automation/trigger-maintenance! system)
+                ;; Collect events from maintenance
+                ;; Domain A and C should emit renewal commands
+                ;; Domain B should fail but not crash the loop
+                (let [events (loop [events []
+                                    attempts 0]
+                               (if (>= attempts 15)
+                                 events
+                                 (let [evt (.poll queue 2 TimeUnit/SECONDS)]
+                                   (if evt
+                                     (recur (conj events evt) (inc attempts))
+                                     events))))
+                      renewed-domains (->> events
+                                           (filter #(= :certificate-renewed (:type %)))
+                                           (map #(get-in % [:data :domain]))
+                                           set)]
+                  ;; Domain A and C should be renewed (or at least attempted)
+                  ;; Domain B should not crash the maintenance loop
+                  ;; The key assertion: we should see at least some activity,
+                  ;; meaning the loop continued past B's failure
+                  (is (>= (count events) 1)
+                      "Maintenance loop should produce events despite B failing")
+                  ;; Verify A and C got processed (renewed or error event)
+                  (is (or (contains? renewed-domains "a.localhost")
+                          (some #(= "a.localhost" (get-in % [:data :domain])) events))
+                      "Domain A should be processed")
+                  (is (or (contains? renewed-domains "c.localhost")
+                          (some #(= "c.localhost" (get-in % [:data :domain])) events))
+                      "Domain C should be processed")))
+              (finally
+                (automation/stop system)))))))))

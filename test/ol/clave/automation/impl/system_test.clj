@@ -335,3 +335,103 @@
         ;; Step 6: Verify in-flight was cleaned up (not left in bad state)
         (is (not (.containsKey (:in-flight sys) "obtain-certificate:test.example.com"))
             "in-flight should not contain the rejected command")))))
+
+;; =============================================================================
+;; Dual Semaphore Tests
+;; =============================================================================
+
+(deftest fast-and-slow-commands-use-separate-semaphores
+  (testing "Fast commands execute immediately when slow semaphore is exhausted"
+    ;; Step 1: Create system with small slow semaphore (2 permits)
+    (let [slow-semaphore (java.util.concurrent.Semaphore. 2)
+          fast-semaphore (java.util.concurrent.Semaphore. 10)
+          executor (Executors/newVirtualThreadPerTaskExecutor)
+          event-queue (LinkedBlockingQueue. 100)
+          sys {:shutdown? (atom false)
+               :started? (atom true)
+               :maintenance-thread (atom nil)
+               :executor executor
+               :event-queue (atom event-queue)
+               :fast-semaphore fast-semaphore
+               :slow-semaphore slow-semaphore
+               :in-flight (java.util.concurrent.ConcurrentHashMap.)
+               :cache (atom {:certs {} :index {}})
+               :storage nil
+               :config {:issuers []}}]
+      ;; Step 2: Exhaust slow semaphore by acquiring all permits
+      ;; This simulates "filling" it with slow commands
+      (.acquire slow-semaphore 2)
+      ;; Verify slow semaphore is exhausted
+      (is (= 0 (.availablePermits slow-semaphore))
+          "Slow semaphore should have 0 permits available")
+      ;; Verify fast semaphore still has permits
+      (is (= 10 (.availablePermits fast-semaphore))
+          "Fast semaphore should still have all permits available")
+      ;; Step 3: Submit a fast command (:fetch-ocsp)
+      ;; Fast commands should use the fast semaphore, not slow
+      (let [fast-cmd {:command :fetch-ocsp :domain "test.example.com"}]
+        (submit-command! sys fast-cmd))
+      ;; Step 4: Wait briefly and check for fast command completion event
+      ;; Fast commands return immediately (even with "Not implemented" error)
+      ;; because they use the fast semaphore which has available permits
+      (let [event (.poll event-queue 2 TimeUnit/SECONDS)]
+        (is (some? event)
+            "Fast command should complete and emit event (not blocked)")
+        (is (= :ocsp-failed (:type event))
+            "Event should indicate OCSP operation (failed because not implemented)")
+        (is (= "test.example.com" (get-in event [:data :domain]))
+            "Event should have correct domain"))
+      ;; Step 5: Verify fast semaphore was used (permits were acquired and released)
+      ;; Since the command completed, the permit was released
+      (is (= 10 (.availablePermits fast-semaphore))
+          "Fast semaphore permits should be released after command completes")
+      ;; Step 6: Verify slow semaphore is still exhausted (wasn't used)
+      (is (= 0 (.availablePermits slow-semaphore))
+          "Slow semaphore should still be exhausted (fast command didn't use it)")
+      ;; Clean up: release slow semaphore permits and shutdown executor
+      (.release slow-semaphore 2)
+      (.shutdown executor)
+      (.awaitTermination executor 1 TimeUnit/SECONDS))))
+
+(deftest slow-commands-block-when-slow-semaphore-exhausted
+  (testing "Slow commands block when slow semaphore is exhausted"
+    ;; Step 1: Create system with small slow semaphore (1 permit)
+    (let [slow-semaphore (java.util.concurrent.Semaphore. 1)
+          fast-semaphore (java.util.concurrent.Semaphore. 10)
+          executor (Executors/newVirtualThreadPerTaskExecutor)
+          event-queue (LinkedBlockingQueue. 100)
+          sys {:shutdown? (atom false)
+               :started? (atom true)
+               :maintenance-thread (atom nil)
+               :executor executor
+               :event-queue (atom event-queue)
+               :fast-semaphore fast-semaphore
+               :slow-semaphore slow-semaphore
+               :in-flight (java.util.concurrent.ConcurrentHashMap.)
+               :cache (atom {:certs {} :index {}})
+               :storage nil
+               :config {:issuers []}}]
+      ;; Step 2: Exhaust slow semaphore
+      (.acquire slow-semaphore 1)
+      (is (= 0 (.availablePermits slow-semaphore))
+          "Slow semaphore should be exhausted")
+      ;; Step 3: Submit a slow command (:obtain-certificate)
+      (let [slow-cmd {:command :obtain-certificate :domain "blocked.example.com"}]
+        (submit-command! sys slow-cmd))
+      ;; Step 4: Verify slow command does NOT complete (blocked on semaphore)
+      ;; Poll with short timeout - should return nil because command is blocked
+      (let [event (.poll event-queue 500 TimeUnit/MILLISECONDS)]
+        (is (nil? event)
+            "Slow command should be blocked - no event should be emitted yet"))
+      ;; Step 5: Release slow semaphore permit
+      (.release slow-semaphore 1)
+      ;; Step 6: Now slow command should complete and emit event
+      ;; Note: The command will fail (no issuers configured) but that's expected
+      (let [event (.poll event-queue 2 TimeUnit/SECONDS)]
+        (is (some? event)
+            "Slow command should complete after semaphore released")
+        (is (= :certificate-failed (:type event))
+            "Command should fail (no issuers) but event should be emitted"))
+      ;; Clean up
+      (.shutdown executor)
+      (.awaitTermination executor 1 TimeUnit/SECONDS))))

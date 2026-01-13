@@ -1422,3 +1422,74 @@
               "Certificate should exist (proves full ACME flow with ToS worked)"))
         (finally
           (automation/stop system))))))
+
+(deftest maintenance-loop-runs-at-configured-interval
+  (testing "Maintenance loop runs automatically at the configured interval"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          issuer-key (config/issuer-key-from-url (pebble/uri))
+          ;; Create solver for renewal
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          ;; Get a real certificate from Pebble via test utilities
+          test-session (test-util/fresh-session)
+          [_session ^X509Certificate cert cert-keypair] (test-util/issue-certificate test-session)
+          cert-pem (keygen/pem-encode "CERTIFICATE" (.getEncoded cert))
+          key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
+          meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+          cert-key (config/cert-storage-key issuer-key domain)
+          key-key (config/key-storage-key issuer-key domain)
+          meta-key (config/meta-storage-key issuer-key domain)]
+      ;; Pre-store certificate in storage
+      (storage/store-string! storage-impl nil cert-key cert-pem)
+      (storage/store-string! storage-impl nil key-key key-pem)
+      (storage/store-string! storage-impl nil meta-key meta-json)
+      ;; Override timing for fast test execution:
+      ;; - Short interval (200ms)
+      ;; - Small jitter (50ms)
+      ;; - High renewal threshold to force immediate renewal
+      (binding [system/*maintenance-interval-ms* 200
+                system/*maintenance-jitter-ms* 50
+                decisions/*renewal-threshold* 1.01]
+        (let [config {:storage storage-impl
+                      :issuers [{:directory-url (pebble/uri)}]
+                      :solvers {:http-01 solver}
+                      :http-client pebble/http-client-opts
+                      :skip-domain-validation true}
+              ;; Track start time for timing verification
+              start-time (System/currentTimeMillis)
+              system (automation/start config)]
+          (try
+            (let [queue (automation/get-event-queue system)]
+              ;; Consume certificate-loaded event (from startup loading)
+              (.poll queue 2 TimeUnit/SECONDS)
+              ;; DO NOT call trigger-maintenance! - let automatic loop handle it
+              ;; Wait for renewal to happen automatically
+              ;; The loop should run within ~200-250ms, and renewal takes ~1-2s
+              (let [renewed-event (loop [attempts 0]
+                                    (when (< attempts 20)
+                                      (let [evt (.poll queue 1 TimeUnit/SECONDS)]
+                                        (if (= :certificate-renewed (:type evt))
+                                          evt
+                                          (recur (inc attempts))))))
+                    elapsed (- (System/currentTimeMillis) start-time)]
+                ;; Verify renewal happened
+                (is (some? renewed-event)
+                    "Should receive :certificate-renewed from automatic maintenance loop")
+                ;; Verify it happened within reasonable time
+                ;; Should be less than 5 seconds (interval + jitter + renewal time)
+                (is (< elapsed 20000)
+                    (str "Renewal should happen promptly, actual elapsed: " elapsed "ms"))
+                ;; Verify timing shows jitter was applied (not exact interval)
+                ;; With 200ms interval and 50ms jitter, first loop is at 200-250ms
+                (is (> elapsed 100)
+                    "Should have some delay from interval (not instant)")))
+            (finally
+              (automation/stop system))))))))

@@ -661,7 +661,9 @@
     (emit-event! system event)))
 
 (defn- submit-command!
-  "Submit a command for async execution with deduplication."
+  "Submit a command for async execution with deduplication.
+
+  Handles RejectedExecutionException gracefully during shutdown."
   [system cmd]
   (let [command-key (decisions/command-key cmd)
         ^ConcurrentHashMap in-flight (:in-flight system)]
@@ -671,20 +673,25 @@
                         (:fast-semaphore system)
                         (:slow-semaphore system))
             ^java.util.concurrent.ExecutorService executor (:executor system)]
-        ;; Submit bound Runnable that propagates dynamic bindings
-        (.submit executor
-                 ^Runnable
-                 (let [task-fn (bound-fn []
-                                 (try
-                                   (.acquire ^Semaphore semaphore)
+        (try
+          ;; Submit bound Runnable that propagates dynamic bindings
+          (.submit executor
+                   ^Runnable
+                   (let [task-fn (bound-fn []
                                    (try
-                                     (let [result (execute-command! system cmd)]
-                                       (on-command-complete! system cmd result))
+                                     (.acquire ^Semaphore semaphore)
+                                     (try
+                                       (let [result (execute-command! system cmd)]
+                                         (on-command-complete! system cmd result))
+                                       (finally
+                                         (.release ^Semaphore semaphore)))
                                      (finally
-                                       (.release ^Semaphore semaphore)))
-                                   (finally
-                                     (.remove in-flight command-key))))]
-                   (reify Runnable (run [_] (task-fn)))))))))
+                                       (.remove in-flight command-key))))]
+                     (reify Runnable (run [_] (task-fn)))))
+          (catch java.util.concurrent.RejectedExecutionException _
+            ;; Executor is shutdown - remove from in-flight and silently ignore
+            ;; This is expected during system shutdown
+            (.remove in-flight command-key)))))))
 
 (defn manage-domains
   "Adds domains to management, triggering immediate certificate obtain.

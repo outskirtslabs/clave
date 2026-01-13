@@ -292,3 +292,46 @@
                    (str temp-dir "/.locks")
                    temp-dir])
             (catch Exception _)))))))
+
+;; =============================================================================
+;; Executor Rejection Handling Tests
+;; =============================================================================
+
+;; Access private function for testing
+(def submit-command! #'system/submit-command!)
+
+(deftest executor-rejection-during-shutdown-is-handled
+  (testing "RejectedExecutionException during shutdown is caught gracefully"
+    ;; Step 1: Create minimal system with executor
+    (let [executor (Executors/newVirtualThreadPerTaskExecutor)
+          sys {:shutdown? (atom false)
+               :started? (atom true)
+               :maintenance-thread (atom nil)
+               :executor executor
+               :event-queue (atom (LinkedBlockingQueue. 10))
+               :fast-semaphore (java.util.concurrent.Semaphore. 100)
+               :slow-semaphore (java.util.concurrent.Semaphore. 100)
+               :in-flight (java.util.concurrent.ConcurrentHashMap.)
+               :cache (atom {:certs {} :index {}})
+               :storage nil
+               :config {:issuers []}}
+          test-cmd {:command :obtain-certificate :domain "test.example.com"}]
+      ;; Step 2: Shutdown the executor (simulating system shutdown)
+      (.shutdown executor)
+      ;; Wait for shutdown to complete
+      (.awaitTermination executor 1 TimeUnit/SECONDS)
+      ;; Step 3: Submit command during shutdown
+      ;; This should not throw - RejectedExecutionException should be caught
+      (let [result (try
+                     (submit-command! sys test-cmd)
+                     :success
+                     (catch java.util.concurrent.RejectedExecutionException _
+                       :rejected))]
+        ;; Step 4: Verify no RejectedExecutionException was thrown
+        (is (not= :rejected result)
+            "RejectedExecutionException should be caught internally")
+        ;; Step 5: Verify no crash occurred (we got here)
+        (is true "No exception was thrown during shutdown submission")
+        ;; Step 6: Verify in-flight was cleaned up (not left in bad state)
+        (is (not (.containsKey (:in-flight sys) "obtain-certificate:test.example.com"))
+            "in-flight should not contain the rejected command")))))

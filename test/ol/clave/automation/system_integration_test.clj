@@ -1921,3 +1921,80 @@
                           "System should still be running after config-fn exception")))
                   (finally
                     (automation/stop system)))))))))))
+(deftest expired-certificate-continues-serving-while-retrying-renewal
+  (testing "Expired certificate remains available while system retries renewal"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "expired-serving.localhost"
+          issuer-key (config/issuer-key-from-url (pebble/uri))
+          ;; Create expired certificate (was valid 90 days ago, expired yesterday)
+          now (Instant/now)
+          not-before (.minus now 90 ChronoUnit/DAYS)
+          not-after (.minus now 1 ChronoUnit/DAYS)
+          test-cert (test-util/generate-test-certificate domain not-before not-after)
+          cert-pem (:certificate-pem test-cert)
+          key-pem (:private-key-pem test-cert)
+          ;; Solver that always fails to simulate renewal failures
+          failing-solver {:present (fn [_lease _chall _account-key]
+                                     (throw (ex-info "Simulated solver failure"
+                                                     {:type :test-failure})))
+                          :cleanup (fn [_lease _chall _state] nil)}]
+      ;; Pre-store expired certificate
+      (let [cert-key (config/cert-storage-key issuer-key domain)
+            key-key (config/key-storage-key issuer-key domain)
+            meta-key (config/meta-storage-key issuer-key domain)
+            meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")]
+        (storage/store-string! storage-impl nil cert-key cert-pem)
+        (storage/store-string! storage-impl nil key-key key-pem)
+        (storage/store-string! storage-impl nil meta-key meta-json))
+      ;; Start system with failing solver
+      (let [config {:storage storage-impl
+                    :issuers [{:directory-url (pebble/uri)}]
+                    :solvers {:http-01 failing-solver}
+                    :http-client pebble/http-client-opts
+                    :skip-domain-validation true}
+            system (automation/start config)]
+        (try
+          (let [queue (automation/get-event-queue system)]
+            ;; Wait for certificate-loaded event
+            (let [loaded-event (.poll queue 5 TimeUnit/SECONDS)]
+              (is (some? loaded-event) "Should load expired certificate on startup")
+              (is (= :certificate-loaded (:type loaded-event))))
+            ;; Step 4 & 5: Verify expired certificate is in cache and lookup works
+            (let [bundle (automation/lookup-cert system domain)]
+              (is (some? bundle) "lookup-cert should return expired certificate")
+              (is (= domain (first (:names bundle)))
+                  "Bundle should contain correct domain")
+              (is (.isBefore ^Instant (:not-after bundle) now)
+                  "Certificate should be expired"))
+            ;; Trigger maintenance to force renewal attempt
+            (binding [decisions/*renewal-threshold* 1.01]
+              (automation/trigger-maintenance! system))
+            ;; Wait for renewal attempt to process
+            (Thread/sleep 2000)
+            ;; Step 4 & 5 again: Verify expired cert STILL in cache after failed renewal
+            (let [bundle-after (automation/lookup-cert system domain)]
+              (is (some? bundle-after)
+                  "Expired certificate should remain in cache after failed renewal")
+              ;; Compare at second granularity (cert may have sub-second precision)
+              (is (= (.truncatedTo ^Instant (:not-after bundle-after) ChronoUnit/SECONDS)
+                     (.truncatedTo ^Instant not-after ChronoUnit/SECONDS))
+                  "Certificate should still be the same expired one"))
+            ;; Step 6: Verify renewal was attempted (check for failure event)
+            (let [events (loop [events []
+                                attempts 0]
+                           (if (>= attempts 5)
+                             events
+                             (let [evt (.poll queue 1 TimeUnit/SECONDS)]
+                               (if evt
+                                 (recur (conj events evt) (inc attempts))
+                                 events))))
+                  failure-event (first (filter #(= :certificate-failed (:type %)) events))]
+              ;; We expect a certificate-failed event from the renewal attempt
+              (is (some? failure-event)
+                  "Should emit certificate-failed event for renewal failure")
+              (when failure-event
+                (is (= domain (get-in failure-event [:data :domain]))
+                    "Failure event should be for the expired domain"))))
+          (finally
+            (automation/stop system)))))))

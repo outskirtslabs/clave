@@ -483,11 +483,18 @@
     (storage/store-string! storage nil private-key-key private-pem)
     (storage/store-string! storage nil public-key-key public-pem)))
 
+(defn- account-lock-key
+  "Returns the storage lock key for account registration."
+  [issuer-key]
+  (str "account-lock-" issuer-key))
+
 (defn- create-acme-session
   "Create an ACME session for the given issuer config.
 
   If account keys exist in storage, loads them and uses them.
   Otherwise generates new keys, registers account, and saves keys.
+  Uses storage-based locking with double-check pattern to prevent
+  concurrent key generation race conditions.
   External Account Binding credentials are passed if configured."
   [system issuer-config]
   (let [bg-lease (lease/background)
@@ -496,9 +503,24 @@
         directory-url (:directory-url issuer-config)
         issuer-key (or (:issuer-key issuer-config)
                        (config/issuer-key-from-url directory-url))
-        ;; Try to load existing account keys
+        ;; Step 1: Try to load existing account keys without lock
         existing-keypair (load-account-keypair storage issuer-key)
-        account-key (or existing-keypair (account/generate-keypair))
+        ;; Step 2: If no keypair, use double-check locking pattern
+        account-key (if existing-keypair
+                      existing-keypair
+                      (let [lock-key (account-lock-key issuer-key)]
+                        ;; Acquire storage lock
+                        (storage/lock! storage nil lock-key)
+                        (try
+                          ;; Step 3: Double-check after acquiring lock
+                          (or (load-account-keypair storage issuer-key)
+                              ;; Step 4: Still no keypair, generate and save
+                              (let [new-keypair (account/generate-keypair)]
+                                (save-account-keypair! storage issuer-key new-keypair)
+                                new-keypair))
+                          (finally
+                            ;; Step 5: Release lock
+                            (storage/unlock! storage nil lock-key)))))
         [session _] (cmd/create-session bg-lease directory-url
                                         {:http-client http-opts
                                          :account-key account-key})
@@ -510,9 +532,6 @@
                            {:external-account eab})
         ;; new-account will return existing account if key is already registered
         [session _] (cmd/new-account bg-lease session account new-account-opts)]
-    ;; Save keypair if we generated a new one
-    (when-not existing-keypair
-      (save-account-keypair! storage issuer-key account-key))
     session))
 
 (defn- store-certificate!

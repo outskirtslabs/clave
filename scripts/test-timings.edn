@@ -31,6 +31,7 @@
  :ol.clave.automation.storage-integration-test 11.453297778,
  :ol.clave.automation.system-lifecycle-integration-test 4.560537203,
  :ol.clave.certificate-integration-test 5.834872501,
+ :ol.clave.certificate.impl.ocsp-test 0.1,
  :ol.clave.challenge-test 0.038214005,
  :ol.clave.errors-test 0.007555939,
  :ol.clave.example.http01-test 0.16404802,

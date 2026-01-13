@@ -14,6 +14,7 @@
    [ol.clave.automation.impl.domain :as domain]
    [ol.clave.certificate :as certificate]
    [ol.clave.certificate.impl.keygen :as keygen]
+   [ol.clave.certificate.impl.ocsp :as ocsp]
    [ol.clave.certificate.impl.parse :as cert-parse]
    [ol.clave.crypto.impl.core :as crypto]
    [ol.clave.lease :as lease]
@@ -658,6 +659,22 @@
             (recur (rest remaining-issuers) result)))))))
 
 ;; =============================================================================
+;; OCSP Fetching
+;; =============================================================================
+
+(defn- fetch-ocsp!
+  "Fetch OCSP staple for a certificate.
+
+  Uses the certificate bundle to extract OCSP URL and fetches response.
+  Supports responder overrides from config."
+  [system cmd]
+  (let [bundle (:bundle cmd)
+        config (:config system)
+        http-opts (:http-client config)
+        responder-overrides (get-in config [:ocsp :responder-overrides])]
+    (ocsp/fetch-ocsp-for-bundle bundle http-opts responder-overrides)))
+
+;; =============================================================================
 ;; Command Execution
 ;; =============================================================================
 
@@ -667,7 +684,7 @@
   (case (:command cmd)
     :obtain-certificate (obtain-certificate! system cmd)
     :renew-certificate (renew-certificate! system cmd)
-    :fetch-ocsp {:status :error :message "Not implemented"}
+    :fetch-ocsp (fetch-ocsp! system cmd)
     {:status :error :message "Unknown command"}))
 
 (defn- on-command-complete!

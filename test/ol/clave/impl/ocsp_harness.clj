@@ -280,14 +280,24 @@
   [f]
   (with-ocsp-responder f))
 
+(defn with-ocsp-and-pebble
+  "Run function f with both OCSP responder and Pebble running.
+
+  Starts OCSP responder first, then configures Pebble to use it.
+  Certificates issued by Pebble will include our mock OCSP responder URL."
+  [f]
+  (with-ocsp-responder
+    (fn []
+      (let [pebble (requiring-resolve 'ol.clave.impl.pebble-harness/with-pebble)]
+        (pebble {:env {"PEBBLE_VA_NOSLEEP" "1"}
+                 :with-challtestsrv true
+                 :config-overrides {:pebble {:ocspResponderURL *ocsp-url*}}}
+                f)))))
+
 (defn ocsp-and-pebble-fixture
   "Combined fixture for both Pebble and OCSP responder.
 
   Starts Pebble with the OCSP responder URL configured so certificates
   issued by Pebble will point to our mock OCSP responder."
   [f]
-  (with-ocsp-responder
-    (fn []
-      ;; The Pebble fixture will be wrapped by the caller
-      ;; This fixture just ensures OCSP is available
-      (f))))
+  (with-ocsp-and-pebble f))

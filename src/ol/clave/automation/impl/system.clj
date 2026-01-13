@@ -723,6 +723,47 @@
       (storage/store! storage nil ocsp-key raw-bytes)
       (storage/store-string! storage nil meta-key meta-json))))
 
+(def ^:private revocation-reason-keywords
+  "Map RFC 5280 CRLReason codes to keyword names."
+  {0 :unspecified
+   1 :key-compromise
+   2 :ca-compromise
+   3 :affiliation-changed
+   4 :superseded
+   5 :cessation-of-operation
+   6 :certificate-hold
+   8 :remove-from-crl
+   9 :privilege-withdrawn
+   10 :aa-compromise})
+
+(defn- create-certificate-revoked-event
+  "Create a :certificate-revoked event from OCSP response.
+
+  Maps numeric reason code to keyword."
+  [domain ocsp-response]
+  {:type :certificate-revoked
+   :timestamp (java.time.Instant/now)
+   :data {:domain domain
+          :reason (get revocation-reason-keywords
+                       (:revocation-reason ocsp-response)
+                       :unspecified)
+          :revocation-time (:revocation-time ocsp-response)}})
+
+(defn- handle-ocsp-revocation!
+  "Handle certificate revocation detected via OCSP.
+
+  1. Emits :certificate-revoked event
+  2. Evicts revoked certificate from cache
+  3. Triggers automatic renewal"
+  [system domain bundle ocsp-response]
+  ;; Emit revocation event
+  (emit-event! system (create-certificate-revoked-event domain ocsp-response))
+  ;; Evict revoked certificate from cache
+  (cache/remove-certificate (:cache system) bundle)
+  ;; Submit obtain-certificate command for automatic renewal
+  (submit-command! system {:command :obtain-certificate
+                           :domain domain}))
+
 ;; =============================================================================
 ;; Command Execution
 ;; =============================================================================
@@ -760,24 +801,36 @@
   "Handle command completion - update cache and emit event.
 
   After successful certificate obtain/renewal, queues OCSP fetch if enabled.
-  After successful OCSP fetch, persists staple to storage."
+  After successful OCSP fetch, persists staple to storage.
+  If OCSP indicates revocation, triggers automatic renewal."
   [system cmd result]
-  ;; Update cache on success
-  (cache/handle-command-result (:cache system) cmd result)
-  ;; Emit event
-  (let [event (decisions/event-for-result cmd result)]
-    (emit-event! system event))
-  ;; Persist OCSP staple to storage after successful fetch
-  (when (and (= :fetch-ocsp (:command cmd))
-             (= :success (:status result)))
-    (store-ocsp-staple! system (:domain cmd) (:ocsp-response result)))
-  ;; Queue OCSP fetch after successful certificate obtain/renewal
-  (when (should-fetch-ocsp? system cmd result)
-    (let [bundle (:bundle result)
-          domain (:domain cmd)]
-      (submit-command! system {:command :fetch-ocsp
-                               :domain domain
-                               :bundle bundle}))))
+  ;; Handle OCSP revocation before regular processing
+  (if (and (= :fetch-ocsp (:command cmd))
+           (= :success (:status result))
+           (= :revoked (:status (:ocsp-response result))))
+    ;; Certificate revoked - handle specially
+    (handle-ocsp-revocation! system
+                             (:domain cmd)
+                             (:bundle cmd)
+                             (:ocsp-response result))
+    ;; Normal processing
+    (do
+      ;; Update cache on success
+      (cache/handle-command-result (:cache system) cmd result)
+      ;; Emit event
+      (let [event (decisions/event-for-result cmd result)]
+        (emit-event! system event))
+      ;; Persist OCSP staple to storage after successful fetch (only for :good status)
+      (when (and (= :fetch-ocsp (:command cmd))
+                 (= :success (:status result)))
+        (store-ocsp-staple! system (:domain cmd) (:ocsp-response result)))
+      ;; Queue OCSP fetch after successful certificate obtain/renewal
+      (when (should-fetch-ocsp? system cmd result)
+        (let [bundle (:bundle result)
+              domain (:domain cmd)]
+          (submit-command! system {:command :fetch-ocsp
+                                   :domain domain
+                                   :bundle bundle}))))))
 
 (defn- submit-command!
   "Submit a command for async execution with deduplication.

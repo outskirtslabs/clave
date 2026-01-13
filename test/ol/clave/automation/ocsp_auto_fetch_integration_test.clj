@@ -202,3 +202,62 @@
           ;; Clean up first system if still running
           (when (automation/started? system1)
             (automation/stop system1)))))))
+
+(deftest ocsp-revocation-triggers-automatic-certificate-renewal
+  (testing "OCSP revocation status triggers automatic certificate renewal"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          solver (make-http01-solver)
+          _ (ocsp-harness/clear-ocsp-responses!)
+          ;; Start with :good status
+          _ (ocsp-harness/set-ocsp-response! "*" :good)
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :http-client pebble/http-client-opts
+                  :skip-domain-validation true
+                  :solvers {:http-01 solver}
+                  :ocsp {:enabled true}}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Step 1-2: Obtain certificate
+          (automation/manage-domains system [domain])
+          ;; Wait for certificate-obtained and ocsp-stapled events
+          (let [initial-events (collect-events queue 5 15000)]
+            (is (some #(= :certificate-obtained (:type %)) initial-events)
+                "Should obtain certificate")
+            (is (some #(= :ocsp-stapled (:type %)) initial-events)
+                "Should fetch initial OCSP staple")
+            ;; Record the old certificate hash
+            (let [old-bundle (automation/lookup-cert system domain)
+                  old-hash (:hash old-bundle)]
+              (is (some? old-bundle) "Should have certificate in cache")
+              ;; Step 3: Configure OCSP responder to return revoked status
+              (ocsp-harness/clear-ocsp-responses!)
+              (ocsp-harness/set-ocsp-response! "*" {:revoked :unspecified})
+              ;; Step 4: Trigger OCSP refresh via maintenance
+              (binding [decisions/*ocsp-refresh-threshold* 0]
+                (automation/trigger-maintenance! system)
+                ;; Step 5-8: Wait for events - expect :certificate-revoked and :certificate-obtained
+                (let [renewal-events (collect-events queue 10 20000)
+                      event-types (mapv :type renewal-events)
+                      has-revoked? (some #(= :certificate-revoked %) event-types)
+                      has-obtained? (some #(= :certificate-obtained %) event-types)]
+                  ;; Step 5: Verify :certificate-revoked event is emitted
+                  (is has-revoked?
+                      (str "Should emit :certificate-revoked event. Got events: " event-types))
+                  ;; Step 6-7: Verify automatic renewal is triggered and new cert obtained
+                  (is has-obtained?
+                      (str "Should emit :certificate-obtained event for renewal. Got events: " event-types))
+                  ;; Verify the revoked event has expected data
+                  (when-let [revoked-evt (first (filter #(= :certificate-revoked (:type %)) renewal-events))]
+                    (is (= domain (get-in revoked-evt [:data :domain]))
+                        "Revoked event should have correct domain"))
+                  ;; Step 8: Verify old certificate is evicted from cache (new cert has different hash)
+                  (let [new-bundle (automation/lookup-cert system domain)]
+                    (is (some? new-bundle) "Should have new certificate in cache")
+                    (is (not= old-hash (:hash new-bundle))
+                        "New certificate should have different hash (old cert evicted)")))))))
+        (finally
+          (automation/stop system))))))

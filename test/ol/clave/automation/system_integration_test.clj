@@ -1755,3 +1755,69 @@
                           "New certificate should not be expired")))))))
           (finally
             (automation/stop system)))))))
+
+(deftest certificate-validation-warns-about-not-yet-valid-certs
+  (testing "System loads future-dated cert but doesn't attempt renewal"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "future.localhost"
+          issuer-key (config/issuer-key-from-url (pebble/uri))
+          now (java.time.Instant/now)
+          ;; Create not-yet-valid certificate (starts tomorrow, expires in 90 days)
+          future-cert (test-util/generate-test-certificate
+                       domain
+                       (.plus now 1 java.time.temporal.ChronoUnit/DAYS)
+                       (.plus now 90 java.time.temporal.ChronoUnit/DAYS))
+          cert-pem (:certificate-pem future-cert)
+          key-pem (:private-key-pem future-cert)
+          meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+          ;; Storage keys
+          cert-key (config/cert-storage-key issuer-key domain)
+          key-key (config/key-storage-key issuer-key domain)
+          meta-key (config/meta-storage-key issuer-key domain)]
+      ;; Store not-yet-valid certificate
+      (storage/store-string! storage-impl nil cert-key cert-pem)
+      (storage/store-string! storage-impl nil key-key key-pem)
+      (storage/store-string! storage-impl nil meta-key meta-json)
+      ;; Start automation system and check behavior
+      (let [config {:storage storage-impl
+                    :issuers [{:directory-url (pebble/uri)}]
+                    :http-client pebble/http-client-opts
+                    :skip-domain-validation true}
+            system (automation/start config)]
+        (try
+          (let [queue (automation/get-event-queue system)]
+            ;; Step 2: Verify certificate is loaded
+            (let [loaded-event (.poll queue 5 TimeUnit/SECONDS)]
+              (is (some? loaded-event) "Should receive certificate-loaded event")
+              (is (= :certificate-loaded (:type loaded-event))
+                  "Event should be :certificate-loaded"))
+            ;; Step 3: Verify the cert is in the cache but not-yet-valid
+            (let [bundle (automation/lookup-cert system domain)]
+              (is (some? bundle) "Certificate should be loaded into cache")
+              ;; Verify NotBefore is in the future
+              (is (.isAfter ^java.time.Instant (:not-before bundle) now)
+                  "Certificate NotBefore should be in the future")
+              (is (.isAfter ^java.time.Instant (:not-after bundle) now)
+                  "Certificate should not be expired"))
+            ;; Step 4: Trigger maintenance - should NOT try to renew a not-yet-valid cert
+            ;; (it's not expired, just not valid yet)
+            (automation/trigger-maintenance! system)
+            ;; Give some time for any events to be emitted
+            (Thread/sleep 1000)
+            ;; Collect any events
+            (let [events (loop [events []
+                                attempts 0]
+                           (if (>= attempts 5)
+                             events
+                             (let [evt (.poll queue 500 TimeUnit/MILLISECONDS)]
+                               (if evt
+                                 (recur (conj events evt) (inc attempts))
+                                 events))))
+                  renewal-event (first (filter #(= :certificate-renewed (:type %)) events))]
+              ;; System should NOT attempt to renew a not-yet-valid cert
+              ;; (it just needs to wait for NotBefore to pass)
+              (is (nil? renewal-event)
+                  "System should not renew a not-yet-valid cert")))
+          (finally
+            (automation/stop system)))))))

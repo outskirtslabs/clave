@@ -175,8 +175,9 @@
   "Load a certificate bundle from storage.
 
   Returns a bundle map or nil if loading fails.
+  Requires both valid certificate and private key.
   Verifies that the private key matches the certificate's public key.
-  Returns nil if the keypair verification fails."
+  Returns nil if any validation fails."
   [storage issuer-key domain]
   (try
     (let [cert-key (config/cert-storage-key issuer-key domain)
@@ -194,22 +195,28 @@
           private-key (parse-private-key-pem key-pem)
           ;; Verify that the private key matches the certificate's public key
           public-key (when first-cert (.getPublicKey first-cert))]
-      ;; Verify keypair before proceeding
-      (when (and private-key public-key)
-        (try
-          (crypto/verify-keypair private-key public-key)
-          (catch Exception e
-            ;; Key mismatch detected - log error and return nil
-            (println "ERROR: Key mismatch for domain" domain
-                     "- private key does not match certificate." (ex-message e))
-            (throw e))))
+      ;; Require both certificate and private key to be present
+      (when-not (and first-cert private-key)
+        (println "ERROR: Invalid certificate bundle for domain" domain
+                 "- missing" (cond
+                               (nil? first-cert) "certificate"
+                               (nil? private-key) "private key"
+                               :else "certificate and private key"))
+        (throw (ex-info "Invalid certificate bundle" {:domain domain})))
+      ;; Verify keypair matches
+      (try
+        (crypto/verify-keypair private-key public-key)
+        (catch Exception e
+          ;; Key mismatch detected - log error and return nil
+          (println "ERROR: Key mismatch for domain" domain
+                   "- private key does not match certificate." (ex-message e))
+          (throw e)))
       (let [;; Extract SANs from certificate
             sans (or (:names meta-json)
-                     (when first-cert
-                       (let [cn (.getSubjectX500Principal first-cert)]
-                         [(.toString cn)])))
-            not-before (when first-cert (.toInstant (.getNotBefore first-cert)))
-            not-after (when first-cert (.toInstant (.getNotAfter first-cert)))
+                     (let [cn (.getSubjectX500Principal first-cert)]
+                       [(.toString cn)]))
+            not-before (.toInstant (.getNotBefore first-cert))
+            not-after (.toInstant (.getNotAfter first-cert))
             ;; Load OCSP staple if it exists
             ocsp-staple (load-ocsp-staple storage issuer-key domain)]
         {:names sans

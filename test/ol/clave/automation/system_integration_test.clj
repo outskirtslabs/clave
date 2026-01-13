@@ -1373,3 +1373,52 @@
                     "Certificate should be removed from cache after revoke")))))
         (finally
           (automation/stop system))))))
+
+(deftest tos-acceptance-is-implicit-with-issuer-config
+  (testing "Terms of Service acceptance is implicit when issuer is configured"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          issuer-key (config/issuer-key-from-url (pebble/uri))
+          ;; Create an HTTP-01 solver for certificate issuance
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          ;; Configure automation with issuer - NO explicit ToS agreement
+          ;; ToS acceptance should be implicit when you configure an issuer
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)
+                             :email "test@example.com"}]
+                  :solvers {:http-01 solver}
+                  :http-client pebble/http-client-opts
+                  :skip-domain-validation true}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Step 3: Trigger account registration via manage-domains
+          (automation/manage-domains system [domain])
+          ;; Consume domain-added event
+          (.poll queue 5 TimeUnit/SECONDS)
+          ;; Wait for certificate-obtained event (proves full flow worked)
+          (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
+            (is (= :certificate-obtained (:type cert-event))
+                "Should receive :certificate-obtained event (proves ToS was accepted)"))
+          ;; Step 4: Verify ToS acceptance was sent to CA by checking account exists
+          ;; Account registration requires ToS acceptance - if this exists, ToS was sent
+          (let [account-private-key (config/account-private-key-storage-key issuer-key)
+                account-public-key (config/account-public-key-storage-key issuer-key)]
+            (is (storage/exists? storage-impl nil account-private-key)
+                "Account private key should exist in storage (proves registration happened)")
+            (is (storage/exists? storage-impl nil account-public-key)
+                "Account public key should exist in storage (proves registration happened)"))
+          ;; Step 5: Verify account was created successfully
+          ;; Certificate obtainment proves account creation succeeded
+          (is (some? (automation/lookup-cert system domain))
+              "Certificate should exist (proves full ACME flow with ToS worked)"))
+        (finally
+          (automation/stop system))))))

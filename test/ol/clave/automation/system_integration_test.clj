@@ -22,6 +22,8 @@
    [java.nio.file Files Paths]
    [java.nio.file.attribute FileAttribute PosixFilePermissions]
    [java.security.cert X509Certificate]
+   [java.time Instant]
+   [java.time.temporal ChronoUnit]
    [java.util.concurrent TimeUnit]))
 
 ;; Use pebble-challenge-fixture because some tests need the challenge test server
@@ -1821,3 +1823,101 @@
                   "System should not renew a not-yet-valid cert")))
           (finally
             (automation/stop system)))))))
+
+(deftest config-fn-exception-skips-domain-without-crash
+  (testing "Maintenance loop skips domain when config-fn throws exception"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          ;; Two domains: X will throw, Y will succeed
+          domain-x "throwing.localhost"
+          domain-y "normal-ex.localhost"
+          issuer-key (config/issuer-key-from-url (pebble/uri))
+          ;; Create solver for renewal
+          solver {:present (fn [_lease chall account-key]
+                             (let [token (::specs/token chall)
+                                   key-auth (challenge/key-authorization chall account-key)]
+                               (pebble/challtestsrv-add-http01 token key-auth)
+                               {:token token}))
+                  :cleanup (fn [_lease _chall state]
+                             (pebble/challtestsrv-del-http01 (:token state))
+                             nil)}
+          ;; Generate test certificates (self-signed, valid for 90 days)
+          now (Instant/now)
+          not-before (.minus now 10 ChronoUnit/DAYS)
+          not-after (.plus now 80 ChronoUnit/DAYS)]
+      ;; Pre-store certificates for both domains
+      (doseq [domain [domain-x domain-y]]
+        (let [test-cert (test-util/generate-test-certificate domain not-before not-after)
+              cert-pem (:certificate-pem test-cert)
+              key-pem (:private-key-pem test-cert)
+              meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+              cert-key (config/cert-storage-key issuer-key domain)
+              key-key (config/key-storage-key issuer-key domain)
+              meta-key (config/meta-storage-key issuer-key domain)]
+          (storage/store-string! storage-impl nil cert-key cert-pem)
+          (storage/store-string! storage-impl nil key-key key-pem)
+          (storage/store-string! storage-impl nil meta-key meta-json)))
+      ;; Config-fn that throws exception for domain X
+      (let [throwing-config-fn (fn [domain]
+                                 (when (= domain domain-x)
+                                   (throw (ex-info "Config-fn test exception"
+                                                   {:domain domain})))
+                                 ;; Return nil for all other domains (use global config)
+                                 nil)]
+        ;; Use high renewal threshold to force renewal decision
+        (binding [decisions/*renewal-threshold* 1.01]
+          ;; Capture println output to verify warning
+          (let [captured-output (java.io.StringWriter.)]
+            (binding [*out* captured-output]
+              (let [config {:storage storage-impl
+                            :issuers [{:directory-url (pebble/uri)}]
+                            :solvers {:http-01 solver}
+                            :http-client pebble/http-client-opts
+                            :skip-domain-validation true
+                            :config-fn throwing-config-fn}
+                    system (automation/start config)]
+                (try
+                  (let [queue (automation/get-event-queue system)]
+                    ;; Consume the initial certificate-loaded events (2 certs)
+                    (dotimes [_ 2]
+                      (.poll queue 5 TimeUnit/SECONDS))
+                    ;; Trigger maintenance loop
+                    (automation/trigger-maintenance! system)
+                    ;; Wait for processing
+                    (Thread/sleep 2000)
+                    ;; Collect events from maintenance
+                    (let [events (loop [events []
+                                        attempts 0]
+                                   (if (>= attempts 10)
+                                     events
+                                     (let [evt (.poll queue 2 TimeUnit/SECONDS)]
+                                       (if evt
+                                         (recur (conj events evt) (inc attempts))
+                                         events))))
+                          ;; Get the captured output as a string
+                          output-str (.toString captured-output)
+                          ;; Check which domains got renewed or had events
+                          event-domains (->> events
+                                             (map #(get-in % [:data :domain]))
+                                             (remove nil?)
+                                             set)]
+                      ;; Verify warning was logged for exception
+                      (is (str/includes? output-str "Error in maintenance cycle")
+                          "Should log error about config-fn exception")
+                      (is (str/includes? output-str domain-x)
+                          "Error message should mention the throwing domain")
+                      ;; Verify domain Y was processed (renewal event or some activity)
+                      (is (or (contains? event-domains domain-y)
+                              (some #(= domain-y (get-in % [:data :domain])) events))
+                          "Domain Y should be processed despite X's exception")
+                      ;; Domain X should NOT have any successful events
+                      ;; (it should have been skipped due to exception)
+                      (is (not (some #(and (= :certificate-renewed (:type %))
+                                           (= domain-x (get-in % [:data :domain])))
+                                     events))
+                          "Domain X should not have renewal event due to exception")
+                      ;; Verify system is still operational (no crash)
+                      (is (automation/started? system)
+                          "System should still be running after config-fn exception")))
+                  (finally
+                    (automation/stop system)))))))))))

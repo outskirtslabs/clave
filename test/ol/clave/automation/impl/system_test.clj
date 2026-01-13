@@ -131,3 +131,79 @@
             "Consumer should have processed test events before shutdown"))
       ;; Cleanup
       (.join consumer-thread 1000))))
+
+;; =============================================================================
+;; Thread Interrupt Handling Tests
+;; =============================================================================
+
+;; Access private function for testing
+(def start-maintenance-loop! #'system/start-maintenance-loop!)
+
+(deftest interrupt-during-sleep-is-handled-gracefully
+  (testing "InterruptedException during Thread/sleep is caught and loop continues"
+    ;; Step 1: Create minimal system for maintenance loop
+    (let [shutdown? (atom false)
+          ;; Create system with minimal required fields
+          sys {:shutdown? shutdown?
+               :started? (atom true)
+               :maintenance-thread (atom nil)
+               :cache (atom {:certs {} :index {}})
+               :managed-domains (atom #{})
+               :config {:issuers []}
+               :storage nil
+               :executor (Executors/newVirtualThreadPerTaskExecutor)
+               :in-flight (java.util.concurrent.ConcurrentHashMap.)}]
+      ;; Override maintenance interval for fast testing
+      (binding [system/*maintenance-interval-ms* 100
+                system/*maintenance-jitter-ms* 10]
+        ;; Step 2: Start maintenance loop
+        (let [thread (start-maintenance-loop! sys)]
+          ;; Give loop time to start
+          (Thread/sleep 50)
+          ;; Step 3: Interrupt the thread during sleep
+          (.interrupt thread)
+          ;; Step 4: Give time for loop to handle interrupt and continue
+          (Thread/sleep 150)
+          ;; Verify loop is still running (thread is alive)
+          (is (.isAlive thread)
+              "Thread should still be alive after interrupt (loop continues)")
+          ;; Step 5: Clean shutdown
+          (reset! shutdown? true)
+          (.interrupt thread)
+          ;; Wait for thread to exit
+          (.join thread 1000)
+          ;; Verify graceful exit
+          (is (not (.isAlive thread))
+              "Thread should exit after shutdown"))))))
+
+(deftest interrupt-during-sleep-allows-quick-shutdown
+  (testing "Interrupt allows immediate shutdown check"
+    ;; This verifies that interrupt during a long sleep allows quick response to shutdown
+    (let [shutdown? (atom false)
+          sys {:shutdown? shutdown?
+               :started? (atom true)
+               :maintenance-thread (atom nil)
+               :cache (atom {:certs {} :index {}})
+               :managed-domains (atom #{})
+               :config {:issuers []}
+               :storage nil
+               :executor (Executors/newVirtualThreadPerTaskExecutor)
+               :in-flight (java.util.concurrent.ConcurrentHashMap.)}]
+      ;; Use long sleep interval
+      (binding [system/*maintenance-interval-ms* 10000
+                system/*maintenance-jitter-ms* 0]
+        (let [thread (start-maintenance-loop! sys)]
+          ;; Give loop time to start sleeping
+          (Thread/sleep 100)
+          ;; Set shutdown and interrupt
+          (reset! shutdown? true)
+          (let [interrupt-time (System/currentTimeMillis)]
+            (.interrupt thread)
+            ;; Wait for exit
+            (.join thread 2000)
+            (let [elapsed (- (System/currentTimeMillis) interrupt-time)]
+              ;; Should exit quickly, not wait for full 10s sleep
+              (is (< elapsed 1000)
+                  (str "Thread should exit quickly after interrupt, took " elapsed "ms"))
+              (is (not (.isAlive thread))
+                  "Thread should be dead after shutdown"))))))))

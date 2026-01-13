@@ -236,6 +236,22 @@
         ts-str (str timestamp)]
     (str "keys/" safe-domain ".compromised." ts-str)))
 
+(defn ari-storage-key
+  "Generate storage key for ARI (ACME Renewal Information) data.
+
+  Format: `certificates/{issuer-key}/{domain}/{domain}.ari.json`
+
+  The ARI data is stored as JSON containing suggested-window, selected-time,
+  and retry-after.
+
+  | key | description |
+  |-----|-------------|
+  | `issuer-key` | Issuer identifier (hostname from directory URL) |
+  | `domain` | Primary domain name |"
+  [issuer-key domain]
+  (let [safe-domain (safe-storage-key domain)]
+    (str "certificates/" issuer-key "/" safe-domain "/" safe-domain ".ari.json")))
+
 (defn select-chain
   "Select a certificate chain based on preference.
 

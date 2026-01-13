@@ -214,7 +214,7 @@
 
 (def ^:private fast-commands
   "Commands that complete quickly (no ACME protocol interaction)."
-  #{:fetch-ocsp :check-ari})
+  #{:fetch-ocsp :check-ari :fetch-ari})
 
 (defn fast-command?
   "Check if a command is fast (no ACME protocol interaction).
@@ -377,6 +377,20 @@
       ;; OCSP fetch failed
       (and (not success?) (= :fetch-ocsp command))
       {:type :ocsp-failed
+       :timestamp now
+       :data {:domain domain
+              :error (:message result)}}
+
+      ;; ARI fetched successfully
+      (and success? (= :fetch-ari command))
+      {:type :ari-fetched
+       :timestamp now
+       :data {:domain domain
+              :selected-time (get-in result [:ari-data :selected-time])}}
+
+      ;; ARI fetch failed
+      (and (not success?) (= :fetch-ari command))
+      {:type :ari-failed
        :timestamp now
        :data {:domain domain
               :error (:message result)}}

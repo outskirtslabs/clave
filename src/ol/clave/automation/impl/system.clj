@@ -784,6 +784,70 @@
                              :domain domain})))
 
 ;; =============================================================================
+;; ARI Fetching
+;; =============================================================================
+
+(defn- fetch-ari!
+  "Fetch ARI (ACME Renewal Information) for a certificate.
+
+  Creates a session with the issuer and fetches renewal info.
+  Returns the ARI data with selected-time calculated.
+
+  Returns {:status :success :ari-data {...}} on success.
+  Returns {:status :error :message ...} on failure."
+  [system cmd]
+  (let [bundle (:bundle cmd)
+        certs (:certificate bundle)
+        ^java.security.cert.X509Certificate cert (first certs)
+        issuer-key (:issuer-key bundle)
+        issuers (get-in system [:config :issuers])
+        issuer-config (or (first (filter #(= issuer-key
+                                              (or (:issuer-key %)
+                                                  (config/issuer-key-from-url (:directory-url %))))
+                                         issuers))
+                          (first issuers))]
+    (try
+      (let [session (create-acme-session system issuer-config)
+            [_session renewal-info] (cmd/get-renewal-info (lease/background) session cert)
+            suggested-window (:suggested-window renewal-info)
+            ;; Convert suggested-window from {:start :end} to [start end] format
+            window-vec [(:start suggested-window) (:end suggested-window)]
+            ;; Calculate a random selected-time within the window
+            ;; Use the cert hash as seed for deterministic selection
+            seed (hash (:hash bundle))
+            selected-time (decisions/calculate-ari-renewal-time
+                           {:suggested-window window-vec}
+                           seed)
+            ari-data {:suggested-window window-vec
+                      :selected-time selected-time
+                      :retry-after (when-let [retry-ms (:retry-after-ms renewal-info)]
+                                     (.plusMillis (Instant/now) retry-ms))}]
+        {:status :success
+         :ari-data ari-data})
+      (catch Exception e
+        {:status :error
+         :message (ex-message e)
+         :reason (decisions/classify-error e)}))))
+
+(defn- store-ari-data!
+  "Store ARI data to persistent storage.
+
+  Stores the ARI data as JSON containing suggested-window, selected-time,
+  and retry-after."
+  [system domain ari-data]
+  (let [storage (:storage system)
+        issuers (get-in system [:config :issuers])
+        issuer-key (or (get-in (first issuers) [:issuer-key])
+                       (config/issuer-key-from-url (get-in (first issuers) [:directory-url])))
+        ari-key (config/ari-storage-key issuer-key domain)
+        [start end] (:suggested-window ari-data)
+        ari-json (json/write-str {:suggested-window-start (str start)
+                                  :suggested-window-end (str end)
+                                  :selected-time (str (:selected-time ari-data))
+                                  :retry-after (some-> (:retry-after ari-data) str)})]
+    (storage/store-string! storage nil ari-key ari-json)))
+
+;; =============================================================================
 ;; Command Execution
 ;; =============================================================================
 
@@ -794,6 +858,7 @@
     :obtain-certificate (obtain-certificate! system cmd)
     :renew-certificate (renew-certificate! system cmd)
     :fetch-ocsp (fetch-ocsp! system cmd)
+    :fetch-ari (fetch-ari! system cmd)
     {:status :error :message "Unknown command"}))
 
 (defn- should-fetch-ocsp?
@@ -816,11 +881,30 @@
          bundle
          (not (decisions/short-lived-cert? bundle)))))
 
+(defn- should-fetch-ari?
+  "Check if ARI should be fetched after certificate operation.
+
+  Returns true when:
+  - Command was :obtain-certificate or :renew-certificate
+  - Result status is :success
+  - ARI is enabled in config"
+  [system cmd result]
+  (let [cmd-type (:command cmd)
+        success? (= :success (:status result))
+        config (:config system)
+        ari-enabled? (get-in config [:ari :enabled] false)
+        bundle (:bundle result)]
+    (and success?
+         (contains? #{:obtain-certificate :renew-certificate} cmd-type)
+         ari-enabled?
+         bundle)))
+
 (defn- on-command-complete!
   "Handle command completion - update cache and emit event.
 
-  After successful certificate obtain/renewal, queues OCSP fetch if enabled.
+  After successful certificate obtain/renewal, queues OCSP and ARI fetch if enabled.
   After successful OCSP fetch, persists staple to storage.
+  After successful ARI fetch, persists ARI data to storage.
   If OCSP indicates revocation, triggers automatic renewal."
   [system cmd result]
   ;; Handle OCSP revocation before regular processing
@@ -843,11 +927,22 @@
       (when (and (= :fetch-ocsp (:command cmd))
                  (= :success (:status result)))
         (store-ocsp-staple! system (:domain cmd) (:ocsp-response result)))
+      ;; Persist ARI data to storage after successful fetch
+      (when (and (= :fetch-ari (:command cmd))
+                 (= :success (:status result)))
+        (store-ari-data! system (:domain cmd) (:ari-data result)))
       ;; Queue OCSP fetch after successful certificate obtain/renewal
       (when (should-fetch-ocsp? system cmd result)
         (let [bundle (:bundle result)
               domain (:domain cmd)]
           (submit-command! system {:command :fetch-ocsp
+                                   :domain domain
+                                   :bundle bundle})))
+      ;; Queue ARI fetch after successful certificate obtain/renewal
+      (when (should-fetch-ari? system cmd result)
+        (let [bundle (:bundle result)
+              domain (:domain cmd)]
+          (submit-command! system {:command :fetch-ari
                                    :domain domain
                                    :bundle bundle}))))))
 

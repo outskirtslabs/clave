@@ -119,6 +119,21 @@
              (assoc-in cache [:certs hash :ocsp-staple] ocsp-response)
              cache))))
 
+(defn update-ari-data
+  "Update ARI data in existing cached bundle.
+
+  | key | description |
+  |-----|-------------|
+  | `cache-atom` | Atom containing {:certs {} :index {} :capacity nil} |
+  | `hash` | Hash of the certificate to update |
+  | `ari-data` | ARI data with `:suggested-window`, `:selected-time`, `:retry-after` |"
+  [cache-atom hash ari-data]
+  (swap! cache-atom
+         (fn [cache]
+           (if (get-in cache [:certs hash])
+             (assoc-in cache [:certs hash :ari-data] ari-data)
+             cache))))
+
 (defn newer-than-cache?
   "Check if a stored certificate is newer than the cached version.
 
@@ -235,5 +250,10 @@
       (update-ocsp-staple cache-atom
                           (:hash (:bundle cmd))
                           (:ocsp-response result))
+
+      :fetch-ari
+      (update-ari-data cache-atom
+                       (:hash (:bundle cmd))
+                       (:ari-data result))
 
       nil)))

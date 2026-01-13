@@ -144,6 +144,33 @@
               (catch Exception _
                 (.generatePrivate (KeyFactory/getInstance "Ed25519") key-spec)))))))))
 
+(defn- load-ocsp-staple
+  "Load OCSP staple from storage if it exists.
+
+  Returns the OCSP staple map or nil if not found."
+  [storage issuer-key domain]
+  (try
+    (let [ocsp-key (config/ocsp-storage-key issuer-key domain)]
+      (when (storage/exists? storage nil ocsp-key)
+        (let [ocsp-bytes (storage/load storage nil ocsp-key)
+              meta-key (str ocsp-key ".meta")
+              meta-json (when (storage/exists? storage nil meta-key)
+                          (try
+                            (json/read-str (storage/load-string storage nil meta-key)
+                                           :key-fn keyword)
+                            (catch Exception _ nil)))]
+          (when (and ocsp-bytes (pos? (alength ^bytes ocsp-bytes)))
+            {:raw-bytes ocsp-bytes
+             :this-update (when meta-json
+                            (some-> (:this-update meta-json)
+                                    java.time.Instant/parse))
+             :next-update (when meta-json
+                            (some-> (:next-update meta-json)
+                                    java.time.Instant/parse))
+             :status (or (some-> (:status meta-json) keyword) :good)}))))
+    (catch Exception _
+      nil)))
+
 (defn- load-certificate-bundle
   "Load a certificate bundle from storage.
 
@@ -169,13 +196,16 @@
                      (let [cn (.getSubjectX500Principal first-cert)]
                        [(.toString cn)])))
           not-before (when first-cert (.toInstant (.getNotBefore first-cert)))
-          not-after (when first-cert (.toInstant (.getNotAfter first-cert)))]
+          not-after (when first-cert (.toInstant (.getNotAfter first-cert)))
+          ;; Load OCSP staple if it exists
+          ocsp-staple (load-ocsp-staple storage issuer-key domain)]
       {:names sans
        :certificate certs
        :private-key private-key
        :not-before not-before
        :not-after not-after
        :issuer-key issuer-key
+       :ocsp-staple ocsp-staple
        :hash (cache/hash-certificate (mapv (fn [^java.security.cert.X509Certificate c]
                                              (.getEncoded c))
                                            certs))
@@ -674,6 +704,25 @@
         responder-overrides (get-in config [:ocsp :responder-overrides])]
     (ocsp/fetch-ocsp-for-bundle bundle http-opts responder-overrides)))
 
+(defn- store-ocsp-staple!
+  "Store OCSP staple to persistent storage.
+
+  Stores both the raw DER-encoded bytes and metadata (timestamps, status)."
+  [system domain ocsp-response]
+  (let [storage (:storage system)
+        issuers (get-in system [:config :issuers])
+        issuer-key (or (get-in (first issuers) [:issuer-key])
+                       (config/issuer-key-from-url (get-in (first issuers) [:directory-url])))
+        ocsp-key (config/ocsp-storage-key issuer-key domain)
+        meta-key (str ocsp-key ".meta")
+        raw-bytes (:raw-bytes ocsp-response)
+        meta-json (json/write-str {:status (name (:status ocsp-response))
+                                   :this-update (some-> (:this-update ocsp-response) str)
+                                   :next-update (some-> (:next-update ocsp-response) str)})]
+    (when raw-bytes
+      (storage/store! storage nil ocsp-key raw-bytes)
+      (storage/store-string! storage nil meta-key meta-json))))
+
 ;; =============================================================================
 ;; Command Execution
 ;; =============================================================================
@@ -710,13 +759,18 @@
 (defn- on-command-complete!
   "Handle command completion - update cache and emit event.
 
-  After successful certificate obtain/renewal, queues OCSP fetch if enabled."
+  After successful certificate obtain/renewal, queues OCSP fetch if enabled.
+  After successful OCSP fetch, persists staple to storage."
   [system cmd result]
   ;; Update cache on success
   (cache/handle-command-result (:cache system) cmd result)
   ;; Emit event
   (let [event (decisions/event-for-result cmd result)]
     (emit-event! system event))
+  ;; Persist OCSP staple to storage after successful fetch
+  (when (and (= :fetch-ocsp (:command cmd))
+             (= :success (:status result)))
+    (store-ocsp-staple! system (:domain cmd) (:ocsp-response result)))
   ;; Queue OCSP fetch after successful certificate obtain/renewal
   (when (should-fetch-ocsp? system cmd result)
     (let [bundle (:bundle result)

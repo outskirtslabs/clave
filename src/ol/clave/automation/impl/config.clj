@@ -205,6 +205,21 @@
   [issuer-key]
   (str "accounts/" issuer-key "/account.pub"))
 
+(defn ocsp-storage-key
+  "Generate storage key for an OCSP staple file.
+
+  Format: `certificates/{issuer-key}/{domain}/{domain}.ocsp`
+
+  The OCSP staple is stored as raw DER-encoded bytes.
+
+  | key | description |
+  |-----|-------------|
+  | `issuer-key` | Issuer identifier (hostname from directory URL) |
+  | `domain` | Primary domain name |"
+  [issuer-key domain]
+  (let [safe-domain (safe-storage-key domain)]
+    (str "certificates/" issuer-key "/" safe-domain "/" safe-domain ".ocsp")))
+
 (defn select-chain
   "Select a certificate chain based on preference.
 

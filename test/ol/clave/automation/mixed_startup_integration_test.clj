@@ -105,10 +105,15 @@
                     :skip-domain-validation true}
             system (automation/start config)]
         (try
-          (let [queue (automation/get-event-queue system)]
+          (let [queue (automation/get-event-queue system)
+              ;; Collect ALL events during initial phase - renewals may happen
+              ;; quickly after startup, especially for expired certs
+              all-initial-events (atom [])]
             ;; Step 6-9: Verify all three certificates are loaded
             ;; Collect initial events (may have duplicates due to implementation)
+            ;; Keep ALL events, not just loaded, because renewal may happen fast
             (let [initial-events (collect-events queue 3000)
+                  _ (reset! all-initial-events initial-events)
                   loaded-events (filter #(= :certificate-loaded (:type %)) initial-events)
                   ;; Dedupe by domain since there may be duplicate events
                   loaded-domains (set (map #(get-in % [:data :domain]) loaded-events))]
@@ -141,14 +146,24 @@
                     "Certificate C should not be expired")))
             ;; Step 10: Wait for automatic renewal of expired cert B
             ;; The maintenance loop runs immediately and will detect expired certs
-            (let [renewal-events (loop [attempts 0
-                                        events []]
-                                   (if (>= attempts 60)
-                                     events
-                                     (let [evt (.poll queue 1 TimeUnit/SECONDS)]
-                                       (if (and evt (= :certificate-renewed (:type evt)))
-                                         (recur (inc attempts) (conj events evt))
-                                         (recur (inc attempts) events)))))]
+            ;; Include any renewal events that happened during initial event collection
+            (let [early-renewals (filter #(= :certificate-renewed (:type %)) @all-initial-events)
+                  early-renewed-domains (set (map #(get-in % [:data :domain]) early-renewals))
+                  ;; If we already got the expired domain renewal, we're done
+                  ;; Otherwise collect more events until we get it or timeout
+                  renewal-events (if (contains? early-renewed-domains expired-domain)
+                                   early-renewals
+                                   (loop [deadline (+ (System/currentTimeMillis) 90000)
+                                          renewal-events early-renewals]
+                                     (let [renewed-domains (set (map #(get-in % [:data :domain]) renewal-events))]
+                                       ;; Exit early if we've seen the expired domain renewed
+                                       (if (or (>= (System/currentTimeMillis) deadline)
+                                               (contains? renewed-domains expired-domain))
+                                         renewal-events
+                                         (let [evt (.poll queue 500 TimeUnit/MILLISECONDS)]
+                                           (if (and evt (= :certificate-renewed (:type evt)))
+                                             (recur deadline (conj renewal-events evt))
+                                             (recur deadline renewal-events)))))))]
               ;; Expect at least one renewal (expired cert B)
               (is (>= (count renewal-events) 1)
                   "Should have at least one certificate-renewed event")

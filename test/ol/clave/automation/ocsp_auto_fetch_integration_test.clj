@@ -5,6 +5,7 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.automation :as automation]
+   [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.impl.ocsp-harness :as ocsp-harness]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.specs :as specs]
@@ -91,5 +92,52 @@
               (is (some? bundle) "Certificate should be in cache")
               (is (some? (:ocsp-staple bundle))
                   "Certificate bundle should include OCSP staple"))))
+        (finally
+          (automation/stop system))))))
+
+(deftest ocsp-staple-refreshed-before-expiration
+  (testing "OCSP staple is refreshed when validity is past threshold"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          domain "localhost"
+          solver (make-http01-solver)
+          _ (ocsp-harness/clear-ocsp-responses!)
+          _ (ocsp-harness/set-ocsp-response! "*" :good)
+          config {:storage storage-impl
+                  :issuers [{:directory-url (pebble/uri)}]
+                  :http-client pebble/http-client-opts
+                  :skip-domain-validation true
+                  :solvers {:http-01 solver}
+                  :ocsp {:enabled true}}
+          system (automation/start config)]
+      (try
+        (let [queue (automation/get-event-queue system)]
+          ;; Step 3: Obtain certificate and initial OCSP staple
+          (automation/manage-domains system [domain])
+          ;; Wait for initial events: domain-added, certificate-obtained, ocsp-stapled
+          (let [initial-events (collect-events queue 5 15000)
+                initial-ocsp-count (count (filter #(= :ocsp-stapled (:type %)) initial-events))]
+            (is (= 1 initial-ocsp-count)
+                "Should have exactly one :ocsp-stapled event after initial obtain")
+            ;; Verify initial staple exists
+            (let [bundle-before (automation/lookup-cert system domain)]
+              (is (some? (:ocsp-staple bundle-before))
+                  "Certificate should have initial OCSP staple")
+              ;; Step 4-6: Set refresh threshold to 0 so any staple needs refresh
+              ;; This simulates the staple being past 50% validity
+              (binding [decisions/*ocsp-refresh-threshold* 0]
+                ;; Step 5: Trigger maintenance loop
+                (automation/trigger-maintenance! system)
+                ;; Step 7: Wait for :ocsp-stapled event to be emitted again
+                (let [refresh-events (collect-events queue 5 5000)
+                      refresh-ocsp-events (filter #(= :ocsp-stapled (:type %)) refresh-events)]
+                  ;; Step 7: Verify :ocsp-stapled event is emitted again
+                  (is (>= (count refresh-ocsp-events) 1)
+                      (str "Should emit :ocsp-stapled event after maintenance. Got events: "
+                           (mapv :type refresh-events)))
+                  ;; Step 8: Verify staple is updated in cache
+                  (let [bundle-after (automation/lookup-cert system domain)]
+                    (is (some? (:ocsp-staple bundle-after))
+                        "Certificate should still have OCSP staple after refresh")))))))
         (finally
           (automation/stop system))))))

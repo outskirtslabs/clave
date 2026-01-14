@@ -67,10 +67,6 @@
   "Key used for storage validation on startup."
   ".clave-storage-test")
 
-(def ^:private system-lock-name
-  "Lock name used to prevent multiple systems on same storage."
-  "clave-system")
-
 (def ^:private storage-test-value
   "Value used for storage validation."
   (.getBytes "clave-storage-test" "UTF-8"))
@@ -109,7 +105,6 @@
    :event-queue (atom nil)  ;; Lazily created
    :shutdown? (atom false)
    :started? (atom false)
-   :holds-lock? (atom false)  ;; Tracks if we hold the system lock
    :executor (Executors/newVirtualThreadPerTaskExecutor)
    :fast-semaphore (Semaphore. *fast-semaphore-permits*)
    :slow-semaphore (Semaphore. *slow-semaphore-permits*)
@@ -415,31 +410,24 @@
   "Starts the automation system.
 
   1. Validates configuration
-  2. Acquires system lock (prevents double start)
+  2. Validates storage is functional
   3. Initializes job queue (executor, semaphores, in-flight map)
-  4. Validates storage is functional
-  5. Loads existing certificates from storage (synchronous)
-  6. Populates cache with loaded certificates
-  7. Starts maintenance loop (async)
-  8. Returns system handle
+  4. Loads existing certificates from storage (synchronous)
+  5. Populates cache with loaded certificates
+  6. Starts maintenance loop (async)
+  7. Returns system handle
 
-  Throws if another system is already running on the same storage."
+  Multiple instances can safely share the same storage. Coordination
+  is handled via domain-level distributed locks during certificate
+  operations."
   [config]
   (when-not (:storage config)
     (throw (ex-info "Storage is required" {:type :config-error})))
   ;; Validate storage first
   (validate-storage! (:storage config))
-  ;; Try to acquire system lock to prevent double start
-  (let [storage (:storage config)]
-    (when-not (storage/try-lock! storage nil system-lock-name)
-      (throw (ex-info "Another automation system is already running on this storage"
-                      {:type :already-started
-                       :storage storage}))))
   ;; Merge with defaults
   (let [merged-config (merge-with-defaults config)
         system (create-system-state merged-config)
-        ;; Mark that we hold the lock
-        _ (reset! (:holds-lock? system) true)
         ;; Initialize event queue before loading certificates
         ;; so events can be emitted during loading
         _ (reset! (:event-queue system)
@@ -462,8 +450,7 @@
   2. Stops accepting new job submissions
   3. Waits for in-flight jobs to complete (with timeout)
   4. Shuts down executor
-  5. Closes event queue
-  6. Releases system lock"
+  5. Closes event queue"
   [system]
   (when system
     ;; Signal shutdown
@@ -481,11 +468,6 @@
     ;; Close event queue if created
     (when-let [queue @(:event-queue system)]
       (.offer ^LinkedBlockingQueue queue :ol.clave/shutdown))
-    ;; Release system lock if we hold it
-    (when-let [holds-lock? (:holds-lock? system)]
-      (when @holds-lock?
-        (storage/unlock! (:storage system) nil system-lock-name)
-        (reset! holds-lock? false)))
     nil))
 
 (defn started?
@@ -590,6 +572,14 @@
   [issuer-key]
   (str "account-lock-" issuer-key))
 
+(defn- domain-cert-lock-key
+  "Returns the storage lock key for domain certificate operations.
+
+  Used to prevent multiple instances from simultaneously obtaining or
+  renewing certificates for the same domain."
+  [domain]
+  (str "domain-cert-lock-" (storage/safe-key domain)))
+
 (defn- create-acme-session
   "Create an ACME session for the given issuer config.
 
@@ -687,8 +677,8 @@
     (store-certificate! system domain issuer-key chain-pem key-pem [domain])
     {:status :success :bundle bundle}))
 
-(defn- obtain-certificate!
-  "Execute the full ACME certificate obtain workflow.
+(defn- do-obtain-certificate!
+  "Internal function to execute the ACME workflow (without locking).
 
   Tries each configured issuer in order until one succeeds.
   Returns a result map with :status (:success or :error) and :bundle on success."
@@ -722,8 +712,39 @@
             ;; Try next issuer
             (recur (rest remaining-issuers) result)))))))
 
-(defn- renew-certificate!
-  "Execute the certificate renewal workflow.
+(defn- obtain-certificate!
+  "Execute the full ACME certificate obtain workflow with distributed locking.
+
+  Uses storage-based locking with double-check pattern to prevent multiple
+  instances from obtaining the same certificate simultaneously.
+
+  1. Acquire domain lock
+  2. Double-check: if certificate already in storage, load and return it
+  3. Otherwise, execute the ACME workflow
+  4. Release lock
+
+  Returns a result map with :status (:success or :error) and :bundle on success."
+  [system cmd]
+  (let [domain (:domain cmd)
+        storage (:storage system)
+        lock-key (domain-cert-lock-key domain)]
+    ;; Acquire distributed lock for this domain
+    (storage/lock! storage nil lock-key)
+    (try
+      ;; Double-check: another instance may have obtained cert while we waited
+      (if-let [existing-bundle (load-cert-from-storage-for-domain system domain)]
+        ;; Certificate was obtained by another instance - cache and return it
+        (do
+          (cache/cache-certificate (:cache system) existing-bundle)
+          {:status :success :bundle existing-bundle})
+        ;; No certificate found - proceed with ACME workflow
+        (do-obtain-certificate! system cmd))
+      (finally
+        ;; Always release the lock
+        (storage/unlock! storage nil lock-key)))))
+
+(defn- do-renew-certificate!
+  "Internal function to execute the renewal workflow (without locking).
 
   Similar to obtain but reuses domain info from the existing bundle.
   When `:key-reuse` is true in config, reuses the existing private key.
@@ -766,6 +787,42 @@
           (if (= :success (:status result))
             result
             (recur (rest remaining-issuers) result)))))))
+
+(defn- renew-certificate!
+  "Execute the certificate renewal workflow with distributed locking.
+
+  Uses storage-based locking to prevent multiple instances from renewing
+  the same certificate simultaneously.
+
+  1. Acquire domain lock
+  2. Double-check: if a newer certificate is in storage, load and use it
+  3. Otherwise, execute the renewal workflow
+  4. Release lock
+
+  Returns a result map with :status (:success or :error) and :bundle on success."
+  [system cmd]
+  (let [domain (:domain cmd)
+        old-bundle (:bundle cmd)
+        storage (:storage system)
+        lock-key (domain-cert-lock-key domain)]
+    ;; Acquire distributed lock for this domain
+    (storage/lock! storage nil lock-key)
+    (try
+      ;; Double-check: another instance may have renewed while we waited
+      (if-let [stored-bundle (load-cert-from-storage-for-domain system domain)]
+        ;; Check if the stored cert is newer (different hash = newer cert)
+        (if (and old-bundle (not= (:hash stored-bundle) (:hash old-bundle)))
+          ;; A newer certificate exists - cache and return it
+          (do
+            (cache/cache-certificate (:cache system) stored-bundle)
+            {:status :success :bundle stored-bundle})
+          ;; Same cert or no old bundle - proceed with renewal
+          (do-renew-certificate! system cmd))
+        ;; No certificate found (shouldn't happen for renewal) - proceed anyway
+        (do-renew-certificate! system cmd))
+      (finally
+        ;; Always release the lock
+        (storage/unlock! storage nil lock-key)))))
 
 ;; =============================================================================
 ;; OCSP Fetching
@@ -845,11 +902,14 @@
   1. Emits :certificate-revoked event
   2. If key compromise, archives the compromised key
   3. Evicts revoked certificate from cache
-  4. Triggers automatic renewal"
+  4. Deletes revoked certificate from storage
+  5. Triggers automatic renewal"
   [system domain bundle ocsp-response]
   (let [reason-code (:revocation-reason ocsp-response)
         key-compromise? (= 1 reason-code)
-        timestamp (java.time.Instant/now)]
+        timestamp (java.time.Instant/now)
+        storage (:storage system)
+        issuer-key (:issuer-key bundle)]
     ;; Emit revocation event
     (emit-event! system (create-certificate-revoked-event domain ocsp-response))
     ;; Archive compromised key for audit if key compromise
@@ -857,10 +917,23 @@
       (archive-compromised-key! system domain (:private-key bundle) timestamp))
     ;; Evict revoked certificate from cache
     (cache/remove-certificate (:cache system) bundle)
+    ;; Delete revoked certificate from storage to prevent it being loaded again
+    ;; (especially important with distributed locking double-check pattern)
+    (when issuer-key
+      (let [bg-lease (lease/background)
+            cert-key (config/cert-storage-key issuer-key domain)
+            key-key (config/key-storage-key issuer-key domain)
+            meta-key (config/meta-storage-key issuer-key domain)]
+        (storage/delete! storage bg-lease cert-key)
+        (storage/delete! storage bg-lease key-key)
+        (storage/delete! storage bg-lease meta-key)))
     ;; Submit obtain-certificate command for automatic renewal
     ;; Note: This will generate a new key since key-reuse defaults to false
+    ;; Note: Skip OCSP auto-fetch for revocation-triggered renewals to prevent infinite loops
+    ;; (if OCSP responder returns revoked for all certs, we'd loop forever)
     (submit-command! system {:command :obtain-certificate
-                             :domain domain})))
+                             :domain domain
+                             :skip-ocsp-fetch true})))
 
 ;; =============================================================================
 ;; ARI Fetching
@@ -947,14 +1020,17 @@
   - Command was :obtain-certificate or :renew-certificate
   - Result status is :success
   - OCSP is enabled in config
-  - Certificate is not short-lived"
+  - Certificate is not short-lived
+  - Command does not have :skip-ocsp-fetch flag (used for revocation-triggered renewals)"
   [system cmd result]
   (let [cmd-type (:command cmd)
         success? (= :success (:status result))
         config (:config system)
         ocsp-enabled? (get-in config [:ocsp :enabled] false)
-        bundle (:bundle result)]
+        bundle (:bundle result)
+        skip-ocsp? (:skip-ocsp-fetch cmd)]
     (and success?
+         (not skip-ocsp?)
          (contains? #{:obtain-certificate :renew-certificate} cmd-type)
          ocsp-enabled?
          bundle

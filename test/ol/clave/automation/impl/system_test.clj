@@ -221,45 +221,39 @@
   []
   (str (Files/createTempDirectory "clave-test-" (into-array FileAttribute []))))
 
-(deftest double-start-is-rejected
-  (testing "Starting a second system on the same storage is rejected"
-    ;; Step 1: Create temp storage directory
+(deftest multiple-instances-can-share-storage
+  (testing "Multiple system instances can start on the same storage"
+    ;; Multiple instances sharing storage is the expected behavior for distributed
+    ;; deployments (like certmagic). Coordination happens via domain-level locks
+    ;; during certificate operations, not at system startup.
     (let [temp-dir (create-temp-dir)
           storage (file-storage/file-storage temp-dir)
           config {:storage storage
                   :issuers [{:directory-url "https://localhost:14000/dir"}]}]
       (try
-        ;; Step 2: Start first system
+        ;; Start first system
         (let [system1 (automation/start config)]
           (try
             ;; Verify first system is started
             (is (automation/started? system1)
                 "First system should be in started state")
-            ;; Step 3: Try to start second system on same storage
-            (let [second-start-error (try
-                                       (automation/start config)
-                                       nil ;; Should not reach here
-                                       (catch clojure.lang.ExceptionInfo e
-                                         e))]
-              ;; Step 4: Verify second start failed with clear error
-              (is (some? second-start-error)
-                  "Second start should throw an exception")
-              (is (= :already-started (:type (ex-data second-start-error)))
-                  "Exception should have :type :already-started")
-              (is (re-find #"already running" (ex-message second-start-error))
-                  "Error message should indicate another system is already running")
-              ;; Step 5: Verify original system continues operating
-              (is (automation/started? system1)
-                  "Original system should still be running after failed second start"))
+            ;; Start second system on same storage - this should succeed
+            (let [system2 (automation/start config)]
+              (try
+                ;; Both systems should be running
+                (is (automation/started? system1)
+                    "First system should still be running")
+                (is (automation/started? system2)
+                    "Second system should be running")
+                (finally
+                  (automation/stop system2))))
             (finally
-              ;; Step 6: Clean up
               (automation/stop system1))))
         (finally
           ;; Clean up temp dir
           (try
             (run! #(Files/deleteIfExists (.toPath (java.io.File. %)))
-                  [(str temp-dir "/.locks/clave-system.lock")
-                   (str temp-dir "/.locks")
+                  [(str temp-dir "/.locks")
                    temp-dir])
             (catch Exception _)))))))
 

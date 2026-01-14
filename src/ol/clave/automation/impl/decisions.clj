@@ -239,7 +239,9 @@
     java.net.UnknownHostException
     java.net.SocketTimeoutException
     java.net.SocketException
-    java.net.NoRouteToHostException})
+    java.net.NoRouteToHostException
+    java.net.http.HttpTimeoutException
+    java.net.http.HttpConnectTimeoutException})
 
 (defn classify-error
   "Classify an exception into an error category.

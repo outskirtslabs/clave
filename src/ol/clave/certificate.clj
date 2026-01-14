@@ -27,7 +27,8 @@
    [ol.clave.acme.impl.stats :as stats]
    [ol.clave.lease :as lease]
    [ol.clave.acme.order :as order]
-   [ol.clave.specs :as specs]))
+   [ol.clave.specs :as specs]
+   [taoensso.trove :as log]))
 
 (set! *warn-on-reflection* true)
 
@@ -123,8 +124,11 @@
     (try
       ((:cleanup solver) the-lease challenge state)
       (catch Exception e
-        ;; Log cleanup error but don't propagate
-        (println "Warning: cleanup failed for challenge" (::specs/type challenge) "-" (ex-message e))))))
+        (log/log! {:level :warn
+                   :id    ::challenge-cleanup-failed
+                   :data  {:domain (get-in challenge [:authorization ::specs/identifier :value])
+                           :challenge-type (::specs/type challenge)}
+                   :error e})))))
 
 (defn- present-challenges!
   "Present challenges for all pending authorizations.

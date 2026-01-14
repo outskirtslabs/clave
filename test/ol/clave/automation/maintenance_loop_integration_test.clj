@@ -364,8 +364,8 @@
                                              (map #(get-in % [:data :domain]))
                                              (remove nil?)
                                              set)]
-                      ;; Verify warning was logged for exception
-                      (is (str/includes? output-str "Error in maintenance cycle")
+                      ;; Verify error was logged for exception (structured log format)
+                      (is (str/includes? output-str "::maintenance-error")
                           "Should log error about config-fn exception")
                       (is (str/includes? output-str domain-x)
                           "Error message should mention the throwing domain")

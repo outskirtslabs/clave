@@ -19,7 +19,8 @@
    [ol.clave.crypto.impl.core :as crypto]
    [ol.clave.lease :as lease]
    [ol.clave.specs :as specs]
-   [ol.clave.storage :as storage])
+   [ol.clave.storage :as storage]
+   [taoensso.trove :as log])
   (:import
    [java.security KeyFactory]
    [java.security.spec PKCS8EncodedKeySpec]
@@ -211,19 +212,22 @@
           public-key (when first-cert (.getPublicKey first-cert))]
       ;; Require both certificate and private key to be present
       (when-not (and first-cert private-key)
-        (println "ERROR: Invalid certificate bundle for domain" domain
-                 "- missing" (cond
-                               (nil? first-cert) "certificate"
-                               (nil? private-key) "private key"
-                               :else "certificate and private key"))
+        (log/log! {:level :error
+                   :id    ::invalid-certificate-bundle
+                   :data  {:domain domain
+                           :missing (cond
+                                      (nil? first-cert) :certificate
+                                      (nil? private-key) :private-key
+                                      :else :both)}})
         (throw (ex-info "Invalid certificate bundle" {:domain domain})))
       ;; Verify keypair matches
       (try
         (crypto/verify-keypair private-key public-key)
         (catch Exception e
-          ;; Key mismatch detected - log error and return nil
-          (println "ERROR: Key mismatch for domain" domain
-                   "- private key does not match certificate." (ex-message e))
+          (log/log! {:level :error
+                     :id    ::key-mismatch
+                     :data  {:domain domain}
+                     :error e})
           (throw e)))
       (let [;; Extract SANs from certificate
             sans (or (:names meta-json)
@@ -366,16 +370,19 @@
                   (submit-command! system cmd)))
               ;; Certificate missing from storage - trigger re-obtain
               (do
-                (println "Certificate for" domain "missing from storage, triggering re-obtain")
+                (log/log! {:level :info
+                           :id    ::storage-recovery
+                           :data  {:domain domain}})
                 ;; Remove stale bundle from cache
                 (cache/remove-certificate cache-atom bundle)
                 ;; Submit obtain command to get a fresh certificate
                 (submit-command! system {:command :obtain-certificate
                                          :domain domain}))))
           (catch Exception e
-            ;; Log and continue - don't let one domain break others
-            (println "Error in maintenance cycle for"
-                     (first (:names bundle)) "-" (ex-message e))))))))
+            (log/log! {:level :error
+                       :id    ::maintenance-error
+                       :data  {:domain (first (:names bundle))}
+                       :error e})))))))
 
 (defn trigger-maintenance!
   "Manually trigger a maintenance cycle.

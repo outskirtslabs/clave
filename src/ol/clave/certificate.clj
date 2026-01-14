@@ -28,6 +28,7 @@
    [ol.clave.lease :as lease]
    [ol.clave.acme.order :as order]
    [ol.clave.specs :as specs]
+   [ol.clave.storage]
    [taoensso.trove :as log]))
 
 (set! *warn-on-reflection* true)
@@ -60,6 +61,93 @@
                         {:challenge-type challenge-type
                          :solver-keys (keys solver)}))))
   nil)
+
+;;;; Distributed Solver Wrapper
+
+(defn wrap-solver-for-distributed
+  "Wraps a solver to store/cleanup challenge tokens in shared storage.
+
+  This enables distributed challenge solving where multiple instances
+  behind a load balancer can serve ACME validation responses.
+
+  On `:present`: stores challenge data to storage before calling underlying solver.
+  On `:cleanup`: calls underlying solver cleanup, then deletes from storage.
+
+  The stored data is a JSON map containing the full challenge plus key-authorization,
+  enabling any instance to reconstruct and serve the response.
+
+  | key | description |
+  |-----|-------------|
+  | `storage` | Storage implementation for persisting challenge tokens |
+  | `issuer-key` | Issuer identifier for storage key namespacing |
+  | `storage-key-fn` | Function `(fn [issuer-key identifier]) -> storage-key` |
+  | `solver` | The underlying solver map to wrap |"
+  [storage issuer-key storage-key-fn solver]
+  (-> solver
+      (update :present
+              (fn [present-fn]
+                (fn [lease challenge account-key]
+                  ;; Store challenge data before presenting
+                  (let [identifier (get-in challenge [:authorization ::specs/identifier :value])
+                        key-auth (challenge/key-authorization challenge account-key)
+                        storage-key (storage-key-fn issuer-key identifier)
+                        ;; Store challenge + key-auth as JSON
+                        challenge-data {:challenge challenge
+                                        :key-authorization key-auth
+                                        :identifier identifier}
+                        json-bytes (.getBytes (pr-str challenge-data) "UTF-8")]
+                    (ol.clave.storage/store! storage lease storage-key json-bytes)
+                    ;; Call underlying solver
+                    (present-fn lease challenge account-key)))))
+      (update :cleanup
+              (fn [cleanup-fn]
+                (fn [lease challenge state]
+                  (try
+                    ;; Call underlying solver cleanup first
+                    (cleanup-fn lease challenge state)
+                    (finally
+                      ;; Delete from storage (best effort)
+                      (try
+                        (let [identifier (get-in challenge [:authorization ::specs/identifier :value])
+                              storage-key (storage-key-fn issuer-key identifier)]
+                          (ol.clave.storage/delete! storage lease storage-key))
+                        (catch Exception e
+                          (log/log! {:level :warn
+                                     :id ::challenge-token-cleanup-failed
+                                     :data {:identifier (get-in challenge [:authorization ::specs/identifier :value])}
+                                     :error e}))))))))))
+
+(defn wrap-solvers-for-distributed
+  "Wraps all solvers in a map for distributed challenge solving.
+
+  | key | description |
+  |-----|-------------|
+  | `storage` | Storage implementation |
+  | `issuer-key` | Issuer identifier |
+  | `storage-key-fn` | Function to generate storage keys |
+  | `solvers` | Map of challenge-type -> solver |"
+  [storage issuer-key storage-key-fn solvers]
+  (into {}
+        (map (fn [[challenge-type solver]]
+               [challenge-type
+                (wrap-solver-for-distributed storage issuer-key storage-key-fn solver)]))
+        solvers))
+
+(defn lookup-challenge-token
+  "Lookup a stored challenge token from shared storage.
+
+  Returns the challenge data map if found, nil otherwise.
+
+  | key | description |
+  |-----|-------------|
+  | `storage` | Storage implementation |
+  | `issuer-key` | Issuer identifier |
+  | `storage-key-fn` | Function to generate storage keys |
+  | `identifier` | Domain or IP being validated |"
+  [storage issuer-key storage-key-fn identifier]
+  (let [storage-key (storage-key-fn issuer-key identifier)]
+    (when-let [data (ol.clave.storage/load storage nil storage-key)]
+      (read-string (String. ^bytes data "UTF-8")))))
 
 ;;;; Challenge Type Mapping
 

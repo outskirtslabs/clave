@@ -649,10 +649,17 @@
   "Try to obtain a certificate from a single issuer.
 
   When `existing-keypair` is provided, reuses that key instead of generating a new one.
+  Automatically wraps solvers for distributed challenge solving when storage is available.
   Returns {:status :success :bundle ...} on success, or {:status :error ...} on failure."
   [system domain issuer solvers key-type existing-keypair opts]
   (let [issuer-key (or (:issuer-key issuer)
                        (config/issuer-key-from-url (:directory-url issuer)))
+        ;; Wrap solvers for distributed challenge solving
+        wrapped-solvers (certificate/wrap-solvers-for-distributed
+                         (:storage system)
+                         issuer-key
+                         config/challenge-token-storage-key
+                         solvers)
         session (create-acme-session system issuer)
         ^java.security.KeyPair cert-keypair (or existing-keypair (keygen/generate key-type))
         obtain-opts (select-keys opts [:preferred-challenges])
@@ -661,7 +668,7 @@
                            session
                            [domain]
                            cert-keypair
-                           solvers
+                           wrapped-solvers
                            obtain-opts)
         cert-data (first (:certificates result))
         chain-pem (:chain-pem cert-data)

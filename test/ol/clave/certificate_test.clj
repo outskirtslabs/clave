@@ -1,11 +1,18 @@
 (ns ol.clave.certificate-test
-  "Unit tests for ol.clave.certificate - challenge selection and solver validation.
-  Tests error handling for solver mismatch scenarios."
+  "Unit tests for ol.clave.certificate - challenge selection, solver validation,
+  and distributed challenge token storage."
   (:require
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.certificate]
+   [ol.clave.automation.impl.config :as config]
+   [ol.clave.certificate :as certificate]
+   [ol.clave.certificate.impl.keygen :as keygen]
    [ol.clave.errors :as errors]
-   [ol.clave.specs :as specs]))
+   [ol.clave.specs :as specs]
+   [ol.clave.storage :as storage]
+   [ol.clave.storage.file :as file-storage])
+  (:import
+   [java.nio.file Files]
+   [java.nio.file.attribute FileAttribute]))
 
 ;; Access private function for testing
 (def select-challenge @#'ol.clave.certificate/select-challenge)
@@ -185,3 +192,108 @@
           (let [data (ex-data e)]
             (is (= #{:http-01 :dns-01} (:failed-types data))
                 "Error should show which challenge types failed")))))))
+
+;;;; Distributed Challenge Token Storage Tests
+
+(defn- temp-storage-dir
+  "Creates a temporary directory for storage tests."
+  []
+  (let [path (Files/createTempDirectory "clave-cert-test-" (make-array FileAttribute 0))]
+    (.toString path)))
+
+(deftest lookup-challenge-token-returns-stored-data
+  (testing "lookup-challenge-token can retrieve stored challenge data"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          issuer-key "test-issuer"
+          identifier "example.com"
+          test-data {:challenge {:test "data" ::specs/token "test-token"}
+                     :key-authorization "key-auth-value"
+                     :identifier identifier}
+          storage-key (config/challenge-token-storage-key issuer-key identifier)
+          json-bytes (.getBytes (pr-str test-data) "UTF-8")]
+      (storage/store! storage-impl nil storage-key json-bytes)
+      (let [result (certificate/lookup-challenge-token
+                    storage-impl
+                    issuer-key
+                    config/challenge-token-storage-key
+                    identifier)]
+        (is (= test-data result)
+            "lookup-challenge-token should return stored data")
+        (is (= "test-token" (get-in result [:challenge ::specs/token]))
+            "Challenge token should be accessible")
+        (is (= "key-auth-value" (:key-authorization result))
+            "Key authorization should be accessible")))))
+
+(deftest wrap-solver-stores-and-cleans-up-tokens
+  (testing "Wrapped solver stores token on present and cleans up on cleanup"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          issuer-key "test-issuer"
+          identifier "test.example.com"
+          present-calls (atom [])
+          cleanup-calls (atom [])
+          underlying-solver {:present (fn [lease chall account-key]
+                                        (swap! present-calls conj {:lease lease
+                                                                   :challenge chall
+                                                                   :account-key account-key})
+                                        {:state "test-state"})
+                             :cleanup (fn [lease chall state]
+                                        (swap! cleanup-calls conj {:lease lease
+                                                                   :challenge chall
+                                                                   :state state})
+                                        nil)}
+          wrapped-solver (certificate/wrap-solver-for-distributed
+                          storage-impl
+                          issuer-key
+                          config/challenge-token-storage-key
+                          underlying-solver)
+          test-authz {::specs/identifier {:value identifier :type "dns"}}
+          test-challenge {:authorization test-authz
+                          ::specs/token "test-token-123"
+                          ::specs/type "http-01"}
+          test-account-key (keygen/generate :p256)
+          storage-key (config/challenge-token-storage-key issuer-key identifier)]
+      (let [state ((:present wrapped-solver) nil test-challenge test-account-key)]
+        (is (= 1 (count @present-calls))
+            "Underlying present should be called once")
+        (is (= test-challenge (:challenge (first @present-calls)))
+            "Challenge should be passed to underlying solver")
+        (is (= {:state "test-state"} state)
+            "State from underlying solver should be returned")
+        (is (some? (storage/load storage-impl nil storage-key))
+            "Challenge token should be stored")
+        (let [stored-data (read-string (String. ^bytes (storage/load storage-impl nil storage-key) "UTF-8"))]
+          (is (= identifier (:identifier stored-data))
+              "Stored identifier should match")
+          (is (string? (:key-authorization stored-data))
+              "Key authorization should be stored")))
+      ((:cleanup wrapped-solver) nil test-challenge {:state "test-state"})
+      (is (= 1 (count @cleanup-calls))
+          "Underlying cleanup should be called once")
+      (is (not (storage/exists? storage-impl nil storage-key))
+          "Challenge token should be deleted after cleanup"))))
+
+(deftest wrap-solvers-for-distributed-wraps-all-solvers
+  (testing "wrap-solvers-for-distributed wraps all solvers in map"
+    (let [storage-dir (temp-storage-dir)
+          storage-impl (file-storage/file-storage storage-dir)
+          issuer-key "test-issuer"
+          http-solver {:present (fn [_ _ _] {:http "state"})
+                       :cleanup (fn [_ _ _] nil)}
+          tls-solver {:present (fn [_ _ _] {:tls "state"})
+                      :cleanup (fn [_ _ _] nil)}
+          solvers {:http-01 http-solver
+                   :tls-alpn-01 tls-solver}
+          wrapped (certificate/wrap-solvers-for-distributed
+                   storage-impl
+                   issuer-key
+                   config/challenge-token-storage-key
+                   solvers)]
+      (is (fn? (get-in wrapped [:http-01 :present]))
+          "HTTP-01 present should be a function")
+      (is (fn? (get-in wrapped [:tls-alpn-01 :present]))
+          "TLS-ALPN-01 present should be a function")
+      (is (not= (get-in solvers [:http-01 :present])
+                (get-in wrapped [:http-01 :present]))
+          "HTTP-01 should be wrapped (different fn)"))))

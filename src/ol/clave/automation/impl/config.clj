@@ -252,6 +252,22 @@
   (let [safe-domain (safe-storage-key domain)]
     (str "certificates/" issuer-key "/" safe-domain "/" safe-domain ".ari.json")))
 
+(defn challenge-token-storage-key
+  "Generate storage key for a challenge token (distributed solving).
+
+  Format: `challenge_tokens/{issuer-key}/{identifier}.json`
+
+  Used to store challenge data so any instance in a cluster can serve
+  the challenge response for HTTP-01 or TLS-ALPN-01 validation.
+
+  | key | description |
+  |-----|-------------|
+  | `issuer-key` | Issuer identifier (hostname from directory URL) |
+  | `identifier` | Domain or IP address being validated |"
+  [issuer-key identifier]
+  (let [safe-id (safe-storage-key identifier)]
+    (str "challenge_tokens/" issuer-key "/" safe-id ".json")))
+
 (defn select-chain
   "Select a certificate chain based on preference.
 

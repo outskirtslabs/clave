@@ -346,9 +346,26 @@
     (let [ex (ex-info "Internal server error" {:status 500})]
       (is (= :server-error (decisions/classify-error ex)))))
 
+  (testing "Exception with 502 Bad Gateway is classified as :server-error"
+    (let [ex (ex-info "Bad Gateway" {:status 502})]
+      (is (= :server-error (decisions/classify-error ex)))))
+
   (testing "Exception with 503 status is classified as :server-error"
     (let [ex (ex-info "Service unavailable" {:status 503})]
       (is (= :server-error (decisions/classify-error ex))))))
+
+(deftest classify-error-handles-unusual-http-status-codes
+  (testing "Exception with 418 I'm a Teapot is classified as :acme-error (4xx client error)"
+    (let [ex (ex-info "I'm a teapot" {:status 418})]
+      (is (= :acme-error (decisions/classify-error ex)))
+      (is (false? (decisions/retryable-error? :acme-error))
+          "Unusual 4xx status codes are treated as non-retryable client errors")))
+
+  (testing "Exception with 599 is classified as :server-error (5xx boundary)"
+    (let [ex (ex-info "Network connect timeout" {:status 599})]
+      (is (= :server-error (decisions/classify-error ex)))
+      (is (true? (decisions/retryable-error? :server-error))
+          "All 5xx status codes including edge cases are retryable"))))
 
 (deftest classify-error-returns-config-error-for-config-exceptions
   (testing "Exception with :config-error type is classified as :config-error"

@@ -193,32 +193,29 @@
   Returns nil if any validation fails."
   [storage issuer-key domain]
   (try
-    (let [cert-key (config/cert-storage-key issuer-key domain)
-          key-key (config/key-storage-key issuer-key domain)
-          meta-key (config/meta-storage-key issuer-key domain)
-          cert-pem (storage/load-string storage nil cert-key)
-          key-pem (storage/load-string storage nil key-key)
-          meta-json (try
-                      (json/read-str (storage/load-string storage nil meta-key)
-                                     :key-fn keyword)
-                      (catch Exception _ {}))
-          parsed-cert (cert-parse/parse-pem-chain cert-pem)
-          certs (::specs/certificates parsed-cert)
+    (let [cert-key                                       (config/cert-storage-key issuer-key domain)
+          key-key                                        (config/key-storage-key issuer-key domain)
+          cert-pem                                       (storage/load-string storage nil cert-key)
+          key-pem                                        (storage/load-string storage nil key-key)
+          #_#_meta-key                                       (config/meta-storage-key issuer-key domain)
+          #_#_meta-json                                      (try
+                                                               (json/read-str (storage/load-string storage nil meta-key)
+                                                                              :key-fn keyword)
+                                                               (catch Exception _ {}))
+          parsed-cert                                    (cert-parse/parse-pem-chain cert-pem)
+          certs                                          (::specs/certificates parsed-cert)
           ^java.security.cert.X509Certificate first-cert (first certs)
-          private-key (parse-private-key-pem key-pem)
-          ;; Verify that the private key matches the certificate's public key
-          public-key (when first-cert (.getPublicKey first-cert))]
-      ;; Require both certificate and private key to be present
+          private-key                                    (parse-private-key-pem key-pem)
+          public-key                                     (when first-cert (.getPublicKey first-cert))]
       (when-not (and first-cert private-key)
         (log/log! {:level :error
                    :id    ::invalid-certificate-bundle
-                   :data  {:domain domain
+                   :data  {:domain  domain
                            :missing (cond
-                                      (nil? first-cert) :certificate
+                                      (nil? first-cert)  :certificate
                                       (nil? private-key) :private-key
-                                      :else :both)}})
+                                      :else              :both)}})
         (throw (ex-info "Invalid certificate bundle" {:domain domain})))
-      ;; Verify keypair matches
       (try
         (crypto/verify-keypair private-key public-key)
         (catch Exception e
@@ -227,28 +224,12 @@
                      :data  {:domain domain}
                      :error e})
           (throw e)))
-      (let [;; Extract SANs from certificate
-            sans (or (:names meta-json)
-                     (let [cn (.getSubjectX500Principal first-cert)]
-                       [(.toString cn)]))
-            not-before (.toInstant (.getNotBefore first-cert))
-            not-after (.toInstant (.getNotAfter first-cert))
-            ;; Load OCSP staple if it exists
+      (let [bundle      (cache/create-bundle certs private-key issuer-key)
             ocsp-staple (load-ocsp-staple storage issuer-key domain)
-            ;; Load ARI data if it exists
-            ari-data (load-ari-data storage issuer-key domain)]
-        {:names sans
-         :certificate certs
-         :private-key private-key
-         :not-before not-before
-         :not-after not-after
-         :issuer-key issuer-key
-         :ocsp-staple ocsp-staple
-         :ari-data ari-data
-         :hash (cache/hash-certificate (mapv (fn [^java.security.cert.X509Certificate c]
-                                               (.getEncoded c))
-                                             certs))
-         :managed true}))
+            ari-data    (load-ari-data storage issuer-key domain)]
+        (cond-> bundle
+          ocsp-staple (assoc :ocsp-staple ocsp-staple)
+          ari-data    (assoc :ari-data ari-data))))
     (catch Exception _e
       nil)))
 
@@ -690,19 +671,7 @@
         key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
         parsed (cert-parse/parse-pem-chain chain-pem)
         certs (::specs/certificates parsed)
-        ^java.security.cert.X509Certificate first-cert (first certs)
-        not-before (.toInstant (.getNotBefore first-cert))
-        not-after (.toInstant (.getNotAfter first-cert))
-        bundle {:names [domain]
-                :certificate certs
-                :private-key (.getPrivate cert-keypair)
-                :not-before not-before
-                :not-after not-after
-                :issuer-key issuer-key
-                :hash (cache/hash-certificate (mapv (fn [^java.security.cert.X509Certificate c]
-                                                      (.getEncoded c))
-                                                    certs))
-                :managed true}]
+        bundle (cache/create-bundle certs (.getPrivate cert-keypair) issuer-key)]
     (store-certificate! system domain issuer-key chain-pem key-pem [domain])
     {:status :success :bundle bundle}))
 
@@ -839,8 +808,8 @@
     (try
       ;; Double-check: another instance may have renewed while we waited
       (if-let [stored-bundle (load-cert-from-storage-for-domain system domain)]
-        ;; Check if the stored cert is newer (different hash = newer cert)
-        (if (and old-bundle (not= (:hash stored-bundle) (:hash old-bundle)))
+        ;; Check if the stored cert is newer (by issuance timestamp)
+        (if (and old-bundle (cache/newer-than-cache? stored-bundle old-bundle))
           ;; A newer certificate exists - cache and return it
           (do
             (cache/cache-certificate (:cache system) stored-bundle)

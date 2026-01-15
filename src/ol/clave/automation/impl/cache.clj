@@ -8,7 +8,10 @@
    [clojure.string :as str])
   (:import
    [java.security MessageDigest]
-   [java.security.cert X509Certificate]))
+   [java.security.cert X509Certificate]
+   [java.time Instant]))
+
+(set! *warn-on-reflection* true)
 
 (defn- remove-hash-from-index
   "Remove a hash from the index, cleaning up empty entries."
@@ -150,8 +153,8 @@
   | `stored-bundle` | Certificate bundle from storage |
   | `cached-bundle` | Certificate bundle from cache   |"
   [stored-bundle cached-bundle]
-  (let [stored-not-before (:not-before stored-bundle)
-        cached-not-before (:not-before cached-bundle)]
+  (let [^Instant stored-not-before (:not-before stored-bundle)
+        cached-not-before          (:not-before cached-bundle)]
     (.isAfter stored-not-before cached-not-before)))
 
 (defn- bytes->hex

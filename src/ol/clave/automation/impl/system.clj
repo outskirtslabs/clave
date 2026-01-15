@@ -40,10 +40,6 @@
   "Maximum jitter for maintenance loop (5 minutes)."
   300000)
 
-(def ^:dynamic *event-queue-capacity*
-  "Maximum events in the event queue."
-  10000)
-
 (def ^:dynamic *fast-semaphore-permits*
   "Concurrent fast command permits (OCSP, ARI)."
   1000)
@@ -322,20 +318,10 @@
 ;;; Event Emission
 
 (defn- emit-event!
-  "Emit an event to the event queue.
-  Adds a timestamp if not present.
-  If the queue is full, drops the oldest event to make room."
+  "Emit an event to the event queue."
   [system event]
   (when-let [^LinkedBlockingQueue queue @(:event-queue system)]
-    (let [event (update event :timestamp #(or % (Instant/now)))]
-      ;; Try to add the event, if queue is full, drop oldest and retry
-      (loop [attempts 0]
-        (when (< attempts 10)
-          (if (.offer queue event)
-            true
-            (do
-              (.poll queue)  ;; Remove oldest
-              (recur (inc attempts)))))))))
+    (.add queue (update event :timestamp #(or % (Instant/now))))))
 
 (defn- create-domain-added-event
   "Create a :domain-added event."
@@ -472,8 +458,7 @@
         system (create-system-state merged-config)
         ;; Initialize event queue before loading certificates
         ;; so events can be emitted during loading
-        _ (reset! (:event-queue system)
-                  (LinkedBlockingQueue. (int *event-queue-capacity*)))
+        _ (reset! (:event-queue system) (LinkedBlockingQueue.))
         ;; Load existing certificates from storage
         loaded-bundles (load-all-certificates! system)]
     ;; Emit certificate-loaded events for each bundle
@@ -1308,7 +1293,7 @@
   [system]
   (let [queue-atom (:event-queue system)]
     (or @queue-atom
-        (let [queue (LinkedBlockingQueue. (int *event-queue-capacity*))]
+        (let [queue (LinkedBlockingQueue.)]
           (if (compare-and-set! queue-atom nil queue)
             queue
             @queue-atom)))))

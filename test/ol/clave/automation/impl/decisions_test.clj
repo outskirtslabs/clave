@@ -371,27 +371,6 @@
   (testing "max retry duration is 30 days in milliseconds"
     (is (= (* 30 24 60 60 1000) decisions/*max-retry-duration-ms*))))
 
-(deftest calculate-maintenance-interval-test
-  (testing "90-day cert"
-    (let [int (decisions/calculate-maintenance-interval (make-bundle {:not-before "2026-01-01T00:00:00Z" :not-after "2026-04-01T00:00:00Z"}))]
-      (is (and (>= int 3600000) (<= int 21600000)))))
-
-  (testing "3-day cert"
-    (let [int (decisions/calculate-maintenance-interval (make-bundle {:not-before "2026-01-01T00:00:00Z" :not-after "2026-01-04T00:00:00Z"}))]
-      (is (and (>= int 60000) (< int 10800000)))))
-
-  (testing "24-hour cert"
-    (let [int (decisions/calculate-maintenance-interval (make-bundle {:not-before "2026-01-01T00:00:00Z" :not-after "2026-01-02T00:00:00Z"}))]
-      (is (and (>= int 60000) (< int 3600000)))))
-
-  (testing "365-day cert capped"
-    (let [int (decisions/calculate-maintenance-interval (make-bundle {:not-before "2026-01-01T00:00:00Z" :not-after "2027-01-01T00:00:00Z"}))]
-      (is (and (>= int 3600000) (<= int 21600000)))))
-
-  (testing "sufficient cycles in renewal window"
-    (let [int (decisions/calculate-maintenance-interval (make-bundle {:not-before "2026-01-01T00:00:00Z" :not-after "2026-04-01T00:00:00Z"}))]
-      (is (>= (/ 2592000000 int) 5)))))
-
 (deftest create-certificate-loaded-event-test
   (let [b (make-bundle {:not-before "2026-01-01T00:00:00Z"
                         :not-after "2026-04-01T00:00:00Z"

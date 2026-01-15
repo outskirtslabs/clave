@@ -305,15 +305,15 @@
                      (.truncatedTo ^Instant not-after ChronoUnit/SECONDS))
                   "Certificate should still be the same expired one"))
             ;; Step 6: Verify renewal was attempted (check for failure event)
-            (let [events (loop [events []
-                                attempts 0]
-                           (if (>= attempts 5)
-                             events
-                             (let [evt (.poll queue 1 TimeUnit/SECONDS)]
-                               (if evt
-                                 (recur (conj events evt) (inc attempts))
-                                 events))))
-                  failure-event (first (filter #(= :certificate-failed (:type %)) events))]
+            ;; Keep polling until we find certificate-failed or timeout
+            ;; (emergency events may be emitted first, so we can't rely on fixed attempts)
+            (let [failure-event (loop [attempts 0]
+                                  (when (< attempts 10)
+                                    (if-let [evt (.poll queue 1 TimeUnit/SECONDS)]
+                                      (if (= :certificate-failed (:type evt))
+                                        evt
+                                        (recur (inc attempts)))
+                                      (recur (inc attempts)))))]
               ;; We expect a certificate-failed event from the renewal attempt
               (is (some? failure-event)
                   "Should emit certificate-failed event for renewal failure")

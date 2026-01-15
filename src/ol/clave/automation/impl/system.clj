@@ -338,6 +338,53 @@
       (catch Exception _
         false))))
 
+;;; Event Emission
+
+(defn- emit-event!
+  "Emit an event to the event queue.
+  Adds a timestamp if not present.
+  If the queue is full, drops the oldest event to make room."
+  [system event]
+  (when-let [^LinkedBlockingQueue queue @(:event-queue system)]
+    (let [event (update event :timestamp #(or % (Instant/now)))]
+      ;; Try to add the event, if queue is full, drop oldest and retry
+      (loop [attempts 0]
+        (when (< attempts 10)
+          (if (.offer queue event)
+            true
+            (do
+              (.poll queue)  ;; Remove oldest
+              (recur (inc attempts)))))))))
+
+(defn- create-domain-added-event
+  "Create a :domain-added event."
+  [domain]
+  {:type :domain-added
+   :timestamp (Instant/now)
+   :data {:domain domain}})
+
+(defn- create-domain-removed-event
+  "Create a :domain-removed event."
+  [domain]
+  {:type :domain-removed
+   :timestamp (Instant/now)
+   :data {:domain domain}})
+
+(defn- create-certificate-emergency-event
+  "Create a certificate emergency event.
+
+  `level` is `:critical` or `:override-ari`."
+  [domain level not-after]
+  {:type (if (= level :critical)
+           :certificate-emergency-critical
+           :certificate-emergency-override-ari)
+   :timestamp (Instant/now)
+   :data {:domain domain
+          :level level
+          :not-after not-after}})
+
+;;; Maintenance Cycle
+
 (defn- run-maintenance-cycle!
   "Execute a single maintenance cycle.
 
@@ -365,7 +412,18 @@
                     commands (decisions/check-cert-maintenance bundle resolved-config now *maintenance-interval-ms*)]
                 ;; Submit each command to the queue
                 (doseq [cmd commands]
-                  (submit-command! system cmd)))
+                  (submit-command! system cmd))
+                ;; Check for emergency status and emit warning event
+                (when-let [emergency-level (decisions/emergency-renewal? bundle now *maintenance-interval-ms*)]
+                  (log/log! {:level :warn
+                             :id    ::certificate-emergency
+                             :data  {:domain domain
+                                     :level emergency-level
+                                     :not-after (:not-after bundle)}})
+                  (emit-event! system (create-certificate-emergency-event
+                                       domain
+                                       emergency-level
+                                       (:not-after bundle)))))
               ;; Certificate missing from storage - trigger re-obtain
               (do
                 (log/log! {:level :info
@@ -506,41 +564,6 @@
           ;; Add to cache (this may evict another cert, which is fine)
           (cache/cache-certificate (:cache system) bundle)
           bundle))))
-
-;;; Event Emission
-
-(defn- emit-event!
-  "Emit an event to the event queue.
-  Adds a timestamp if not present.
-  If the queue is full, drops the oldest event to make room."
-  [system event]
-  (when-let [^LinkedBlockingQueue queue @(:event-queue system)]
-    ;; Add timestamp if not present
-    (let [event (if (:timestamp event)
-                  event
-                  (assoc event :timestamp (Instant/now)))]
-      ;; Try to add the event, if queue is full, drop oldest and retry
-      (loop [attempts 0]
-        (when (< attempts 10)
-          (if (.offer queue event)
-            true
-            (do
-              (.poll queue)  ;; Remove oldest
-              (recur (inc attempts)))))))))
-
-(defn- create-domain-added-event
-  "Create a :domain-added event."
-  [domain]
-  {:type :domain-added
-   :timestamp (Instant/now)
-   :data {:domain domain}})
-
-(defn- create-domain-removed-event
-  "Create a :domain-removed event."
-  [domain]
-  {:type :domain-removed
-   :timestamp (Instant/now)
-   :data {:domain domain}})
 
 ;;; Certificate Obtain Workflow
 

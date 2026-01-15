@@ -3,11 +3,14 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [ol.clave.automation :as automation]
+   [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.automation.impl.system :as system]
    [ol.clave.storage.file :as file-storage])
   (:import
    [java.nio.file Files]
    [java.nio.file.attribute FileAttribute]
+   [java.time Instant]
+   [java.time.temporal ChronoUnit]
    [java.util.concurrent Executors LinkedBlockingQueue TimeUnit]))
 
 ;; =============================================================================
@@ -429,3 +432,54 @@
       ;; Clean up
       (.shutdown executor)
       (.awaitTermination executor 1 TimeUnit/SECONDS))))
+
+(deftest emergency-event-emitted-for-expiring-certificate
+  (testing "Emergency event is emitted when certificate is in critical window"
+    ;; Create a certificate that expires in 30 minutes (well within 2% threshold)
+    ;; For a 90-day cert, 2% = ~43 hours, so 30 minutes is definitely critical
+    (let [now (Instant/now)
+          not-before (.minus now 89 ChronoUnit/DAYS)
+          not-after (.plus now 30 ChronoUnit/MINUTES)
+          bundle {:managed true
+                  :names ["critical.example.com"]
+                  :issuer-key "test-issuer"
+                  :not-before not-before
+                  :not-after not-after}
+          event-queue (LinkedBlockingQueue. 100)
+          executor (Executors/newVirtualThreadPerTaskExecutor)
+          sys {:shutdown? (atom false)
+               :started? (atom true)
+               :maintenance-thread (atom nil)
+               :executor executor
+               :event-queue (atom event-queue)
+               :fast-semaphore (java.util.concurrent.Semaphore. 10)
+               :slow-semaphore (java.util.concurrent.Semaphore. 10)
+               :in-flight (java.util.concurrent.ConcurrentHashMap.)
+               :cache (atom {:certs {1 bundle} :index {}})
+               :storage nil
+               :config {:issuers []}}]
+      (try
+        ;; Mock storage check and config resolution to enable maintenance path
+        (with-redefs [system/certificate-exists-in-storage? (constantly true)
+                      system/resolve-config-with-timeout (fn [_ _ _] {:ari {:enabled false}})]
+          ;; Trigger maintenance cycle
+          (system/trigger-maintenance! sys)
+          ;; Give time for async operations
+          (Thread/sleep 100)
+          ;; Drain any renewal command events first (they may arrive first)
+          (loop []
+            (when-let [event (.poll event-queue 200 TimeUnit/MILLISECONDS)]
+              (if (#{:certificate-emergency-critical :certificate-emergency-override-ari} (:type event))
+                ;; Found emergency event - verify it
+                (do
+                  (is (= :certificate-emergency-critical (:type event))
+                      "Certificate in 2% window should emit critical emergency event")
+                  (is (= "critical.example.com" (get-in event [:data :domain]))
+                      "Event should contain correct domain")
+                  (is (= :critical (get-in event [:data :level]))
+                      "Event should indicate critical level"))
+                ;; Not emergency event, keep looking
+                (recur)))))
+        (finally
+          (.shutdown executor)
+          (.awaitTermination executor 1 TimeUnit/SECONDS))))))

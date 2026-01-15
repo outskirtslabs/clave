@@ -544,6 +544,24 @@
     (storage/store-string! storage nil private-key-key private-pem)
     (storage/store-string! storage nil public-key-key public-pem)))
 
+(defn- load-account-registration
+  "Load account registration (KID) from storage if it exists.
+
+  Returns a map with :account-kid or nil if not found."
+  [storage issuer-key]
+  (let [reg-key (config/account-registration-storage-key issuer-key)]
+    (when (storage/exists? storage nil reg-key)
+      (try
+        (json/read-str (storage/load-string storage nil reg-key) :key-fn keyword)
+        (catch Exception _ nil)))))
+
+(defn- save-account-registration!
+  "Save account registration (KID) to storage."
+  [storage issuer-key account-kid]
+  (let [reg-key (config/account-registration-storage-key issuer-key)
+        reg-json (json/write-str {:account-kid account-kid})]
+    (storage/store-string! storage nil reg-key reg-json)))
+
 (defn- account-lock-key
   "Returns the storage lock key for account registration."
   [issuer-key]
@@ -557,51 +575,49 @@
   [domain]
   (str "domain-cert-lock-" (storage/safe-key domain)))
 
+(defn- get-or-create-account-keypair!
+  "Load existing account keypair or safely create a new one"
+  [storage issuer-key]
+  (or (load-account-keypair storage issuer-key)
+      (let [lock-key (account-lock-key issuer-key)]
+        (storage/lock! storage nil lock-key)
+        (try
+          (or (load-account-keypair storage issuer-key)
+              (let [keypair (account/generate-keypair)]
+                (save-account-keypair! storage issuer-key keypair)
+                keypair))
+          (finally
+            (storage/unlock! storage nil lock-key))))))
+
 (defn- create-acme-session
   "Create an ACME session for the given issuer config.
 
-  If account keys exist in storage, loads them and uses them.
-  Otherwise generates new keys, registers account, and saves keys.
-  Uses storage-based locking with double-check pattern to prevent
-  concurrent key generation race conditions.
-  External Account Binding credentials are passed if configured."
+  Loads account keypair and registration from storage. Only calls newAccount
+  if no registration exists. External Account Binding credentials are passed
+  if configured."
   [system issuer-config]
-  (let [bg-lease (lease/background)
-        storage (:storage system)
-        http-opts (:http-client system)
+  (let [storage (:storage system)
         directory-url (:directory-url issuer-config)
         issuer-key (or (:issuer-key issuer-config)
                        (config/issuer-key-from-url directory-url))
-        ;; Step 1: Try to load existing account keys without lock
-        existing-keypair (load-account-keypair storage issuer-key)
-        ;; Step 2: If no keypair, use double-check locking pattern
-        account-key (if existing-keypair
-                      existing-keypair
-                      (let [lock-key (account-lock-key issuer-key)]
-                        ;; Acquire storage lock
-                        (storage/lock! storage nil lock-key)
-                        (try
-                          ;; Step 3: Double-check after acquiring lock
-                          (or (load-account-keypair storage issuer-key)
-                              ;; Step 4: Still no keypair, generate and save
-                              (let [new-keypair (account/generate-keypair)]
-                                (save-account-keypair! storage issuer-key new-keypair)
-                                new-keypair))
-                          (finally
-                            ;; Step 5: Release lock
-                            (storage/unlock! storage nil lock-key)))))
-        [session _] (cmd/create-session bg-lease directory-url
-                                        {:http-client http-opts
-                                         :account-key account-key})
-        account {::specs/contact (when-let [email (:email issuer-config)]
-                                   [(str "mailto:" email)])
-                 ::specs/termsOfServiceAgreed true}
-        ;; Build options for new-account, including EAB if configured
-        new-account-opts (when-let [eab (:external-account issuer-config)]
-                           {:external-account eab})
-        ;; new-account will return existing account if key is already registered
-        [session _] (cmd/new-account bg-lease session account new-account-opts)]
-    session))
+        account-key (get-or-create-account-keypair! storage issuer-key)
+        registration (load-account-registration storage issuer-key)
+        account-kid (:account-kid registration)
+        [session _] (cmd/create-session (lease/background) directory-url
+                                        {:http-client (:http-client system)
+                                         :account-key account-key
+                                         :account-kid account-kid})]
+    (if account-kid
+      session
+      (let [account {::specs/contact (when-let [email (:email issuer-config)]
+                                       [(str "mailto:" email)])
+                     ::specs/termsOfServiceAgreed true}
+            new-account-opts (when-let [eab (:external-account issuer-config)]
+                               {:external-account eab})
+            [session account-result] (cmd/new-account (lease/background) session account new-account-opts)
+            new-kid (::specs/account-kid account-result)]
+        (save-account-registration! storage issuer-key new-kid)
+        session))))
 
 (defn- store-certificate!
   "Store a certificate bundle to storage."
@@ -866,43 +882,34 @@
           key-pem (crypto/encode-private-key-pem private-key)]
       (storage/store-string! storage nil archive-key key-pem))))
 
+(defn- delete-certificate-from-storage!
+  "Remove certificate files from storage."
+  [storage issuer-key domain]
+  (let [cert-key (config/cert-storage-key issuer-key domain)
+        key-key (config/key-storage-key issuer-key domain)
+        meta-key (config/meta-storage-key issuer-key domain)]
+    (storage/delete! storage (lease/background) cert-key)
+    (storage/delete! storage (lease/background) key-key)
+    (storage/delete! storage (lease/background) meta-key)))
+
 (defn- handle-ocsp-revocation!
   "Handle certificate revocation detected via OCSP.
 
-  1. Emits :certificate-revoked event
-  2. If key compromise, archives the compromised key
-  3. Evicts revoked certificate from cache
-  4. Deletes revoked certificate from storage
-  5. Triggers automatic renewal"
+  Emits revocation event, archives key if compromised, evicts from cache,
+  deletes from storage, and triggers automatic renewal.
+
+  Sets `:skip-ocsp-fetch` on the renewal command to prevent infinite loops
+  if the OCSP responder continues returning revoked status."
   [system domain bundle ocsp-response]
-  (let [reason-code (:revocation-reason ocsp-response)
-        key-compromise? (= 1 reason-code)
-        timestamp (java.time.Instant/now)
-        storage (:storage system)
-        issuer-key (:issuer-key bundle)]
-    ;; Emit revocation event
+  (let [key-compromise? (= 1 (:revocation-reason ocsp-response))]
     (emit-event! system (create-certificate-revoked-event domain ocsp-response))
-    ;; Archive compromised key for audit if key compromise
     (when key-compromise?
-      (archive-compromised-key! system domain (:private-key bundle) timestamp))
-    ;; Evict revoked certificate from cache
+      (archive-compromised-key! system domain (:private-key bundle) (java.time.Instant/now)))
     (cache/remove-certificate (:cache system) bundle)
-    ;; Delete revoked certificate from storage to prevent it being loaded again
-    ;; (especially important with distributed locking double-check pattern)
-    (when issuer-key
-      (let [bg-lease (lease/background)
-            cert-key (config/cert-storage-key issuer-key domain)
-            key-key (config/key-storage-key issuer-key domain)
-            meta-key (config/meta-storage-key issuer-key domain)]
-        (storage/delete! storage bg-lease cert-key)
-        (storage/delete! storage bg-lease key-key)
-        (storage/delete! storage bg-lease meta-key)))
-    ;; Submit obtain-certificate command for automatic renewal
-    ;; Note: This will generate a new key since key-reuse defaults to false
-    ;; Note: Skip OCSP auto-fetch for revocation-triggered renewals to prevent infinite loops
-    ;; (if OCSP responder returns revoked for all certs, we'd loop forever)
-    (submit-command! system {:command :obtain-certificate
-                             :domain domain
+    (when-let [issuer-key (:issuer-key bundle)]
+      (delete-certificate-from-storage! (:storage system) issuer-key domain))
+    (submit-command! system {:command         :obtain-certificate
+                             :domain          domain
                              :skip-ocsp-fetch true})))
 
 ;;; ARI Fetching
@@ -1042,10 +1049,8 @@
   are not retried - they rely on the next maintenance tick."
   [system cmd]
   (case (:command cmd)
-    ;; Certificate operations use retry (like certmagic)
     :obtain-certificate (do-with-retry system #(obtain-certificate! system cmd))
     :renew-certificate (do-with-retry system #(renew-certificate! system cmd))
-    ;; OCSP/ARI: no retry - log errors, next maintenance tick will retry
     :fetch-ocsp (fetch-ocsp! system cmd)
     :fetch-ari (fetch-ari! system cmd)
     {:status :error :message "Unknown command"}))
@@ -1091,52 +1096,42 @@
          ari-enabled?
          bundle)))
 
-(defn- on-command-complete!
-  "Handle command completion - update cache and emit event.
+(defn- ocsp-indicates-revocation?
+  "Returns true if OCSP response indicates certificate was revoked."
+  [cmd result]
+  (and (= :fetch-ocsp (:command cmd))
+       (= :success (:status result))
+       (= :revoked (:status (:ocsp-response result)))))
 
-  After successful certificate obtain/renewal, queues OCSP and ARI fetch if enabled.
-  After successful OCSP fetch, persists staple to storage.
-  After successful ARI fetch, persists ARI data to storage.
-  If OCSP indicates revocation, triggers automatic renewal."
+(defn- persist-command-result!
+  "Persist command-specific data to storage."
   [system cmd result]
-  ;; Handle OCSP revocation before regular processing
-  (if (and (= :fetch-ocsp (:command cmd))
-           (= :success (:status result))
-           (= :revoked (:status (:ocsp-response result))))
-    ;; Certificate revoked - handle specially
-    (handle-ocsp-revocation! system
-                             (:domain cmd)
-                             (:bundle cmd)
-                             (:ocsp-response result))
-    ;; Normal processing
+  (when (= :success (:status result))
+    (case (:command cmd)
+      :fetch-ocsp (store-ocsp-staple! system (:domain cmd) (:ocsp-response result))
+      :fetch-ari  (store-ari-data! system (:domain cmd) (:ari-data result))
+      nil)))
+
+(defn- queue-followup-commands!
+  "Queue OCSP and ARI fetch after successful certificate operations."
+  [system cmd result]
+  (let [bundle (:bundle result)
+        domain (:domain cmd)]
+    (when (should-fetch-ocsp? system cmd result)
+      (submit-command! system {:command :fetch-ocsp :domain domain :bundle bundle}))
+    (when (should-fetch-ari? system cmd result)
+      (submit-command! system {:command :fetch-ari :domain domain :bundle bundle}))))
+
+(defn- on-command-complete!
+  "Handle command completion - update cache and emit event."
+  [system cmd result]
+  (if (ocsp-indicates-revocation? cmd result)
+    (handle-ocsp-revocation! system (:domain cmd) (:bundle cmd) (:ocsp-response result))
     (do
-      ;; Update cache on success
       (cache/handle-command-result (:cache system) cmd result)
-      ;; Emit event
-      (let [event (decisions/event-for-result cmd result)]
-        (emit-event! system event))
-      ;; Persist OCSP staple to storage after successful fetch (only for :good status)
-      (when (and (= :fetch-ocsp (:command cmd))
-                 (= :success (:status result)))
-        (store-ocsp-staple! system (:domain cmd) (:ocsp-response result)))
-      ;; Persist ARI data to storage after successful fetch
-      (when (and (= :fetch-ari (:command cmd))
-                 (= :success (:status result)))
-        (store-ari-data! system (:domain cmd) (:ari-data result)))
-      ;; Queue OCSP fetch after successful certificate obtain/renewal
-      (when (should-fetch-ocsp? system cmd result)
-        (let [bundle (:bundle result)
-              domain (:domain cmd)]
-          (submit-command! system {:command :fetch-ocsp
-                                   :domain domain
-                                   :bundle bundle})))
-      ;; Queue ARI fetch after successful certificate obtain/renewal
-      (when (should-fetch-ari? system cmd result)
-        (let [bundle (:bundle result)
-              domain (:domain cmd)]
-          (submit-command! system {:command :fetch-ari
-                                   :domain domain
-                                   :bundle bundle}))))))
+      (emit-event! system (decisions/event-for-result cmd result))
+      (persist-command-result! system cmd result)
+      (queue-followup-commands! system cmd result))))
 
 (defn- submit-command!
   "Submit a command for async execution with deduplication.
@@ -1306,17 +1301,6 @@
                                    :bundle bundle})
           (swap! renewed inc))))
     @renewed))
-
-(defn- delete-certificate-from-storage!
-  "Remove certificate files from storage."
-  [storage issuer-key domain]
-  (let [bg-lease (lease/background)
-        cert-key (config/cert-storage-key issuer-key domain)
-        key-key (config/key-storage-key issuer-key domain)
-        meta-key (config/meta-storage-key issuer-key domain)]
-    (storage/delete! storage bg-lease cert-key)
-    (storage/delete! storage bg-lease key-key)
-    (storage/delete! storage bg-lease meta-key)))
 
 (defn revoke
   "Revokes a certificate.

@@ -188,6 +188,16 @@
   [issuer-key]
   (str "accounts/" (safe-storage-key issuer-key) "/account.pub"))
 
+(defn account-registration-storage-key
+  "Generate storage key for account registration JSON.
+
+  Format: `accounts/{issuer-key}/registration.json`
+
+  Contains the account KID (URL) returned by the CA after registration,
+  allowing subsequent operations to skip the newAccount call."
+  [issuer-key]
+  (str "accounts/" (safe-storage-key issuer-key) "/registration.json"))
+
 (defn ocsp-storage-key
   "Generate storage key for an OCSP staple file.
 

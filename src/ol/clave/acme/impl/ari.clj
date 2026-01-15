@@ -4,71 +4,21 @@
   Extracts the Authority Key Identifier keyIdentifier and serial number
   from an X509Certificate and builds the unique renewal identifier string."
   (:require
-   [ol.clave.errors :as errors]
-   [ol.clave.crypto.impl.core :as crypto])
+   [ol.clave.crypto.impl.core :as crypto]
+   [ol.clave.crypto.impl.der :as der]
+   [ol.clave.errors :as errors])
   (:import
    [java.security.cert X509Certificate]))
 
 (set! *warn-on-reflection* true)
 
-;; OID for Authority Key Identifier extension per RFC 5280
-(def ^:private aki-oid "2.5.29.35")
+(def ^:private aki-oid
+  "OID for Authority Key Identifier extension per RFC 5280"
+  "2.5.29.35")
 
-;; RFC 9773 Section 4.3.3: On long-term errors, clients MUST retry after 6 hours
 (def ^:private long-term-retry-ms
-  "Default retry interval for long-term ARI errors per RFC 9773 Section 4.3.3."
+  "RFC 9773 Section 4.3.3: On long-term errors, clients MUST retry after 6 hours"
   (* 6 60 60 1000))
-
-(defn- read-der-length
-  "Read DER length and return [length bytes-consumed].
-  Supports short form (single byte) and long form (multi-byte)."
-  ^clojure.lang.PersistentVector [^bytes data ^long offset]
-  (let [first-byte (bit-and 0xFF (aget data offset))]
-    (if (zero? (bit-and first-byte 0x80))
-      ;; Short form: length is the byte itself
-      [first-byte 1]
-      ;; Long form: low 7 bits tell how many bytes follow
-      (let [num-bytes (bit-and first-byte 0x7F)]
-        (loop [i 0
-               len 0]
-          (if (= i num-bytes)
-            [len (inc num-bytes)]
-            (recur (inc i)
-                   (+ (bit-shift-left len 8)
-                      (bit-and 0xFF (aget data (+ offset 1 i)))))))))))
-
-(defn- unwrap-octet-string
-  "Unwrap a DER OCTET STRING and return its content bytes.
-  Tag 0x04 is the universal OCTET STRING tag."
-  ^bytes [^bytes data]
-  (when (and (pos? (alength data))
-             (= 0x04 (bit-and 0xFF (aget data 0))))
-    (let [[len consumed] (read-der-length data 1)
-          content-start (int (+ 1 consumed))]
-      (java.util.Arrays/copyOfRange data content-start (int (+ content-start len))))))
-
-(defn- find-context-tag-0
-  "Find [0] context-tagged field in a DER SEQUENCE and return its value bytes.
-  Context-specific primitive tag 0 is 0x80, constructed is 0xA0."
-  ^bytes [^bytes data]
-  (when (and (pos? (alength data))
-             (= 0x30 (bit-and 0xFF (aget data 0))))
-    ;; Skip SEQUENCE tag and length
-    (let [[_seq-len seq-consumed] (read-der-length data 1)
-          content-start (+ 1 seq-consumed)]
-      ;; Iterate through SEQUENCE contents looking for tag [0]
-      (loop [offset content-start]
-        (when (< offset (alength data))
-          (let [tag (bit-and 0xFF (aget data offset))]
-            (if (or (= 0x80 tag) (= 0xA0 tag))
-              ;; Found context tag [0]
-              (let [[len consumed] (read-der-length data (inc offset))
-                    value-start (int (+ offset 1 consumed))]
-                (java.util.Arrays/copyOfRange data value-start (int (+ value-start len))))
-              ;; Skip this element and continue
-              (let [[len consumed] (read-der-length data (inc offset))
-                    next-offset (+ offset 1 consumed len)]
-                (recur next-offset)))))))))
 
 (defn authority-key-identifier
   "Extract the keyIdentifier bytes from the AKI extension of a certificate.
@@ -85,18 +35,26 @@
                         "Certificate missing Authority Key Identifier extension"
                         {:oid aki-oid})))
     ;; Extension value is wrapped in an outer OCTET STRING
-    (let [inner (unwrap-octet-string ext-value)]
+    (let [inner (try
+                  (der/unwrap-octet-string ext-value)
+                  (catch Exception _
+                    nil))]
       (when-not inner
         (throw (errors/ex errors/renewal-info-invalid
                           "Invalid AKI extension encoding"
                           {:oid aki-oid})))
       ;; Inner is AuthorityKeyIdentifier SEQUENCE, find [0] keyIdentifier
-      (let [key-id (find-context-tag-0 inner)]
-        (when-not key-id
+      (let [elements (try
+                       (der/unwrap-sequence inner)
+                       (catch Exception _
+                         nil))
+            key-id-tlv (when elements
+                         (der/find-context-tag elements 0))]
+        (when-not key-id-tlv
           (throw (errors/ex errors/renewal-info-invalid
                             "AKI extension missing keyIdentifier field"
                             {:oid aki-oid})))
-        key-id))))
+        (:value key-id-tlv)))))
 
 (defn serial-der-bytes
   "Return the DER-encoded serial number bytes of a certificate.

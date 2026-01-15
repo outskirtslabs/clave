@@ -56,6 +56,15 @@
 
 ;;;; Hash and HMAC utilities
 
+(defn sha1-bytes
+  "Compute SHA-1 digest of the given bytes.
+
+  Used for OCSP CertificateID as required by RFC 6960."
+  ^bytes [^bytes bs]
+  (let [^java.security.MessageDigest digest (java.security.MessageDigest/getInstance "SHA-1")]
+    (.update digest bs)
+    (.digest digest)))
+
 (defn sha256-bytes
   "Compute SHA-256 digest of the given bytes."
   ^bytes [^bytes bs]

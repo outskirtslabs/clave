@@ -3,7 +3,6 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [ol.clave.automation :as automation]
-   [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.automation.impl.system :as system]
    [ol.clave.storage.file :as file-storage])
   (:import

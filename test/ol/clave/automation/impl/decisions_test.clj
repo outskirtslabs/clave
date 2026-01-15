@@ -199,37 +199,74 @@
     (let [b {:names ["example.com" "www.example.com"] :not-after (Instant/parse "2026-04-01T00:00:00Z")}
           ev (decisions/event-for-result {:command :obtain-certificate :domain "example.com"}
                                          {:status :success :bundle b})]
-      (is (= :certificate-obtained (:type ev)))
       (is (some? (:timestamp ev)))
-      (is (= {:domain "example.com" :names ["example.com" "www.example.com"]
-              :not-after (Instant/parse "2026-04-01T00:00:00Z") :issuer-key nil}
-             (:data ev)))))
+      (is (= {:type :certificate-obtained
+              :data {:domain "example.com"
+                     :names ["example.com" "www.example.com"]
+                     :not-after (Instant/parse "2026-04-01T00:00:00Z")
+                     :issuer-key nil}}
+             (dissoc ev :timestamp)))))
 
   (testing "certificate-renewed on renew success"
     (let [b {:names ["example.com"] :not-after (Instant/parse "2026-04-01T00:00:00Z")}
           ev (decisions/event-for-result {:command :renew-certificate :domain "example.com"}
                                          {:status :success :bundle b})]
-      (is (= :certificate-renewed (:type ev)))
-      (is (= "example.com" (get-in ev [:data :domain])))))
+      (is (some? (:timestamp ev)))
+      (is (= {:type :certificate-renewed
+              :data {:domain "example.com"
+                     :names ["example.com"]
+                     :not-after (Instant/parse "2026-04-01T00:00:00Z")
+                     :issuer-key nil}}
+             (dissoc ev :timestamp)))))
 
   (testing "certificate-failed on failure"
     (let [ev (decisions/event-for-result {:command :obtain-certificate :domain "example.com"}
                                          {:status :error :message "Connection refused" :reason :max-duration-exceeded})]
-      (is (= :certificate-failed (:type ev)))
-      (is (= "Connection refused" (get-in ev [:data :error])))
-      (is (= :max-duration-exceeded (get-in ev [:data :reason])))))
+      (is (some? (:timestamp ev)))
+      (is (= {:type :certificate-failed
+              :data {:domain "example.com"
+                     :error "Connection refused"
+                     :reason :max-duration-exceeded}}
+             (dissoc ev :timestamp)))))
+
+  (testing "certificate-failed includes attempts when present"
+    (let [ev (decisions/event-for-result {:command :obtain-certificate :domain "example.com"}
+                                         {:status :error :message "Max retry exceeded" :reason :max-duration-exceeded :attempts 25})]
+      (is (some? (:timestamp ev)))
+      (is (= {:type :certificate-failed
+              :data {:domain "example.com"
+                     :error "Max retry exceeded"
+                     :reason :max-duration-exceeded
+                     :attempts 25}}
+             (dissoc ev :timestamp)))))
+
+  (testing "certificate-failed omits attempts when not present"
+    (let [ev (decisions/event-for-result {:command :obtain-certificate :domain "example.com"}
+                                         {:status :error :message "Config error" :reason :config-error})]
+      (is (some? (:timestamp ev)))
+      (is (= {:type :certificate-failed
+              :data {:domain "example.com"
+                     :error "Config error"
+                     :reason :config-error}}
+             (dissoc ev :timestamp)))))
 
   (testing "ocsp-stapled on success"
     (let [ev (decisions/event-for-result {:command :fetch-ocsp :domain "example.com"}
                                          {:status :success :ocsp-response {:next-update (Instant/parse "2026-01-15T12:00:00Z")}})]
-      (is (= :ocsp-stapled (:type ev)))
-      (is (= (Instant/parse "2026-01-15T12:00:00Z") (get-in ev [:data :next-update])))))
+      (is (some? (:timestamp ev)))
+      (is (= {:type :ocsp-stapled
+              :data {:domain "example.com"
+                     :next-update (Instant/parse "2026-01-15T12:00:00Z")}}
+             (dissoc ev :timestamp)))))
 
   (testing "ocsp-failed on failure"
     (let [ev (decisions/event-for-result {:command :fetch-ocsp :domain "example.com"}
                                          {:status :error :message "OCSP unreachable"})]
-      (is (= :ocsp-failed (:type ev)))
-      (is (= "OCSP unreachable" (get-in ev [:data :error]))))))
+      (is (some? (:timestamp ev)))
+      (is (= {:type :ocsp-failed
+              :data {:domain "example.com"
+                     :error "OCSP unreachable"}}
+             (dissoc ev :timestamp))))))
 
 (deftest calculate-ari-renewal-time-test
   (let [start (Instant/parse "2026-02-01T00:00:00Z")
@@ -330,6 +367,10 @@
     (is (< (nth intervals 0) (nth intervals 10)))
     (is (= 21600000 (last intervals)))))
 
+(deftest max-retry-duration-ms-test
+  (testing "max retry duration is 30 days in milliseconds"
+    (is (= (* 30 24 60 60 1000) decisions/*max-retry-duration-ms*))))
+
 (deftest calculate-maintenance-interval-test
   (testing "90-day cert"
     (let [int (decisions/calculate-maintenance-interval (make-bundle {:not-before "2026-01-01T00:00:00Z" :not-after "2026-04-01T00:00:00Z"}))]
@@ -356,7 +397,9 @@
                         :not-after "2026-04-01T00:00:00Z"
                         :names ["example.com" "www.example.com"]})
         ev (decisions/create-certificate-loaded-event b)]
-    (is (= :certificate-loaded (:type ev)))
     (is (instance? Instant (:timestamp ev)))
-    (is (= "example.com" (get-in ev [:data :domain])))
-    (is (= ["example.com" "www.example.com"] (get-in ev [:data :names])))))
+    (is (= {:type :certificate-loaded
+            :data {:domain "example.com"
+                   :names ["example.com" "www.example.com"]
+                   :not-after (Instant/parse "2026-04-01T00:00:00Z")}}
+           (dissoc ev :timestamp)))))

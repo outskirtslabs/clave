@@ -37,6 +37,11 @@
   Certificates shorter than this use different renewal logic."
   (* 7 24 60 60 1000))
 
+(def ^:dynamic *max-retry-duration-ms*
+  "Maximum duration to retry a failing operation (30 days).
+  After this duration, the operation fails permanently."
+  (* 30 24 60 60 1000))
+
 (defn short-lived-cert?
   "Check if a certificate is short-lived (< 7 days lifetime).
 
@@ -363,9 +368,10 @@
       (and (not success?) (#{:obtain-certificate :renew-certificate} command))
       {:type :certificate-failed
        :timestamp now
-       :data {:domain domain
-              :error (:message result)
-              :reason (:reason result)}}
+       :data (cond-> {:domain domain
+                      :error (:message result)
+                      :reason (:reason result)}
+               (:attempts result) (assoc :attempts (:attempts result)))}
 
       ;; OCSP fetched successfully
       (and success? (= :fetch-ocsp command))
@@ -458,12 +464,7 @@
   "Calculate random jitter for maintenance loop scheduling.
 
   Returns a random value in [0, maintenance-jitter) to spread out
-  maintenance operations and avoid thundering herd problems.
-
-  | key                  | description                                             |
-  |----------------------|---------------------------------------------------------|
-  | `maintenance-jitter` | Maximum jitter in milliseconds                          |
-  | `rng`                | `java.util.Random` instance for random selection (opt.) |"
+  maintenance operations and avoid thundering herd problems."
   ([maintenance-jitter]
    (calculate-maintenance-jitter maintenance-jitter (java.util.Random.)))
   ([maintenance-jitter ^java.util.Random rng]

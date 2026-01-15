@@ -997,12 +997,89 @@
 
 ;;; Command Execution
 
+(defn- do-with-retry
+  "Execute f with exponential backoff retry until success or max duration.
+
+  Retries on retryable errors using `retry-intervals` backoff schedule.
+  Stops immediately on success, shutdown, or non-retryable error.
+  Logs each retry attempt and final failure.
+
+  Returns result map with :status (:success or :error).
+  After max duration, returns final error with :reason :max-duration-exceeded."
+  [system f]
+  (let [start-time (Instant/now)
+        max-duration decisions/*max-retry-duration-ms*
+        shutdown? (:shutdown? system)]
+    (loop [interval-idx -1
+           attempts 0]
+      (let [elapsed-ms (- (.toEpochMilli (Instant/now)) (.toEpochMilli start-time))]
+        (cond
+          @shutdown?
+          {:status :error :message "System shutdown" :reason :shutdown}
+
+          (>= elapsed-ms max-duration)
+          (do
+            (log/log! {:level :error :id ::max-retry-exceeded
+                       :data {:attempts attempts :elapsed-ms elapsed-ms}})
+            {:status :error
+             :message "Max retry duration exceeded"
+             :reason :max-duration-exceeded
+             :attempts attempts})
+
+          :else
+          (do
+            ;; Wait if not first attempt
+            (when (>= interval-idx 0)
+              (let [delay-ms (long (nth decisions/retry-intervals
+                                        interval-idx
+                                        (last decisions/retry-intervals)))]
+                (Thread/sleep delay-ms)))
+
+            ;; execute the operation
+            (let [result (try
+                           (f)
+                           (catch Exception e
+                             {:status :error
+                              :message (ex-message e)
+                              :exception e
+                              :reason (decisions/classify-error e)}))]
+              (cond
+                (= :success (:status result))
+                result
+
+                ;; Non-retryable error - log and return
+                (not (decisions/retryable-error? (:reason result)))
+                (do
+                  (log/log! {:level :error :id ::non-retryable-error
+                             :data {:reason (:reason result)
+                                    :message (:message result)}})
+                  result)
+
+                ;; Retryable error - log and continue
+                :else
+                (let [next-idx (min (inc interval-idx)
+                                    (dec (count decisions/retry-intervals)))
+                      next-delay (nth decisions/retry-intervals next-idx)]
+                  (log/log! {:level :error :id ::will-retry
+                             :data {:attempt (inc attempts)
+                                    :reason (:reason result)
+                                    :retrying-in-ms next-delay
+                                    :elapsed-ms elapsed-ms
+                                    :max-duration-ms max-duration}})
+                  (recur next-idx (inc attempts)))))))))))
+
 (defn- execute-command!
-  "Execute a command and return the result."
+  "Execute a command and return the result.
+
+  Certificate operations (obtain/renew) are wrapped with retry logic that
+  retries on transient failures for up to 30 days. OCSP/ARI operations
+  are not retried - they rely on the next maintenance tick."
   [system cmd]
   (case (:command cmd)
-    :obtain-certificate (obtain-certificate! system cmd)
-    :renew-certificate (renew-certificate! system cmd)
+    ;; Certificate operations use retry (like certmagic)
+    :obtain-certificate (do-with-retry system #(obtain-certificate! system cmd))
+    :renew-certificate (do-with-retry system #(renew-certificate! system cmd))
+    ;; OCSP/ARI: no retry - log errors, next maintenance tick will retry
     :fetch-ocsp (fetch-ocsp! system cmd)
     :fetch-ari (fetch-ari! system cmd)
     {:status :error :message "Unknown command"}))

@@ -17,9 +17,7 @@
 
 (set! *warn-on-reflection* true)
 
-;; -------------------------
-;; Core Primitives
-;; -------------------------
+;;; Core Primitives
 
 (defn encode-length
   "Encode DER length octets (short or long form).
@@ -57,9 +55,7 @@
         (recur (rest arrays) (int (+ offset (alength arr))))))
     result))
 
-;; -------------------------
-;; Tag-Length-Value Encoding
-;; -------------------------
+;;; Tag-Length-Value Encoding
 
 (defn der-primitive
   "Encode DER primitive with given tag and content.
@@ -91,9 +87,7 @@
     (System/arraycopy content 0 result (+ 1 (alength len-bytes)) (alength content))
     result))
 
-;; -------------------------
-;; Universal Types
-;; -------------------------
+;;; Universal Types
 
 (defn der-sequence
   "Encode DER SEQUENCE from parts.
@@ -228,9 +222,7 @@
     (System/arraycopy bytes 0 content 1 (alength bytes))
     (der-primitive 0x03 content)))
 
-;; -------------------------
-;; Time Types
-;; -------------------------
+;;; Time Types
 
 (defn der-utc-time
   "Encode DER UTCTime from Date.
@@ -254,9 +246,7 @@
     (.setTimeZone formatter (java.util.TimeZone/getTimeZone "UTC"))
     (der-primitive 0x18 (.getBytes (.format formatter date) StandardCharsets/US_ASCII))))
 
-;; -------------------------
-;; Context-Specific Tags
-;; -------------------------
+;;; Context-Specific Tags
 
 (defn der-context-specific-constructed-implicit
   "Encode IMPLICIT [tag] CONSTRUCTED with given content.

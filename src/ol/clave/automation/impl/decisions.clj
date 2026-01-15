@@ -229,9 +229,7 @@
   [cmd]
   (boolean (fast-commands (:command cmd))))
 
-;; =============================================================================
-;; Error Classification
-;; =============================================================================
+;;; Error Classification
 
 (def ^:private network-exception-types
   "Exception types that indicate network-level failures."
@@ -316,9 +314,7 @@
   [error-type]
   (boolean (retryable-error-types error-type)))
 
-;; =============================================================================
-;; Event Creation
-;; =============================================================================
+;;; Event Creation
 
 (defn event-for-result
   "Create an event from a command result.
@@ -422,9 +418,7 @@
             :names (:names bundle)
             :not-after (:not-after bundle)}}))
 
-;; =============================================================================
-;; Certificate Lifecycle
-;; =============================================================================
+;;; Certificate Lifecycle
 
 (defn short-lived-cert?
   "Check if a certificate is short-lived (< 7 days lifetime).
@@ -441,9 +435,7 @@
         lifetime-ms (- (.toEpochMilli not-after) (.toEpochMilli not-before))]
     (< lifetime-ms *short-lived-threshold-ms*)))
 
-;; =============================================================================
-;; Retry and Jitter
-;; =============================================================================
+;;; Retry and Jitter
 
 (def retry-intervals
   "Retry intervals following certmagic's backoff pattern (in milliseconds).

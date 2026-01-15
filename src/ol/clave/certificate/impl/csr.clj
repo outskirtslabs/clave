@@ -31,9 +31,7 @@
   [s]
   (.getBytes ^String s StandardCharsets/US_ASCII))
 
-;; -------------------------
-;; Subject DN Encoding
-;; -------------------------
+;;; Subject DN Encoding
 
 (def ^:private oid-dn
   "DN attribute OID mappings."
@@ -60,9 +58,7 @@
                    (der/der-set atv))))]
     (apply der/der-sequence rdns)))
 
-;; ------------------------------
-;; SAN Validation & Normalization
-;; ------------------------------
+;;; SAN Validation & Normalization
 
 (defn- validate-dns-label
   "Validate DNS label syntax per RFC 1035.
@@ -207,9 +203,7 @@
   (let [normalized (map parse-san san-strings)]
     (vec (distinct normalized))))
 
-;; -------------------------
-;; GeneralName Encoding
-;; -------------------------
+;;; GeneralName Encoding
 
 (defn- encode-general-name
   "Encode a single GeneralName."
@@ -223,9 +217,7 @@
   [sans]
   (apply der/der-sequence (map encode-general-name sans)))
 
-;; -------------------------
-;; Attributes / Extensions
-;; -------------------------
+;;; Attributes / Extensions
 
 (defn- build-tls-feature-extension
   "Build TLS Feature extension for OCSP must-staple.
@@ -267,9 +259,7 @@
         content (apply der/concat-bytes [attribute])]
     (der/der-context-specific-constructed-implicit 0 content)))
 
-;; -------------------------
-;; Algorithm Selection
-;; -------------------------
+;;; Algorithm Selection
 
 (defn- ec-key-bits
   "Get EC key size in bits."
@@ -347,9 +337,7 @@
                         (str "Unknown algorithm: " algo)
                         {::errors/algorithm algo})))))
 
-;; -------------------------
-;; Public API
-;; -------------------------
+;;; Public API
 
 (defn create-csr
   "See [[ol.clave.certificate/csr]]"

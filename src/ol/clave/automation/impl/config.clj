@@ -103,9 +103,7 @@
       ;; Remove trailing slashes
       (str/replace #"/+$" "")))
 
-;; =============================================================================
-;; Storage Key Generation
-;; =============================================================================
+;;; Storage Key Generation
 
 (defn- safe-storage-key
   "Sanitize a value for use in storage key paths.

@@ -116,9 +116,7 @@
    :http-client (:http-client config)
    :maintenance-thread (atom nil)})
 
-;; =============================================================================
-;; Certificate Loading from Storage
-;; =============================================================================
+;;; Certificate Loading from Storage
 
 (def ^:private pem-key-pattern
   #"(?s)-----BEGIN PRIVATE KEY-----\s*(.*?)\s*-----END PRIVATE KEY-----")
@@ -511,9 +509,7 @@
           (cache/cache-certificate (:cache system) bundle)
           bundle))))
 
-;; =============================================================================
-;; Event Emission
-;; =============================================================================
+;;; Event Emission
 
 (defn- emit-event!
   "Emit an event to the event queue.
@@ -548,9 +544,7 @@
    :timestamp (Instant/now)
    :data {:domain domain}})
 
-;; =============================================================================
-;; Certificate Obtain Workflow
-;; =============================================================================
+;;; Certificate Obtain Workflow
 
 (defn- load-account-keypair
   "Load account keypair from storage if it exists.
@@ -838,9 +832,7 @@
         ;; Always release the lock
         (storage/unlock! storage nil lock-key)))))
 
-;; =============================================================================
-;; OCSP Fetching
-;; =============================================================================
+;;; OCSP Fetching
 
 (defn- fetch-ocsp!
   "Fetch OCSP staple for a certificate.
@@ -949,9 +941,7 @@
                              :domain domain
                              :skip-ocsp-fetch true})))
 
-;; =============================================================================
-;; ARI Fetching
-;; =============================================================================
+;;; ARI Fetching
 
 (defn- fetch-ari!
   "Fetch ARI (ACME Renewal Information) for a certificate.
@@ -1013,9 +1003,7 @@
                                   :retry-after (some-> (:retry-after ari-data) str)})]
     (storage/store-string! storage nil ari-key ari-json)))
 
-;; =============================================================================
-;; Command Execution
-;; =============================================================================
+;;; Command Execution
 
 (defn- execute-command!
   "Execute a command and return the result."

@@ -126,9 +126,7 @@
 (s/def ::account-artifact
   (s/keys :req [::registration ::private-key-pem ::public-key-pem]))
 
-;; ---------------------------------------------------------------------------
-;; Orders (RFC 8555 Section 7.1.3)
-;; ---------------------------------------------------------------------------
+;;; Orders (RFC 8555 Section 7.1.3)
 
 (s/def ::identifier-type (s/and string? #(not (str/blank? %))))
 (s/def ::identifier-value (s/and string? #(not (str/blank? %))))
@@ -169,9 +167,7 @@
 (defn certificate-url [order]
   (::certificate order))
 
-;; ---------------------------------------------------------------------------
-;; Authorizations & Challenges (RFC 8555 Section 7.1.4, 7.1.5)
-;; ---------------------------------------------------------------------------
+;;; Authorizations & Challenges (RFC 8555 Section 7.1.4, 7.1.5)
 
 (s/def ::authorization-expires (s/nilable ::instant))
 (s/def ::authorization-location string?)
@@ -188,9 +184,7 @@
   (s/keys :req [::identifier ::status ::challenges]
           :opt [::wildcard ::authorization-expires ::authorization-location ::error]))
 
-;; ---------------------------------------------------------------------------
-;; Certificates
-;; ---------------------------------------------------------------------------
+;;; Certificates
 
 (s/def ::url string?)
 (s/def ::pem string?)
@@ -207,9 +201,7 @@
   (s/keys :req [::pem]
           :opt [::certificates ::url ::links ::der-first ::renewal-info]))
 
-;; ---------------------------------------------------------------------------
-;; Revocation (RFC 5280 Section 5.3.1)
-;; ---------------------------------------------------------------------------
+;;; Revocation (RFC 5280 Section 5.3.1)
 
 (def ^:private valid-revocation-reasons
   "RFC 5280 CRLReason codes valid for ACME revocation.
@@ -219,9 +211,7 @@
 (s/def ::revocation-reason
   (s/and int? valid-revocation-reasons))
 
-;; ---------------------------------------------------------------------------
-;; ARI Renewal Information (RFC 9773)
-;; ---------------------------------------------------------------------------
+;;; ARI Renewal Information (RFC 9773)
 
 (s/def ::start inst?)
 (s/def ::end inst?)
@@ -236,9 +226,7 @@
   (s/keys :req-un [::suggested-window ::retry-after-ms]
           :opt-un [::explanation-url]))
 
-;; ---------------------------------------------------------------------------
-;; Terms of Service Change Detection
-;; ---------------------------------------------------------------------------
+;;; Terms of Service Change Detection
 
 (s/def ::previous (s/nilable string?))
 (s/def ::current (s/nilable string?))

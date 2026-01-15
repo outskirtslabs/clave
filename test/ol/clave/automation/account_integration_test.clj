@@ -109,20 +109,20 @@
             queue2 (automation/get-event-queue system2)]
         (try
             ;; Force renewal to create new certificate (with threshold > 1)
-            (binding [decisions/*renewal-threshold* 1.01]
-              (automation/trigger-maintenance! system2)
+          (binding [decisions/*renewal-threshold* 1.01]
+            (automation/trigger-maintenance! system2)
               ;; Wait for renewal
-              (loop [attempts 0]
-                (when (< attempts 10)
-                  (let [evt (.poll queue2 5 TimeUnit/SECONDS)]
-                    (when-not (= :certificate-renewed (:type evt))
-                      (recur (inc attempts)))))))
+            (loop [attempts 0]
+              (when (< attempts 10)
+                (let [evt (.poll queue2 5 TimeUnit/SECONDS)]
+                  (when-not (= :certificate-renewed (:type evt))
+                    (recur (inc attempts)))))))
             ;; Verify account key is unchanged
-            (let [reloaded-key-pem (storage/load-string storage-impl nil private-key-key)]
-              (is (= original-key-pem reloaded-key-pem)
-                  "Account key should be unchanged after restart"))
-            (finally
-              (automation/stop system2)))))))
+          (let [reloaded-key-pem (storage/load-string storage-impl nil private-key-key)]
+            (is (= original-key-pem reloaded-key-pem)
+                "Account key should be unchanged after restart"))
+          (finally
+            (automation/stop system2)))))))
 
 (deftest tos-acceptance-is-implicit-with-issuer-config
   (testing "Terms of Service acceptance is implicit when issuer is configured"

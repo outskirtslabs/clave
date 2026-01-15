@@ -79,8 +79,8 @@
                 ;; GeneralName type 7 is iPAddress
                 ;; Type 2 is DNS name
                 (is (some #(and (= 7 (first %))
-                               (= ip-address (second %)))
-                         sans)
+                                (= ip-address (second %)))
+                          sans)
                     "Certificate SAN should contain IP address")))))
         (finally
           (automation/stop system))))))

@@ -70,8 +70,8 @@
           ;; Start both Pebble instances
           pebble-a (pebble/pebble-start config-path-a {"PEBBLE_VA_NOSLEEP" "1"})
           pebble-b (pebble/pebble-start config-path-b {"PEBBLE_VA_NOSLEEP" "1"
-                                                        "PEBBLE_VA_HTTPPORT" (str (:http-port ports-b))
-                                                        "PEBBLE_VA_TLSPORT" (str (:tls-port ports-b))})]
+                                                       "PEBBLE_VA_HTTPPORT" (str (:http-port ports-b))
+                                                       "PEBBLE_VA_TLSPORT" (str (:tls-port ports-b))})]
       (try
         ;; Wait for both Pebble instances to be ready
         (let [url-a (str "https://localhost:" (:listen-port ports-a) "/dir")

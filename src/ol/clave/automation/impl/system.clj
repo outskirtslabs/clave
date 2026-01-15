@@ -320,7 +320,7 @@
             ;; Cancel the future (interrupt the thread if possible)
             (future-cancel f)
             (throw (ex-info "Config-fn timeout" {:domain domain
-                                                  :timeout-ms timeout-ms})))
+                                                 :timeout-ms timeout-ms})))
           result)))))
 
 (defn- certificate-exists-in-storage?
@@ -958,8 +958,8 @@
         issuer-key (:issuer-key bundle)
         issuers (get-in system [:config :issuers])
         issuer-config (or (first (filter #(= issuer-key
-                                              (or (:issuer-key %)
-                                                  (config/issuer-key-from-url (:directory-url %))))
+                                             (or (:issuer-key %)
+                                                 (config/issuer-key-from-url (:directory-url %))))
                                          issuers))
                           (first issuers))]
     (try
@@ -1314,8 +1314,8 @@
             ;; Find the issuer config matching the issuer-key
             issuers (get-in system [:config :issuers])
             issuer-config (or (first (filter #(= issuer-key
-                                                  (or (:issuer-key %)
-                                                      (config/issuer-key-from-url (:directory-url %))))
+                                                 (or (:issuer-key %)
+                                                     (config/issuer-key-from-url (:directory-url %))))
                                              issuers))
                               (first issuers))]
         (try

@@ -75,12 +75,12 @@
             (is (= :domain-added (:type evt1))))
           ;; Step 5: Wait for certificate-obtained event
           (let [cert-event (loop [attempts 0]
-                            (if (>= attempts 30)
-                              nil
-                              (let [evt (.poll queue 1 TimeUnit/SECONDS)]
-                                (if (= :certificate-obtained (:type evt))
-                                  evt
-                                  (recur (inc attempts))))))]
+                             (if (>= attempts 30)
+                               nil
+                               (let [evt (.poll queue 1 TimeUnit/SECONDS)]
+                                 (if (= :certificate-obtained (:type evt))
+                                   evt
+                                   (recur (inc attempts))))))]
             ;; Step 6: Verify certificate operation succeeded
             (is (some? cert-event)
                 "Should receive :certificate-obtained event (proves account was auto-recreated)")

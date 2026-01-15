@@ -47,7 +47,6 @@
              (sort-by #(.getNameCount ^Path %) >)
              (run! #(Files/deleteIfExists ^Path %)))))))
 
-
 (defn- drain-queue
   "Drain all pending events from the queue."
   [^java.util.concurrent.LinkedBlockingQueue queue]

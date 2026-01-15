@@ -83,64 +83,64 @@
 
             ;; Trigger certificate obtain on both instances nearly simultaneously
             ;; Using futures for concurrent execution
-            (let [f1 (future
-                       (.countDown both-ready)
-                       (.await both-ready 5 TimeUnit/SECONDS)
-                       (automation/manage-domains system1 ["localhost"]))
-                  f2 (future
-                       (.countDown both-ready)
-                       (.await both-ready 5 TimeUnit/SECONDS)
-                       (automation/manage-domains system2 ["localhost"]))]
+          (let [f1 (future
+                     (.countDown both-ready)
+                     (.await both-ready 5 TimeUnit/SECONDS)
+                     (automation/manage-domains system1 ["localhost"]))
+                f2 (future
+                     (.countDown both-ready)
+                     (.await both-ready 5 TimeUnit/SECONDS)
+                     (automation/manage-domains system2 ["localhost"]))]
 
               ;; Wait for both manage-domains calls to return
-              (deref f1 5000 :timeout)
-              (deref f2 5000 :timeout))
+            (deref f1 5000 :timeout)
+            (deref f2 5000 :timeout))
 
             ;; Wait for at least one solver to start (lock acquired)
-            (.await first-solver-started 30 TimeUnit/SECONDS)
+          (.await first-solver-started 30 TimeUnit/SECONDS)
 
             ;; Wait for certificate-obtained events from both systems
             ;; The first system does the ACME work, the second loads from storage
-            (let [wait-for-cert-event (fn [q timeout-ms]
-                                        (loop [timeout-remaining timeout-ms]
-                                          (when (pos? timeout-remaining)
-                                            (if-let [evt (.poll q 500 TimeUnit/MILLISECONDS)]
-                                              (if (= :certificate-obtained (:type evt))
-                                                evt
-                                                (recur (- timeout-remaining 500)))
-                                              (recur (- timeout-remaining 500))))))
+          (let [wait-for-cert-event (fn [q timeout-ms]
+                                      (loop [timeout-remaining timeout-ms]
+                                        (when (pos? timeout-remaining)
+                                          (if-let [evt (.poll q 500 TimeUnit/MILLISECONDS)]
+                                            (if (= :certificate-obtained (:type evt))
+                                              evt
+                                              (recur (- timeout-remaining 500)))
+                                            (recur (- timeout-remaining 500))))))
                   ;; Wait for domain-added events (may or may not appear depending on timing)
-                  _ (.poll queue1 2 TimeUnit/SECONDS)
-                  _ (.poll queue2 2 TimeUnit/SECONDS)
+                _ (.poll queue1 2 TimeUnit/SECONDS)
+                _ (.poll queue2 2 TimeUnit/SECONDS)
                   ;; Wait for certificate-obtained from system 1 (the one that does ACME work)
-                  cert-evt1 (wait-for-cert-event queue1 30000)
+                cert-evt1 (wait-for-cert-event queue1 30000)
                   ;; System 2 should also emit certificate-obtained after loading from storage
-                  cert-evt2 (wait-for-cert-event queue2 30000)]
+                cert-evt2 (wait-for-cert-event queue2 30000)]
 
               ;; At least one system should have obtained the certificate
-              (is (or cert-evt1 cert-evt2)
-                  "At least one system should emit certificate-obtained")
+            (is (or cert-evt1 cert-evt2)
+                "At least one system should emit certificate-obtained")
 
               ;; Step 6: Verify only one certificate is issued
               ;; The solver should only have been invoked once due to distributed locking
-              (is (= 1 @obtain-count)
-                  "Solver should only be invoked once due to distributed locking")
+            (is (= 1 @obtain-count)
+                "Solver should only be invoked once due to distributed locking")
 
               ;; Step 8: Verify both instances have certificate in cache
               ;; The instance that didn't do the work should have loaded from storage
-              (let [cert1 (automation/lookup-cert system1 "localhost")
-                    cert2 (automation/lookup-cert system2 "localhost")]
-                (is (some? cert1)
-                    "System 1 should have certificate in cache")
-                (is (some? cert2)
-                    "System 2 should have certificate in cache")
+            (let [cert1 (automation/lookup-cert system1 "localhost")
+                  cert2 (automation/lookup-cert system2 "localhost")]
+              (is (some? cert1)
+                  "System 1 should have certificate in cache")
+              (is (some? cert2)
+                  "System 2 should have certificate in cache")
 
                 ;; Verify certificates are the same (same hash)
-                (when (and cert1 cert2)
-                  (is (= (:hash cert1) (:hash cert2))
-                      "Both systems should have the same certificate")))))
+              (when (and cert1 cert2)
+                (is (= (:hash cert1) (:hash cert2))
+                    "Both systems should have the same certificate")))))
 
-          (finally
+        (finally
             ;; Step 9: Clean up
-            (automation/stop system1)
-            (automation/stop system2))))))
+          (automation/stop system1)
+          (automation/stop system2))))))

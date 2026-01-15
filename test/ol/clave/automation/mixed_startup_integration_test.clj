@@ -108,7 +108,7 @@
           (let [queue (automation/get-event-queue system)
               ;; Collect ALL events during initial phase - renewals may happen
               ;; quickly after startup, especially for expired certs
-              all-initial-events (atom [])]
+                all-initial-events (atom [])]
             ;; Step 6-9: Verify all three certificates are loaded
             ;; Collect initial events (may have duplicates due to implementation)
             ;; Keep ALL events, not just loaded, because renewal may happen fast

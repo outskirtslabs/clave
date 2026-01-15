@@ -58,7 +58,7 @@
                     :issuers [{:directory-url (pebble/uri)}]
                     :solvers {:http-01 solver}
                     :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                    :skip-domain-validation true}
             system (automation/start config)]
         (try
           (let [queue (automation/get-event-queue system)]

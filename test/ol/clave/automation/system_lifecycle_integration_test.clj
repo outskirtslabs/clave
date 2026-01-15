@@ -95,7 +95,7 @@
           initial-config {:storage storage-impl
                           :issuers [{:directory-url (pebble/uri)}]
                           :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                          :skip-domain-validation true}
           ;; Get a real certificate from Pebble via test utilities
           test-session (test-util/fresh-session)
           [_session ^X509Certificate cert cert-keypair] (test-util/issue-certificate test-session)

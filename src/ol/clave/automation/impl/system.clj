@@ -4,7 +4,7 @@
   The system map contains all components and is passed to internal functions.
   Components access what they need via destructuring."
   (:require
-   [clojure.data.json :as json]
+   [clojure.edn :as edn]
    [clojure.string :as str]
    [ol.clave.acme.account :as account]
    [ol.clave.acme.commands :as cmd]
@@ -143,21 +143,16 @@
     (let [ocsp-key (config/ocsp-storage-key issuer-key domain)]
       (when (storage/exists? storage nil ocsp-key)
         (let [ocsp-bytes (storage/load storage nil ocsp-key)
-              meta-key (str ocsp-key ".meta")
-              meta-json (when (storage/exists? storage nil meta-key)
-                          (try
-                            (json/read-str (storage/load-string storage nil meta-key)
-                                           :key-fn keyword)
-                            (catch Exception _ nil)))]
+              meta-key (str ocsp-key ".meta.edn")
+              meta-edn (when (storage/exists? storage nil meta-key)
+                         (try
+                           (edn/read-string (storage/load-string storage nil meta-key))
+                           (catch Exception _ nil)))]
           (when (and ocsp-bytes (pos? (alength ^bytes ocsp-bytes)))
             {:raw-bytes ocsp-bytes
-             :this-update (when meta-json
-                            (some-> (:this-update meta-json)
-                                    java.time.Instant/parse))
-             :next-update (when meta-json
-                            (some-> (:next-update meta-json)
-                                    java.time.Instant/parse))
-             :status (or (some-> (:status meta-json) keyword) :good)}))))
+             :this-update (some-> (:this-update meta-edn) Instant/parse)
+             :next-update (some-> (:next-update meta-edn) Instant/parse)
+             :status (or (:status meta-edn) :good)}))))
     (catch Exception _
       nil)))
 
@@ -170,13 +165,12 @@
   (try
     (let [ari-key (config/ari-storage-key issuer-key domain)]
       (when (storage/exists? storage nil ari-key)
-        (let [ari-json (json/read-str (storage/load-string storage nil ari-key)
-                                      :key-fn keyword)]
-          (when ari-json
-            {:suggested-window [(some-> (:suggested-window-start ari-json) Instant/parse)
-                                (some-> (:suggested-window-end ari-json) Instant/parse)]
-             :selected-time (some-> (:selected-time ari-json) Instant/parse)
-             :retry-after (some-> (:retry-after ari-json) Instant/parse)}))))
+        (let [ari-edn (edn/read-string (storage/load-string storage nil ari-key))]
+          (when ari-edn
+            {:suggested-window [(some-> (:suggested-window-start ari-edn) Instant/parse)
+                                (some-> (:suggested-window-end ari-edn) Instant/parse)]
+             :selected-time (some-> (:selected-time ari-edn) Instant/parse)
+             :retry-after (some-> (:retry-after ari-edn) Instant/parse)}))))
     (catch Exception _
       nil)))
 
@@ -194,9 +188,8 @@
           cert-pem                                       (storage/load-string storage nil cert-key)
           key-pem                                        (storage/load-string storage nil key-key)
           #_#_meta-key                                       (config/meta-storage-key issuer-key domain)
-          #_#_meta-json                                      (try
-                                                               (json/read-str (storage/load-string storage nil meta-key)
-                                                                              :key-fn keyword)
+          #_#_meta-edn                                       (try
+                                                               (edn/read-string (storage/load-string storage nil meta-key))
                                                                (catch Exception _ {}))
           parsed-cert                                    (cert-parse/parse-pem-chain cert-pem)
           certs                                          (::specs/certificates parsed-cert)
@@ -552,15 +545,14 @@
   (let [reg-key (config/account-registration-storage-key issuer-key)]
     (when (storage/exists? storage nil reg-key)
       (try
-        (json/read-str (storage/load-string storage nil reg-key) :key-fn keyword)
+        (edn/read-string (storage/load-string storage nil reg-key))
         (catch Exception _ nil)))))
 
 (defn- save-account-registration!
   "Save account registration (KID) to storage."
   [storage issuer-key account-kid]
-  (let [reg-key (config/account-registration-storage-key issuer-key)
-        reg-json (json/write-str {:account-kid account-kid})]
-    (storage/store-string! storage nil reg-key reg-json)))
+  (let [reg-key (config/account-registration-storage-key issuer-key)]
+    (storage/store-string! storage nil reg-key (pr-str {:account-kid account-kid}))))
 
 (defn- account-lock-key
   "Returns the storage lock key for account registration."
@@ -625,11 +617,10 @@
   (let [storage (:storage system)
         cert-key (config/cert-storage-key issuer-key domain)
         key-key (config/key-storage-key issuer-key domain)
-        meta-key (config/meta-storage-key issuer-key domain)
-        meta-json (json/write-str {:names names :issuer issuer-key})]
+        meta-key (config/meta-storage-key issuer-key domain)]
     (storage/store-string! storage nil cert-key cert-pem)
     (storage/store-string! storage nil key-key key-pem)
-    (storage/store-string! storage nil meta-key meta-json)))
+    (storage/store-string! storage nil meta-key (pr-str {:names names :issuer issuer-key}))))
 
 (defn- try-obtain-from-issuer
   "Try to obtain a certificate from a single issuer.
@@ -836,14 +827,14 @@
         issuer-key (or (get-in (first issuers) [:issuer-key])
                        (config/issuer-key-from-url (get-in (first issuers) [:directory-url])))
         ocsp-key (config/ocsp-storage-key issuer-key domain)
-        meta-key (str ocsp-key ".meta")
-        raw-bytes (:raw-bytes ocsp-response)
-        meta-json (json/write-str {:status (name (:status ocsp-response))
-                                   :this-update (some-> (:this-update ocsp-response) str)
-                                   :next-update (some-> (:next-update ocsp-response) str)})]
+        meta-key (str ocsp-key ".meta.edn")
+        raw-bytes (:raw-bytes ocsp-response)]
     (when raw-bytes
       (storage/store! storage nil ocsp-key raw-bytes)
-      (storage/store-string! storage nil meta-key meta-json))))
+      (storage/store-string! storage nil meta-key
+                             (pr-str {:status (:status ocsp-response)
+                                      :this-update (some-> (:this-update ocsp-response) str)
+                                      :next-update (some-> (:next-update ocsp-response) str)})))))
 
 (def ^:private revocation-reason-keywords
   "Map RFC 5280 CRLReason codes to keyword names."
@@ -953,7 +944,7 @@
 (defn- store-ari-data!
   "Store ARI data to persistent storage.
 
-  Stores the ARI data as JSON containing suggested-window, selected-time,
+  Stores the ARI data as EDN containing suggested-window, selected-time,
   and retry-after."
   [system domain ari-data]
   (let [storage (:storage system)
@@ -961,12 +952,12 @@
         issuer-key (or (get-in (first issuers) [:issuer-key])
                        (config/issuer-key-from-url (get-in (first issuers) [:directory-url])))
         ari-key (config/ari-storage-key issuer-key domain)
-        [start end] (:suggested-window ari-data)
-        ari-json (json/write-str {:suggested-window-start (str start)
-                                  :suggested-window-end (str end)
-                                  :selected-time (str (:selected-time ari-data))
-                                  :retry-after (some-> (:retry-after ari-data) str)})]
-    (storage/store-string! storage nil ari-key ari-json)))
+        [start end] (:suggested-window ari-data)]
+    (storage/store-string! storage nil ari-key
+                           (pr-str {:suggested-window-start (str start)
+                                    :suggested-window-end (str end)
+                                    :selected-time (str (:selected-time ari-data))
+                                    :retry-after (some-> (:retry-after ari-data) str)}))))
 
 ;;; Command Execution
 

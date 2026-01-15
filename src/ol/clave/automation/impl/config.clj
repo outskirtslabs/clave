@@ -144,9 +144,9 @@
     (str "certificates/" safe-issuer "/" safe-domain "/" safe-domain ".key")))
 
 (defn meta-storage-key
-  "Generate storage key for certificate metadata JSON file.
+  "Generate storage key for certificate metadata EDN file.
 
-  Format: `certificates/{issuer-key}/{domain}/{domain}.json`
+  Format: `certificates/{issuer-key}/{domain}/{domain}.edn`
 
   | key | description |
   |-----|-------------|
@@ -155,7 +155,7 @@
   [issuer-key domain]
   (let [safe-issuer (safe-storage-key issuer-key)
         safe-domain (safe-storage-key domain)]
-    (str "certificates/" safe-issuer "/" safe-domain "/" safe-domain ".json")))
+    (str "certificates/" safe-issuer "/" safe-domain "/" safe-domain ".edn")))
 
 (defn certs-prefix
   "Generate storage prefix for listing certificates under an issuer.
@@ -189,14 +189,14 @@
   (str "accounts/" (safe-storage-key issuer-key) "/account.pub"))
 
 (defn account-registration-storage-key
-  "Generate storage key for account registration JSON.
+  "Generate storage key for account registration EDN.
 
-  Format: `accounts/{issuer-key}/registration.json`
+  Format: `accounts/{issuer-key}/registration.edn`
 
   Contains the account KID (URL) returned by the CA after registration,
   allowing subsequent operations to skip the newAccount call."
   [issuer-key]
-  (str "accounts/" (safe-storage-key issuer-key) "/registration.json"))
+  (str "accounts/" (safe-storage-key issuer-key) "/registration.edn"))
 
 (defn ocsp-storage-key
   "Generate storage key for an OCSP staple file.
@@ -233,9 +233,9 @@
 (defn ari-storage-key
   "Generate storage key for ARI (ACME Renewal Information) data.
 
-  Format: `certificates/{issuer-key}/{domain}/{domain}.ari.json`
+  Format: `certificates/{issuer-key}/{domain}/{domain}.ari.edn`
 
-  The ARI data is stored as JSON containing suggested-window, selected-time,
+  The ARI data is stored as EDN containing suggested-window, selected-time,
   and retry-after.
 
   | key          | description                                     |
@@ -245,12 +245,12 @@
   [issuer-key domain]
   (let [safe-issuer (safe-storage-key issuer-key)
         safe-domain (safe-storage-key domain)]
-    (str "certificates/" safe-issuer "/" safe-domain "/" safe-domain ".ari.json")))
+    (str "certificates/" safe-issuer "/" safe-domain "/" safe-domain ".ari.edn")))
 
 (defn challenge-token-storage-key
   "Generate storage key for a challenge token (distributed solving).
 
-  Format: `challenge_tokens/{issuer-key}/{identifier}.json`
+  Format: `challenge_tokens/{issuer-key}/{identifier}.edn`
 
   Used to store challenge data so any instance in a cluster can serve
   the challenge response for HTTP-01 or TLS-ALPN-01 validation.
@@ -262,7 +262,7 @@
   [issuer-key identifier]
   (let [safe-issuer (safe-storage-key issuer-key)
         safe-id (safe-storage-key identifier)]
-    (str "challenge_tokens/" safe-issuer "/" safe-id ".json")))
+    (str "challenge_tokens/" safe-issuer "/" safe-id ".edn")))
 
 (defn select-chain
   "Select a certificate chain based on preference.

@@ -120,8 +120,8 @@
     (is (= "certificates/acme-v02.api.letsencrypt.org/example.com/example.com.key"
            (config/key-storage-key "acme-v02.api.letsencrypt.org" "example.com"))))
 
-  (testing "Metadata storage key follows certmagic format"
-    (is (= "certificates/acme-v02.api.letsencrypt.org/example.com/example.com.json"
+  (testing "Metadata storage key follows expected format"
+    (is (= "certificates/acme-v02.api.letsencrypt.org/example.com/example.com.edn"
            (config/meta-storage-key "acme-v02.api.letsencrypt.org" "example.com"))))
 
   (testing "Wildcard domains are sanitized"

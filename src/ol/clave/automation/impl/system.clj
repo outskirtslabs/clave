@@ -1278,7 +1278,7 @@
   (some? (lookup-cert system domain)))
 
 (defn get-event-queue
-  "Gets the event queue handle, creating it if needed."
+  "See [[ol.clave.automation/get-event-queue]]"
   [system]
   (let [queue-atom (:event-queue system)]
     (or @queue-atom

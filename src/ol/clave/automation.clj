@@ -173,15 +173,20 @@
 (defn get-event-queue
   "Gets the event queue handle for monitoring.
 
-  The queue is created lazily on first call.
-  Returns a java.util.concurrent.LinkedBlockingQueue.
+  The queue is created lazily on first call. Subsequent calls return
+  the same queue instance.
 
-  Poll with `.poll()`, `.poll(timeout, unit)`, or `.take()`.
+  Returns a [[java.util.concurrent.LinkedBlockingQueue]]
+  Poll with `.poll`, `.poll(timeout, unit)`, or `.take`.
 
-  | key | description |
-  |-----|-------------|
-  | `system` | System handle from `start` |"
-  [system]
+  When the system is stopped via [[stop]], a `:ol.clave/shutdown` keyword
+  is placed on the queue. Consumers should check for this sentinel to
+  know when to stop polling.
+
+  | key      | description                  |
+  |----------|------------------------------|
+  | `system` | System handle from [[start]] |"
+  ^java.util.concurrent.LinkedBlockingQueue [system]
   (system/get-event-queue system))
 
 (defn renew-managed

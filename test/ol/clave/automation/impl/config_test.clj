@@ -1,6 +1,5 @@
 (ns ol.clave.automation.impl.config-test
   (:require
-   [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
    [ol.clave.automation.impl.config :as config]))
 
@@ -147,45 +146,6 @@
       (is (nil? (:cache-capacity cfg))))))
 
 ;; =============================================================================
-;; sanitize-storage-key tests
-;; =============================================================================
-
-(deftest sanitize-storage-key-removes-parent-dir-traversal
-  (testing "Path traversal attempts are neutralized"
-    ;; Various path traversal patterns
-    (is (not (re-find #"\.\." (config/sanitize-storage-key "../dangerous"))))
-    (is (not (re-find #"\.\." (config/sanitize-storage-key "../../etc/passwd"))))
-    (is (not (re-find #"\.\." (config/sanitize-storage-key "foo/../bar"))))
-    (is (not (re-find #"\.\." (config/sanitize-storage-key "foo/bar/../baz"))))))
-
-(deftest sanitize-storage-key-handles-absolute-paths
-  (testing "Leading slashes are removed"
-    (let [result (config/sanitize-storage-key "/absolute/path")]
-      (is (not (str/starts-with? result "/"))))))
-
-(deftest sanitize-storage-key-preserves-normal-keys
-  (testing "Normal domain names are unchanged"
-    (is (= "example.com" (config/sanitize-storage-key "example.com")))
-    (is (= "www.example.com" (config/sanitize-storage-key "www.example.com")))
-    (is (= "sub.domain.example.com" (config/sanitize-storage-key "sub.domain.example.com")))))
-
-(deftest sanitize-storage-key-handles-wildcards
-  (testing "Wildcard domains are sanitized appropriately"
-    (let [result (config/sanitize-storage-key "*.example.com")]
-      ;; Should handle the asterisk but not break the key
-      (is (string? result))
-      (is (not (str/blank? result))))))
-
-(deftest sanitize-storage-key-handles-edge-cases
-  (testing "Empty and unusual inputs"
-    ;; Empty string - should return something non-nil
-    (is (string? (config/sanitize-storage-key "")))
-    ;; Only dots
-    (is (not (re-find #"^\.\." (config/sanitize-storage-key ".."))))
-    ;; Backslash variants (Windows path traversal)
-    (is (not (re-find #"\.\." (config/sanitize-storage-key "..\\..\\etc\\passwd"))))))
-
-;; =============================================================================
 ;; select-chain tests
 ;; =============================================================================
 
@@ -254,46 +214,52 @@
       ;; Falls back to first chain when not found
       (is (= chain-a result)))))
 
-;; =============================================================================
-;; Storage key generation tests
-;; =============================================================================
-
-(deftest cert-storage-key-generates-correct-path
+(deftest storage-key-generation-test
   (testing "Certificate storage key follows certmagic format"
-    (let [issuer-key "acme-v02.api.letsencrypt.org"
-          domain "example.com"
-          result (config/cert-storage-key issuer-key domain)]
-      (is (= "certificates/acme-v02.api.letsencrypt.org/example.com/example.com.crt" result)))))
+    (is (= "certificates/acme-v02.api.letsencrypt.org/example.com/example.com.crt"
+           (config/cert-storage-key "acme-v02.api.letsencrypt.org" "example.com"))))
 
-(deftest key-storage-key-generates-correct-path
   (testing "Private key storage key follows certmagic format"
-    (let [issuer-key "acme-v02.api.letsencrypt.org"
-          domain "example.com"
-          result (config/key-storage-key issuer-key domain)]
-      (is (= "certificates/acme-v02.api.letsencrypt.org/example.com/example.com.key" result)))))
+    (is (= "certificates/acme-v02.api.letsencrypt.org/example.com/example.com.key"
+           (config/key-storage-key "acme-v02.api.letsencrypt.org" "example.com"))))
 
-(deftest meta-storage-key-generates-correct-path
   (testing "Metadata storage key follows certmagic format"
-    (let [issuer-key "acme-v02.api.letsencrypt.org"
-          domain "example.com"
-          result (config/meta-storage-key issuer-key domain)]
-      (is (= "certificates/acme-v02.api.letsencrypt.org/example.com/example.com.json" result)))))
+    (is (= "certificates/acme-v02.api.letsencrypt.org/example.com/example.com.json"
+           (config/meta-storage-key "acme-v02.api.letsencrypt.org" "example.com"))))
 
-(deftest storage-keys-handle-wildcards
-  (testing "Wildcard domains are sanitized in storage keys"
-    (let [issuer-key "test-issuer"
-          domain "*.example.com"
-          cert-key (config/cert-storage-key issuer-key domain)
-          key-key (config/key-storage-key issuer-key domain)]
-      ;; Asterisks should be replaced (typically with wildcard_)
-      (is (not (re-find #"\*" cert-key)))
-      (is (not (re-find #"\*" key-key))))))
+  (testing "Wildcard domains are sanitized"
+    (is (= "certificates/test-issuer/wildcard_.example.com/wildcard_.example.com.crt"
+           (config/cert-storage-key "test-issuer" "*.example.com")))
+    (is (= "certificates/test-issuer/wildcard_.example.com/wildcard_.example.com.key"
+           (config/key-storage-key "test-issuer" "*.example.com"))))
 
-(deftest issuer-key-from-url-extracts-hostname
-  (testing "Issuer key is extracted from directory URL"
-    (is (= "acme-v02.api.letsencrypt.org"
+  (testing "Directory traversal patterns are removed"
+    (is (= "certificates/test-issuer/etc/etc.crt"
+           (config/cert-storage-key "test-issuer" "../etc")))
+    (is (= "certificates/test-issuer/foobar/foobar.crt"
+           (config/cert-storage-key "test-issuer" "foo..bar")))
+    (is (= "certificates/test-issuer//.crt"
+           (config/cert-storage-key "test-issuer" ".."))))
+
+  (testing "Issuer key with port is sanitized"
+    (is (= "certificates/localhost-14000-dir/example.com/example.com.crt"
+           (config/cert-storage-key "localhost:14000-dir" "example.com")))))
+
+(deftest issuer-key-from-url-extracts-host-and-path
+  (testing "Issuer key includes host and path components"
+    (is (= "acme-v02.api.letsencrypt.org-directory"
            (config/issuer-key-from-url "https://acme-v02.api.letsencrypt.org/directory")))
-    (is (= "acme-staging-v02.api.letsencrypt.org"
+    (is (= "acme-staging-v02.api.letsencrypt.org-directory"
            (config/issuer-key-from-url "https://acme-staging-v02.api.letsencrypt.org/directory")))
-    (is (= "localhost"
-           (config/issuer-key-from-url "https://localhost:14000/dir")))))
+    (is (= "localhost:14000-dir"
+           (config/issuer-key-from-url "https://localhost:14000/dir"))))
+
+  (testing "Multi-segment paths are joined with hyphens"
+    (is (= "ca.example.com-acme-v2-directory"
+           (config/issuer-key-from-url "https://ca.example.com/acme/v2/directory"))))
+
+  (testing "URLs without path return host only"
+    (is (= "example.com"
+           (config/issuer-key-from-url "https://example.com")))
+    (is (= "example.com:8443"
+           (config/issuer-key-from-url "https://example.com:8443")))))

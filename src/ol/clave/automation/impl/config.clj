@@ -1,8 +1,4 @@
 (ns ol.clave.automation.impl.config
-  "Configuration resolution for the automation layer.
-
-  Provides functions for merging global configuration with per-domain
-  overrides. This is a pure module with no I/O."
   (:require
    [clojure.string :as str]))
 
@@ -75,48 +71,23 @@
    :ari {:enabled true}
    :cache-capacity nil})
 
-(defn sanitize-storage-key
-  "Sanitize a storage key to prevent directory traversal attacks.
-
-  Removes or neutralizes:
-  - Parent directory references (..)
-  - Leading slashes (absolute paths)
-  - Backslash variants (Windows-style paths)
-
-  Returns a safe key string that can be used as a filename component.
-
-  | key | description |
-  |-----|-------------|
-  | `key` | Raw storage key string (domain name, etc.) |"
-  [key]
-  (-> key
-      ;; Replace backslashes with forward slashes for consistent handling
-      (str/replace #"\\" "/")
-      ;; Remove parent directory traversal patterns
-      (str/replace #"\.\./" "")
-      (str/replace #"/\.\." "")
-      (str/replace #"^\.\.$" "_dotdot_")
-      ;; Remove leading slashes
-      (str/replace #"^/+" "")
-      ;; Collapse multiple slashes
-      (str/replace #"/+" "/")
-      ;; Remove trailing slashes
-      (str/replace #"/+$" "")))
-
 ;;; Storage Key Generation
 
 (defn- safe-storage-key
-  "Sanitize a value for use in storage key paths.
+  "Canoncalize and sanitize a string for use as a storage key component.
 
-  Applies transformations to make the key filesystem-safe:
-  - Lowercase
-  - Replace * with wildcard_
-  - Remove unsafe characters"
+  Applies transformations to make the key filesystem-safe and prevent
+  directory traversal attacks."
   [s]
   (-> (str s)
-      clojure.string/lower-case
+      str/lower-case
+      str/trim
+      (str/replace " " "_")
+      (str/replace "+" "_plus_")
       (str/replace "*" "wildcard_")
-      (str/replace #"[^a-z0-9._-]" "")))
+      (str/replace ":" "-")
+      (str/replace ".." "")
+      (str/replace #"[^\w@.-]" "")))
 
 (defn issuer-key-from-url
   "Extract issuer key from directory URL.

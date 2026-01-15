@@ -2,16 +2,11 @@
   "Pure decision functions for the automation layer.
 
   These functions contain all the logic for determining what maintenance
-  actions are needed for certificates. They are pure functions with no
-  I/O, making them trivially testable.
-
-  The imperative shell calls these functions and acts on the returned
-  command descriptors."
+  actions are needed for certificates."
   (:import
    [java.time Instant]))
 
 ;; Internal timing constants (US 5.11, 9.4)
-;; Tests can override with with-redefs
 (def ^:dynamic *renewal-threshold*
   "Fraction of lifetime remaining that triggers renewal.
   Default 0.33 means renew when 1/3 of lifetime remains."
@@ -42,77 +37,89 @@
   Certificates shorter than this use different renewal logic."
   (* 7 24 60 60 1000))
 
-;; Forward declaration for functions used before definition
-(declare short-lived-cert?)
+(defn short-lived-cert?
+  "Check if a certificate is short-lived (< 7 days lifetime).
+
+  Short-lived certificates (like those from ACME staging or specialized CAs)
+  require different renewal timing logic."
+  [bundle]
+  (let [not-after ^Instant (:not-after bundle)
+        not-before ^Instant (:not-before bundle)
+        lifetime-ms (- (.toEpochMilli not-after) (.toEpochMilli not-before))]
+    (< lifetime-ms *short-lived-threshold-ms*)))
 
 (defn ari-suggests-renewal?
   "Check if ARI data suggests renewal is due.
 
-  Returns true if ARI selected-time is in the past or at current time.
+  Per RFC 9710, returns true if current time is past the cutoff, where
+  cutoff = selected-time minus maintenance-interval. This ensures we don't
+  miss the renewal window if maintenance runs just after the selected time.
+
   Returns false if no ARI data or no selected-time is present.
 
-  | key | description |
-  |-----|-------------|
-  | `bundle` | Certificate bundle with optional `:ari-data` |
-  | `now` | Current instant |"
-  [bundle now]
+  | key                       | description                                  |
+  |---------------------------|----------------------------------------------|
+  | `bundle`                  | Certificate bundle with optional `:ari-data` |
+  | `now`                     | Current instant                              |
+  | `maintenance-interval-ms` | Maintenance loop interval in milliseconds    |"
+  [bundle now maintenance-interval-ms]
   (boolean
    (when-let [ari-data (:ari-data bundle)]
      (when-let [selected-time (:selected-time ari-data)]
-       (not (.isAfter ^Instant selected-time ^Instant now))))))
+       (let [cutoff-ms (- (.toEpochMilli ^Instant selected-time)
+                          maintenance-interval-ms)]
+         (> (.toEpochMilli ^Instant now) cutoff-ms))))))
 
 (defn calculate-ari-renewal-time
   "Calculate a random time within the ARI suggested renewal window.
 
-  Uses the provided seed for deterministic random selection, enabling
-  testability. The same seed always produces the same result.
-
-  | key | description |
-  |-----|-------------|
+  | key        | description                                                   |
+  |------------|---------------------------------------------------------------|
   | `ari-data` | ARI data with `:suggested-window` [start-instant end-instant] |
-  | `seed` | Random seed for deterministic selection |"
-  [ari-data seed]
-  (let [[start-instant end-instant] (:suggested-window ari-data)
-        start-ms (.toEpochMilli ^Instant start-instant)
-        end-ms (.toEpochMilli ^Instant end-instant)
-        window-ms (- end-ms start-ms)
-        rng (java.util.Random. seed)
-        offset-ms (long (* (.nextDouble rng) window-ms))]
-    (Instant/ofEpochMilli (+ start-ms offset-ms))))
+  | `rng`      | `java.util.Random` instance for random selection (optional)   |"
+  ([ari-data]
+   (calculate-ari-renewal-time ari-data (java.util.Random.)))
+  ([ari-data ^java.util.Random rng]
+   (let [[start-instant end-instant] (:suggested-window ari-data)
+         start-ms (.toEpochMilli ^Instant start-instant)
+         end-ms (.toEpochMilli ^Instant end-instant)
+         window-ms (- end-ms start-ms)
+         offset-ms (long (* (.nextDouble rng) window-ms))]
+     (Instant/ofEpochMilli (+ start-ms offset-ms)))))
 
 (defn needs-renewal?
-  "Check if certificate needs renewal based on expiration and ARI.
+  "Check if certificate needs renewal based on expiration, ARI, and emergency.
 
   Returns true if:
-  - ARI selected-time is in the past, OR
+  - Less than 5% (`*emergency-override-ari-threshold*`) of lifetime remains
+    (supersedes ARI guidance for safety), OR
+  - ARI selected-time cutoff has passed (per RFC 9710), OR
   - Less than `*renewal-threshold*` (default 1/3) of lifetime remains
 
-  | key | description |
-  |-----|-------------|
-  | `bundle` | Certificate bundle with `:not-before`, `:not-after`, and optional `:ari-data` |
-  | `now` | Current instant (injected for testability) |"
-  [bundle now]
+  The emergency override ensures we never rely solely on ARI when the
+  certificate is dangerously close to expiration."
+  [bundle now maintenance-interval-ms]
   (let [not-after ^Instant (:not-after bundle)
         not-before ^Instant (:not-before bundle)
         lifetime (- (.toEpochMilli not-after) (.toEpochMilli not-before))
+        remaining (- (.toEpochMilli not-after) (.toEpochMilli ^Instant now))
         renewal-time (- (.toEpochMilli not-after)
                         (long (* lifetime *renewal-threshold*)))]
-    (or (ari-suggests-renewal? bundle now)
-        (>= (.toEpochMilli ^Instant now) renewal-time))))
+    (or
+     ;; Emergency: override ARI if < 5% lifetime remains
+     (<= remaining (long (* lifetime *emergency-override-ari-threshold*)))
+     ;; ARI suggests renewal (with cutoff adjustment per RFC 9710)
+     (ari-suggests-renewal? bundle now maintenance-interval-ms)
+     ;; Standard renewal window check
+     (>= (.toEpochMilli ^Instant now) renewal-time))))
 
 (defn emergency-renewal?
   "Check if certificate is dangerously close to expiration.
 
-  Tiered thresholds inspired by certmagic:
+  Tiered thresholds:
   - `:critical` - 1/50 (2%) lifetime remaining OR fewer than 5 maintenance intervals
   - `:override-ari` - 1/20 (5%) lifetime remaining, overrides ARI guidance
-  - `nil` - no emergency
-
-  | key | description |
-  |-----|-------------|
-  | `bundle` | Certificate bundle with `:not-before` and `:not-after` |
-  | `now` | Current instant |
-  | `maintenance-interval-ms` | Maintenance loop interval in milliseconds |"
+  - `nil` - no emergency"
   [bundle now maintenance-interval-ms]
   (let [not-after ^Instant (:not-after bundle)
         not-before ^Instant (:not-before bundle)
@@ -135,11 +142,19 @@
   "Check if OCSP staple is past its refresh threshold.
 
   Returns true if current time is past 50% of the validity window
-  (from this-update to next-update)."
+  (from this-update to next-update).
+
+  If the OCSP responder certificate expires before next-update,
+  the effective validity period is shortened to the responder cert expiry."
   [staple now]
   (when-let [this-update (:this-update staple)]
     (when-let [next-update (:next-update staple)]
-      (let [validity-ms (- (.toEpochMilli ^Instant next-update)
+      (let [effective-end (if-let [resp-cert-end (:responder-cert-not-after staple)]
+                            (if (.isBefore ^Instant resp-cert-end ^Instant next-update)
+                              resp-cert-end
+                              next-update)
+                            next-update)
+            validity-ms (- (.toEpochMilli ^Instant effective-end)
                            (.toEpochMilli ^Instant this-update))
             elapsed-ms (- (.toEpochMilli ^Instant now)
                           (.toEpochMilli ^Instant this-update))
@@ -161,11 +176,11 @@
   Short-lived certificates don't benefit from OCSP stapling because
   the certificate will expire before the OCSP response provides value.
 
-  | key | description |
-  |-----|-------------|
-  | `bundle` | Certificate bundle with optional `:ocsp-staple` |
+  | key      | description                                              |
+  |----------|----------------------------------------------------------|
+  | `bundle` | Certificate bundle with optional `:ocsp-staple`          |
   | `config` | Configuration with `:ocsp` map containing `:enabled` key |
-  | `now` | Current instant |"
+  | `now`    | Current instant                                          |"
   [bundle config now]
   (let [ocsp-enabled (get-in config [:ocsp :enabled] true)]
     (if (and ocsp-enabled
@@ -181,15 +196,16 @@
   Pure function that examines certificate state and returns a vector
   of command descriptors. Does not perform any I/O.
 
-  | key | description |
-  |-----|-------------|
-  | `bundle` | Certificate bundle from cache |
-  | `config` | Resolved configuration for this domain |
-  | `now` | Current instant |"
-  [bundle config now]
+  | key                       | description                               |
+  |---------------------------|-------------------------------------------|
+  | `bundle`                  | Certificate bundle from cache             |
+  | `config`                  | Resolved configuration for this domain    |
+  | `now`                     | Current instant                           |
+  | `maintenance-interval-ms` | Maintenance loop interval in milliseconds |"
+  [bundle config now maintenance-interval-ms]
   (let [domain (first (:names bundle))]
     (cond-> []
-      (needs-renewal? bundle now)
+      (needs-renewal? bundle now maintenance-interval-ms)
       (conj {:command :renew-certificate
              :domain domain
              :bundle bundle})
@@ -206,25 +222,21 @@
   a command. Commands with the same key are considered duplicates
   and can be deduplicated by the job queue.
 
-  | key | description |
-  |-----|-------------|
+  | key   | description                                           |
+  |-------|-------------------------------------------------------|
   | `cmd` | Command descriptor with `:command` and `:domain` keys |"
   [cmd]
   [(:command cmd) (:domain cmd)])
 
 (def ^:private fast-commands
-  "Commands that complete quickly (no ACME protocol interaction)."
+  "Commands that complete quickly."
   #{:fetch-ocsp :check-ari :fetch-ari})
 
 (defn fast-command?
-  "Check if a command is fast (no ACME protocol interaction).
+  "Check if a command is fast.
 
-  Fast commands include:
-  - `:fetch-ocsp` - fetches OCSP response from responder
-  - `:check-ari` - checks ARI renewal info
-
-  | key | description |
-  |-----|-------------|
+  | key   | description                            |
+  |-------|----------------------------------------|
   | `cmd` | Command descriptor with `:command` key |"
   [cmd]
   (boolean (fast-commands (:command cmd))))
@@ -253,8 +265,8 @@
   - `:storage-error` - I/O and storage failures
   - `:unknown` - unrecognized exceptions
 
-  | key | description |
-  |-----|-------------|
+  | key  | description           |
+  |------|-----------------------|
   | `ex` | Exception to classify |"
   [ex]
   (let [ex-class (class ex)
@@ -262,27 +274,21 @@
                   (ex-data ex))
         status (:status ex-data)]
     (cond
-      ;; Network exceptions by type
       (network-exception-types ex-class)
       :network-error
 
-      ;; Rate limited (429)
       (= status 429)
       :rate-limited
 
-      ;; Server errors (5xx)
       (and status (>= status 500) (< status 600))
       :server-error
 
-      ;; ACME/client errors (4xx)
       (and status (>= status 400) (< status 500))
       :acme-error
 
-      ;; Config error by type tag
       (= :config-error (:type ex-data))
       :config-error
 
-      ;; Storage/IO errors
       (instance? java.io.IOException ex)
       :storage-error
 
@@ -306,11 +312,7 @@
   Non-retryable errors:
   - `:acme-error` - client errors unlikely to succeed
   - `:config-error` - configuration must be fixed
-  - `:unknown` - cannot determine if safe to retry
-
-  | key | description |
-  |-----|-------------|
-  | `error-type` | Error type keyword from `classify-error` |"
+  - `:unknown` - cannot determine if safe to retry"
   [error-type]
   (boolean (retryable-error-types error-type)))
 
@@ -327,9 +329,9 @@
   - `:fetch-ocsp` success -> `:ocsp-stapled`
   - `:fetch-ocsp` error -> `:ocsp-failed`
 
-  | key | description |
-  |-----|-------------|
-  | `cmd` | Command descriptor with `:command` and `:domain` |
+  | key      | description                                        |
+  |----------|----------------------------------------------------|
+  | `cmd`    | Command descriptor with `:command` and `:domain`   |
   | `result` | Result map with `:status` (`:success` or `:error`) |"
   [cmd result]
   (let [domain (:domain cmd)
@@ -402,13 +404,7 @@
               :result result}})))
 
 (defn create-certificate-loaded-event
-  "Create an event for a certificate loaded from storage.
-
-  Used during startup when loading existing certificates.
-
-  | key | description |
-  |-----|-------------|
-  | `bundle` | Certificate bundle with `:names`, `:not-after` |"
+  "Create an event for a certificate loaded from storage."
   [bundle]
   (let [domain (first (:names bundle))
         now (Instant/now)]
@@ -418,39 +414,45 @@
             :names (:names bundle)
             :not-after (:not-after bundle)}}))
 
-;;; Certificate Lifecycle
-
-(defn short-lived-cert?
-  "Check if a certificate is short-lived (< 7 days lifetime).
-
-  Short-lived certificates (like those from ACME staging or specialized CAs)
-  require different renewal timing logic.
-
-  | key | description |
-  |-----|-------------|
-  | `bundle` | Certificate bundle with `:not-before` and `:not-after` |"
-  [bundle]
-  (let [not-after ^Instant (:not-after bundle)
-        not-before ^Instant (:not-before bundle)
-        lifetime-ms (- (.toEpochMilli not-after) (.toEpochMilli not-before))]
-    (< lifetime-ms *short-lived-threshold-ms*)))
-
 ;;; Retry and Jitter
 
 (def retry-intervals
-  "Retry intervals following certmagic's backoff pattern (in milliseconds).
-  Starts at 1 minute, increases to 5 minutes, 30 minutes, 1 hour,
-  then caps at 6 hours for persistent failures."
-  [60000      ; 1 minute
-   60000      ; 1 minute
-   120000     ; 2 minutes
-   300000     ; 5 minutes
-   600000     ; 10 minutes
-   1800000    ; 30 minutes
-   3600000    ; 1 hour
-   3600000    ; 1 hour
-   21600000   ; 6 hours
-   21600000]) ; 6 hours (cap)
+  "Exponential backoff intervals for failed operations (in milliseconds).
+
+  The pattern is front-loaded: aggressive early retries (1-2 min) catch
+  transient failures quickly, then backs off through medium intervals
+  (5-20 min) for rate-limiting or brief outages, then longer intervals
+  (30 min - 1 hr) for issues requiring propagation or human intervention.
+  Caps at 6 hours to avoid wasting resources during persistent outages.
+
+  Repeated consecutive values control dwell time at each tier before
+  escalating (e.g., three 10-minute intervals means 3 attempts at that
+  tier before moving to 20 minutes)."
+  [60000       ; 1 minute
+   120000      ; 2 minutes
+   120000      ; 2 minutes
+   300000      ; 5 minutes  (elapsed: ~10 min)
+   600000      ; 10 minutes
+   600000      ; 10 minutes
+   600000      ; 10 minutes
+   1200000     ; 20 minutes (elapsed: ~1 hr)
+   1200000     ; 20 minutes
+   1200000     ; 20 minutes
+   1200000     ; 20 minutes (elapsed: ~2 hr)
+   1800000     ; 30 minutes
+   1800000     ; 30 minutes (elapsed: ~3 hr)
+   1800000     ; 30 minutes
+   1800000     ; 30 minutes (elapsed: ~4 hr)
+   1800000     ; 30 minutes
+   1800000     ; 30 minutes (elapsed: ~5 hr)
+   3600000     ; 1 hour     (elapsed: ~6 hr)
+   3600000     ; 1 hour
+   3600000     ; 1 hour     (elapsed: ~8 hr)
+   7200000     ; 2 hours
+   7200000     ; 2 hours    (elapsed: ~12 hr)
+   10800000    ; 3 hours
+   10800000    ; 3 hours    (elapsed: ~18 hr)
+   21600000])  ; 6 hours
 
 (defn calculate-maintenance-jitter
   "Calculate random jitter for maintenance loop scheduling.
@@ -458,11 +460,14 @@
   Returns a random value in [0, maintenance-jitter) to spread out
   maintenance operations and avoid thundering herd problems.
 
-  | key | description |
-  |-----|-------------|
-  | `maintenance-jitter` | Maximum jitter in milliseconds |"
-  [maintenance-jitter]
-  (long (* (rand) maintenance-jitter)))
+  | key                  | description                                             |
+  |----------------------|---------------------------------------------------------|
+  | `maintenance-jitter` | Maximum jitter in milliseconds                          |
+  | `rng`                | `java.util.Random` instance for random selection (opt.) |"
+  ([maintenance-jitter]
+   (calculate-maintenance-jitter maintenance-jitter (java.util.Random.)))
+  ([maintenance-jitter ^java.util.Random rng]
+   (long (* (.nextDouble rng) maintenance-jitter))))
 
 (def ^:private min-maintenance-interval-ms
   "Minimum maintenance interval (1 minute)."
@@ -487,8 +492,8 @@
   - Maximum: 6 hours (long-lived certs)
   - Default: 1 hour (standard 90-day certs)
 
-  | key | description |
-  |-----|-------------|
+  | key      | description                                            |
+  |----------|--------------------------------------------------------|
   | `bundle` | Certificate bundle with `:not-before` and `:not-after` |"
   [bundle]
   (let [not-after ^Instant (:not-after bundle)

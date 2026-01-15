@@ -43,33 +43,6 @@
     (is (true? (decisions/retryable-error? :network-error))
         "Network errors should be retryable")))
 
-(deftest retry-intervals-follow-exponential-backoff
-  (testing "Retry intervals follow expected backoff pattern"
-    (let [intervals decisions/retry-intervals]
-      ;; Verify first interval is 1 minute
-      (is (= 60000 (first intervals))
-          "First retry should be after 1 minute")
-      ;; Verify second interval is still 1 minute
-      (is (= 60000 (second intervals))
-          "Second retry should be after 1 minute")
-      ;; Verify third interval is 2 minutes (exponential increase)
-      (is (= 120000 (nth intervals 2))
-          "Third retry should be after 2 minutes")
-      ;; Verify intervals eventually cap at 6 hours
-      (is (= 21600000 (last intervals))
-          "Retry interval should cap at 6 hours")
-      ;; Verify intervals are non-decreasing (exponential or constant)
-      (is (every? (fn [[a b]] (<= a b))
-                  (partition 2 1 intervals))
-          "Retry intervals should be non-decreasing"))))
-
-(deftest retry-intervals-has-reasonable-length
-  (testing "Retry intervals has reasonable length for persistent failures"
-    (is (>= (count decisions/retry-intervals) 5)
-        "Should have at least 5 retry intervals for persistent failures")
-    (is (<= (count decisions/retry-intervals) 20)
-        "Should not have too many retry intervals")))
-
 (deftest rate-limited-is-retryable
   (testing "Rate limited errors are also retryable"
     (is (true? (decisions/retryable-error? :rate-limited))

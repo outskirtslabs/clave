@@ -362,7 +362,7 @@
             (if (certificate-exists-in-storage? system bundle)
               ;; Certificate exists in storage - run normal maintenance
               (let [resolved-config (resolve-config-with-timeout system domain *config-fn-timeout-ms*)
-                    commands (decisions/check-cert-maintenance bundle resolved-config now)]
+                    commands (decisions/check-cert-maintenance bundle resolved-config now *maintenance-interval-ms*)]
                 ;; Submit each command to the queue
                 (doseq [cmd commands]
                   (submit-command! system cmd)))
@@ -400,11 +400,9 @@
                   (loop []
                     (when-not @shutdown?
                       (try
-                        ;; Run maintenance cycle
                         (run-maintenance-cycle! system)
-                        ;; Sleep with jitter
                         (Thread/sleep (long (+ *maintenance-interval-ms*
-                                               (rand-int *maintenance-jitter-ms*))))
+                                               (decisions/calculate-maintenance-jitter *maintenance-jitter-ms*))))
                         (catch InterruptedException _
                           nil))
                       (recur)))))]
@@ -966,14 +964,8 @@
       (let [session (create-acme-session system issuer-config)
             [_session renewal-info] (cmd/get-renewal-info (lease/background) session cert)
             suggested-window (:suggested-window renewal-info)
-            ;; Convert suggested-window from {:start :end} to [start end] format
             window-vec [(:start suggested-window) (:end suggested-window)]
-            ;; Calculate a random selected-time within the window
-            ;; Use the cert hash as seed for deterministic selection
-            seed (hash (:hash bundle))
-            selected-time (decisions/calculate-ari-renewal-time
-                           {:suggested-window window-vec}
-                           seed)
+            selected-time (decisions/calculate-ari-renewal-time {:suggested-window window-vec})
             ari-data {:suggested-window window-vec
                       :selected-time selected-time
                       :retry-after (when-let [retry-ms (:retry-after-ms renewal-info)]

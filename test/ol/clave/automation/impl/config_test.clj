@@ -3,11 +3,7 @@
    [clojure.test :refer [deftest is testing]]
    [ol.clave.automation.impl.config :as config]))
 
-;; =============================================================================
-;; resolve-config tests
-;; =============================================================================
-
-(deftest resolve-config-merges-global-with-per-domain-overrides
+(deftest resolve-config-test
   (testing "Per-domain config overrides global config values"
     (let [global-config {:key-type :p256
                          :ocsp {:enabled true}
@@ -18,9 +14,7 @@
           system {:config global-config
                   :config-fn config-fn}
           result (config/resolve-config system "test.example.com")]
-      ;; Verify domain-specific override is applied
       (is (= :rsa2048 (:key-type result)))
-      ;; Verify global values are preserved
       (is (= {:enabled true} (:ocsp result)))
       (is (= {:enabled true} (:ari result)))))
 
@@ -34,185 +28,88 @@
           system {:config global-config
                   :config-fn config-fn}
           result (config/resolve-config system "custom.example.com")]
-      ;; Verify nested override is applied
       (is (= true (get-in result [:ocsp :must-staple])))
-      ;; Verify sibling nested values preserved
-      (is (= true (get-in result [:ocsp :enabled]))))))
+      (is (= true (get-in result [:ocsp :enabled])))))
 
-(deftest resolve-config-returns-global-when-config-fn-returns-nil
   (testing "config-fn returning nil means use global config"
     (let [global-config {:key-type :p256
-                         :ocsp {:enabled true}
-                         :issuers [{:directory-url "https://acme.example.com"}]}
-          config-fn (fn [_domain] nil)
+                         :ocsp {:enabled true}}
           system {:config global-config
-                  :config-fn config-fn}
+                  :config-fn (fn [_] nil)}
           result (config/resolve-config system "any.example.com")]
-      (is (= global-config result)))))
+      (is (= global-config result))))
 
-(deftest resolve-config-returns-global-when-no-config-fn
-  (testing "No config-fn means use global config for all domains"
-    (let [global-config {:key-type :p384
-                         :ocsp {:enabled false}
-                         :ari {:enabled true}}
+  (testing "No config-fn means use global config"
+    (let [global-config {:key-type :p384}
           system {:config global-config}
           result (config/resolve-config system "any.example.com")]
       (is (= global-config result))))
 
-  (testing "Missing config-fn field same as nil config-fn"
+  (testing "Nil config-fn same as missing"
     (let [global-config {:key-type :ed25519}
           system {:config global-config
                   :config-fn nil}
           result (config/resolve-config system "test.com")]
       (is (= global-config result)))))
 
-;; =============================================================================
-;; select-issuer tests
-;; =============================================================================
-
-(deftest select-issuer-returns-issuers-in-order-when-in-order
-  (testing "Issuers returned in original order with :issuer-selection :in-order"
+(deftest select-issuer-test
+  (testing "Returns issuers in original order with :in-order"
     (let [issuers [{:directory-url "https://ca1.example.com"}
                    {:directory-url "https://ca2.example.com"}
                    {:directory-url "https://ca3.example.com"}]
-          config {:issuers issuers
-                  :issuer-selection :in-order}
-          result (config/select-issuer config)]
-      (is (= issuers result))
-      ;; Verify order is preserved
-      (is (= "https://ca1.example.com" (:directory-url (first result))))
-      (is (= "https://ca3.example.com" (:directory-url (last result)))))))
+          config {:issuers issuers :issuer-selection :in-order}]
+      (is (= issuers (config/select-issuer config)))))
 
-(deftest select-issuer-shuffles-when-shuffle
-  (testing "Issuers are shuffled with :issuer-selection :shuffle"
-    (let [issuers [{:directory-url "https://ca1.example.com"}
-                   {:directory-url "https://ca2.example.com"}
-                   {:directory-url "https://ca3.example.com"}
-                   {:directory-url "https://ca4.example.com"}
-                   {:directory-url "https://ca5.example.com"}
-                   {:directory-url "https://ca6.example.com"}
-                   {:directory-url "https://ca7.example.com"}
-                   {:directory-url "https://ca8.example.com"}
-                   {:directory-url "https://ca9.example.com"}
-                   {:directory-url "https://ca10.example.com"}]
-          config {:issuers issuers
-                  :issuer-selection :shuffle}
-          ;; Call multiple times and verify at least some orderings differ
-          results (repeatedly 10 #(config/select-issuer config))
-          unique-orderings (set results)]
-      ;; With 10 issuers, we expect different orderings
-      (is (> (count unique-orderings) 1)
-          "Multiple calls should produce at least some different orderings"))))
+  (testing "Shuffles issuers with :shuffle"
+    (let [issuers (mapv #(hash-map :directory-url (str "https://ca" % ".example.com"))
+                        (range 1 11))
+          config {:issuers issuers :issuer-selection :shuffle}
+          results (repeatedly 10 #(config/select-issuer config))]
+      (is (> (count (set results)) 1)))))
 
-;; =============================================================================
-;; default-config tests
-;; =============================================================================
+(deftest default-config-test
+  (testing "Returns expected default values"
+    (is (= {:issuers [{:directory-url "https://acme-v02.api.letsencrypt.org/directory"}]
+            :issuer-selection :in-order
+            :key-type :p256
+            :key-reuse false
+            :ocsp {:enabled true
+                   :must-staple false
+                   :responder-overrides {}}
+            :ari {:enabled true}
+            :cache-capacity nil}
+           (config/default-config)))))
 
-(deftest default-config-has-lets-encrypt-production-url
-  (testing "Default config uses Let's Encrypt production directory"
-    (let [cfg (config/default-config)]
-      (is (some #(= "https://acme-v02.api.letsencrypt.org/directory"
-                    (:directory-url %))
-                (:issuers cfg))))))
+(deftest select-chain-test
+  (let [chain-a {:chain [{:subject "Leaf" :issuer "Root A"}] :root-name "Root A"}
+        chain-b {:chain [{:subject "Leaf" :issuer "Root B"}] :root-name "Root B"}
+        short-chain {:chain [{:subject "Leaf" :issuer "Root A"}
+                             {:subject "Root A" :issuer "Root A"}]
+                     :root-name "Root A"}
+        long-chain {:chain [{:subject "Leaf" :issuer "Intermediate"}
+                            {:subject "Intermediate" :issuer "Root B"}
+                            {:subject "Root B" :issuer "Root B"}]
+                    :root-name "Root B"}]
 
-(deftest default-config-has-p256-key-type
-  (testing "Default config uses P256 key type"
-    (let [cfg (config/default-config)]
-      (is (= :p256 (:key-type cfg))))))
+    (testing ":shortest selects shorter chain"
+      (is (= short-chain (config/select-chain :shortest [long-chain short-chain]))))
 
-(deftest default-config-has-ocsp-enabled
-  (testing "Default config has OCSP enabled"
-    (let [cfg (config/default-config)]
-      (is (true? (get-in cfg [:ocsp :enabled]))))))
+    (testing "{:root name} selects matching root"
+      (is (= chain-b (config/select-chain {:root "Root B"} [chain-a chain-b]))))
 
-(deftest default-config-has-must-staple-disabled
-  (testing "Default config has must-staple disabled"
-    (let [cfg (config/default-config)]
-      (is (false? (get-in cfg [:ocsp :must-staple]))))))
+    (testing ":any returns first chain"
+      (is (= chain-a (config/select-chain :any [chain-a chain-b]))))
 
-(deftest default-config-has-ari-enabled
-  (testing "Default config has ARI enabled"
-    (let [cfg (config/default-config)]
-      (is (true? (get-in cfg [:ari :enabled]))))))
+    (testing "nil defaults to :any"
+      (is (= chain-a (config/select-chain nil [chain-a chain-b]))))
 
-(deftest default-config-has-key-reuse-disabled
-  (testing "Default config has key-reuse disabled"
-    (let [cfg (config/default-config)]
-      (is (false? (:key-reuse cfg))))))
+    (testing "Empty chains returns nil"
+      (is (= nil (config/select-chain :any [])))
+      (is (= nil (config/select-chain :shortest [])))
+      (is (= nil (config/select-chain {:root "X"} []))))
 
-(deftest default-config-has-unlimited-cache
-  (testing "Default config has no cache capacity limit"
-    (let [cfg (config/default-config)]
-      (is (nil? (:cache-capacity cfg))))))
-
-;; =============================================================================
-;; select-chain tests
-;; =============================================================================
-
-;; Helper to make test chains
-(defn- make-chain
-  "Create a mock certificate chain for testing."
-  [certs]
-  {:chain certs
-   :root-name (:issuer (last certs))})
-
-(deftest select-chain-shortest-prefers-shorter-chain
-  (testing ":shortest preference selects the shorter chain"
-    (let [short-chain (make-chain [{:subject "Leaf" :issuer "Root A"}
-                                   {:subject "Root A" :issuer "Root A"}])
-          long-chain (make-chain [{:subject "Leaf" :issuer "Intermediate"}
-                                  {:subject "Intermediate" :issuer "Root B"}
-                                  {:subject "Root B" :issuer "Root B"}])
-          chains [long-chain short-chain]
-          result (config/select-chain :shortest chains)]
-      (is (= short-chain result))
-      (is (= 2 (count (:chain result)))))))
-
-(deftest select-chain-root-name-selects-matching-root
-  (testing "{:root name} preference selects chain with matching root"
-    (let [chain-a (make-chain [{:subject "Leaf" :issuer "Root A"}
-                               {:subject "Root A" :issuer "Root A"}])
-          chain-b (make-chain [{:subject "Leaf" :issuer "Root B"}
-                               {:subject "Root B" :issuer "Root B"}])
-          chains [chain-a chain-b]
-          result (config/select-chain {:root "Root B"} chains)]
-      (is (= chain-b result))
-      (is (= "Root B" (:root-name result))))))
-
-(deftest select-chain-any-returns-first-chain
-  (testing ":any preference returns first offered chain"
-    (let [chain-a (make-chain [{:subject "Leaf" :issuer "Root A"}
-                               {:subject "Root A" :issuer "Root A"}])
-          chain-b (make-chain [{:subject "Leaf" :issuer "Root B"}
-                               {:subject "Root B" :issuer "Root B"}])
-          chains [chain-a chain-b]
-          result (config/select-chain :any chains)]
-      (is (= chain-a result)))))
-
-(deftest select-chain-defaults-to-any
-  (testing "nil or missing preference defaults to :any behavior"
-    (let [chain-a (make-chain [{:subject "Leaf" :issuer "Root A"}])
-          chain-b (make-chain [{:subject "Leaf" :issuer "Root B"}])
-          chains [chain-a chain-b]]
-      (is (= chain-a (config/select-chain nil chains)))
-      (is (= chain-a (config/select-chain :any chains))))))
-
-(deftest select-chain-returns-nil-for-empty-chains
-  (testing "Empty chains list returns nil"
-    (is (nil? (config/select-chain :any [])))
-    (is (nil? (config/select-chain :shortest [])))
-    (is (nil? (config/select-chain {:root "X"} [])))))
-
-(deftest select-chain-root-fallback-to-first-when-not-found
-  (testing "When root name not found, returns first chain"
-    (let [chain-a (make-chain [{:subject "Leaf" :issuer "Root A"}
-                               {:subject "Root A" :issuer "Root A"}])
-          chain-b (make-chain [{:subject "Leaf" :issuer "Root B"}
-                               {:subject "Root B" :issuer "Root B"}])
-          chains [chain-a chain-b]
-          result (config/select-chain {:root "Nonexistent Root"} chains)]
-      ;; Falls back to first chain when not found
-      (is (= chain-a result)))))
+    (testing "Root not found falls back to first"
+      (is (= chain-a (config/select-chain {:root "Nonexistent"} [chain-a chain-b]))))))
 
 (deftest storage-key-generation-test
   (testing "Certificate storage key follows certmagic format"

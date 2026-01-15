@@ -17,10 +17,10 @@
 
   If config-fn is nil or returns nil, returns the global config unchanged.
 
-  | key | description |
-  |-----|-------------|
+  | key      | description                                               |
+  |----------|-----------------------------------------------------------|
   | `system` | System map containing `:config` and optional `:config-fn` |
-  | `domain` | Domain name to resolve configuration for |"
+  | `domain` | Domain name to resolve configuration for                  |"
   [system domain]
   (let [global-config (:config system)
         config-fn (:config-fn system)
@@ -36,8 +36,8 @@
   - `:in-order` (default) - return issuers in original order
   - `:shuffle` - return issuers in random order
 
-  | key | description |
-  |-----|-------------|
+  | key      | description                                                    |
+  |----------|----------------------------------------------------------------|
   | `config` | Configuration with `:issuers` and optional `:issuer-selection` |"
   [config]
   (let [issuers (:issuers config)
@@ -92,28 +92,42 @@
 (defn issuer-key-from-url
   "Extract issuer key from directory URL.
 
-  Returns the hostname from the URL, which serves as a unique
-  identifier for the issuer.
+  Returns a unique identifier for the issuer based on the URL's host and path.
 
-  | key | description |
-  |-----|-------------|
+  | key   | description        |
+  |-------|--------------------|
   | `url` | ACME directory URL |"
   [url]
-  (let [uri (java.net.URI. url)]
-    (.getHost uri)))
+  (let [uri (java.net.URI. url)
+        host (.getHost uri)
+        port (.getPort uri)
+        host-with-port (if (pos? port)
+                         (str host ":" port)
+                         host)
+        path (.getPath uri)]
+    (if (and path (not (str/blank? path)))
+      (let [sanitized-path (-> path
+                               (str/replace "/" "-")
+                               (str/replace "\\" "-")
+                               (str/replace #"^-+|-+$" ""))]
+        (if (str/blank? sanitized-path)
+          host-with-port
+          (str host-with-port "-" sanitized-path)))
+      host-with-port)))
 
 (defn cert-storage-key
   "Generate storage key for a certificate PEM file.
 
   Format: `certificates/{issuer-key}/{domain}/{domain}.crt`
 
-  | key | description |
-  |-----|-------------|
+  | key          | description                                     |
+  |--------------|-------------------------------------------------|
   | `issuer-key` | Issuer identifier (hostname from directory URL) |
-  | `domain` | Primary domain name |"
+  | `domain`     | Primary domain name                             |"
   [issuer-key domain]
-  (let [safe-domain (safe-storage-key domain)]
-    (str "certificates/" issuer-key "/" safe-domain "/" safe-domain ".crt")))
+  (let [safe-issuer (safe-storage-key issuer-key)
+        safe-domain (safe-storage-key domain)]
+    (str "certificates/" safe-issuer "/" safe-domain "/" safe-domain ".crt")))
 
 (defn key-storage-key
   "Generate storage key for a private key PEM file.
@@ -125,8 +139,9 @@
   | `issuer-key` | Issuer identifier (hostname from directory URL) |
   | `domain` | Primary domain name |"
   [issuer-key domain]
-  (let [safe-domain (safe-storage-key domain)]
-    (str "certificates/" issuer-key "/" safe-domain "/" safe-domain ".key")))
+  (let [safe-issuer (safe-storage-key issuer-key)
+        safe-domain (safe-storage-key domain)]
+    (str "certificates/" safe-issuer "/" safe-domain "/" safe-domain ".key")))
 
 (defn meta-storage-key
   "Generate storage key for certificate metadata JSON file.
@@ -138,41 +153,40 @@
   | `issuer-key` | Issuer identifier (hostname from directory URL) |
   | `domain` | Primary domain name |"
   [issuer-key domain]
-  (let [safe-domain (safe-storage-key domain)]
-    (str "certificates/" issuer-key "/" safe-domain "/" safe-domain ".json")))
+  (let [safe-issuer (safe-storage-key issuer-key)
+        safe-domain (safe-storage-key domain)]
+    (str "certificates/" safe-issuer "/" safe-domain "/" safe-domain ".json")))
 
 (defn certs-prefix
   "Generate storage prefix for listing certificates under an issuer.
 
   Format: `certificates/{issuer-key}`
 
-  | key | description |
-  |-----|-------------|
+  | key          | description                                     |
+  |--------------|-------------------------------------------------|
   | `issuer-key` | Issuer identifier (hostname from directory URL) |"
   [issuer-key]
-  (str "certificates/" issuer-key))
+  (str "certificates/" (safe-storage-key issuer-key)))
 
 (defn account-private-key-storage-key
   "Generate storage key for an account private key PEM file.
 
   Format: `accounts/{issuer-key}/account.key`
 
-  | key | description |
-  |-----|-------------|
+  | key          | description                                     |
+  |--------------|-------------------------------------------------|
   | `issuer-key` | Issuer identifier (hostname from directory URL) |"
   [issuer-key]
-  (str "accounts/" issuer-key "/account.key"))
+  (str "accounts/" (safe-storage-key issuer-key) "/account.key"))
 
 (defn account-public-key-storage-key
   "Generate storage key for an account public key PEM file.
 
-  Format: `accounts/{issuer-key}/account.pub`
-
-  | key | description |
-  |-----|-------------|
+  | key          | description                                     |
+  |--------------|-------------------------------------------------|
   | `issuer-key` | Issuer identifier (hostname from directory URL) |"
   [issuer-key]
-  (str "accounts/" issuer-key "/account.pub"))
+  (str "accounts/" (safe-storage-key issuer-key) "/account.pub"))
 
 (defn ocsp-storage-key
   "Generate storage key for an OCSP staple file.
@@ -181,13 +195,14 @@
 
   The OCSP staple is stored as raw DER-encoded bytes.
 
-  | key | description |
-  |-----|-------------|
+  | key          | description                                     |
+  |--------------|-------------------------------------------------|
   | `issuer-key` | Issuer identifier (hostname from directory URL) |
-  | `domain` | Primary domain name |"
+  | `domain`     | Primary domain name                             |"
   [issuer-key domain]
-  (let [safe-domain (safe-storage-key domain)]
-    (str "certificates/" issuer-key "/" safe-domain "/" safe-domain ".ocsp")))
+  (let [safe-issuer (safe-storage-key issuer-key)
+        safe-domain (safe-storage-key domain)]
+    (str "certificates/" safe-issuer "/" safe-domain "/" safe-domain ".ocsp")))
 
 (defn compromised-key-storage-key
   "Generate storage key for archiving a compromised private key.
@@ -196,9 +211,9 @@
 
   Compromised keys are archived for audit purposes and never reused.
 
-  | key | description |
-  |-----|-------------|
-  | `domain` | Primary domain name |
+  | key         | description                                        |
+  |-------------|----------------------------------------------------|
+  | `domain`    | Primary domain name                                |
   | `timestamp` | ISO-8601 timestamp when key was marked compromised |"
   [domain timestamp]
   (let [safe-domain (safe-storage-key domain)
@@ -213,13 +228,14 @@
   The ARI data is stored as JSON containing suggested-window, selected-time,
   and retry-after.
 
-  | key | description |
-  |-----|-------------|
+  | key          | description                                     |
+  |--------------|-------------------------------------------------|
   | `issuer-key` | Issuer identifier (hostname from directory URL) |
-  | `domain` | Primary domain name |"
+  | `domain`     | Primary domain name                             |"
   [issuer-key domain]
-  (let [safe-domain (safe-storage-key domain)]
-    (str "certificates/" issuer-key "/" safe-domain "/" safe-domain ".ari.json")))
+  (let [safe-issuer (safe-storage-key issuer-key)
+        safe-domain (safe-storage-key domain)]
+    (str "certificates/" safe-issuer "/" safe-domain "/" safe-domain ".ari.json")))
 
 (defn challenge-token-storage-key
   "Generate storage key for a challenge token (distributed solving).
@@ -229,13 +245,14 @@
   Used to store challenge data so any instance in a cluster can serve
   the challenge response for HTTP-01 or TLS-ALPN-01 validation.
 
-  | key | description |
-  |-----|-------------|
+  | key          | description                                     |
+  |--------------|-------------------------------------------------|
   | `issuer-key` | Issuer identifier (hostname from directory URL) |
-  | `identifier` | Domain or IP address being validated |"
+  | `identifier` | Domain or IP address being validated            |"
   [issuer-key identifier]
-  (let [safe-id (safe-storage-key identifier)]
-    (str "challenge_tokens/" issuer-key "/" safe-id ".json")))
+  (let [safe-issuer (safe-storage-key issuer-key)
+        safe-id (safe-storage-key identifier)]
+    (str "challenge_tokens/" safe-issuer "/" safe-id ".json")))
 
 (defn select-chain
   "Select a certificate chain based on preference.
@@ -248,10 +265,10 @@
   Returns nil if chains is empty.
   Falls back to first chain if root name not found.
 
-  | key | description |
-  |-----|-------------|
-  | `preference` | Chain preference (`:any`, `:shortest`, or `{:root name}`) |
-  | `chains` | Sequence of chain maps with `:chain` (certs) and `:root-name` |"
+  | key          | description                                                   |
+  |--------------|---------------------------------------------------------------|
+  | `preference` | Chain preference (`:any`, `:shortest`, or `{:root name}`)     |
+  | `chains`     | Sequence of chain maps with `:chain` (certs) and `:root-name` |"
   [preference chains]
   (when (seq chains)
     (cond

@@ -265,19 +265,8 @@
               (cache/cache-certificate (:cache system) bundle)
               ;; Track as managed domain
               (swap! managed-domains-atom conj domain)
-              ;; Emit event if queue exists
-              (when-let [queue @(:event-queue system)]
-                (let [event (decisions/create-certificate-loaded-event bundle)]
-                  (.offer ^LinkedBlockingQueue queue event)))
               (swap! loaded-bundles conj bundle))))))
     @loaded-bundles))
-
-(defn- emit-certificate-loaded-event!
-  "Emit a certificate-loaded event for a bundle."
-  [system bundle]
-  (when-let [queue @(:event-queue system)]
-    (let [event (decisions/create-certificate-loaded-event bundle)]
-      (.offer ^LinkedBlockingQueue queue event))))
 
 (defn- resolve-config-with-timeout
   "Resolve config for a domain with a timeout.
@@ -463,7 +452,7 @@
         loaded-bundles (load-all-certificates! system)]
     ;; Emit certificate-loaded events for each bundle
     (doseq [bundle loaded-bundles]
-      (emit-certificate-loaded-event! system bundle))
+      (emit-event! system (decisions/create-certificate-loaded-event bundle)))
     ;; Start maintenance loop
     (start-maintenance-loop! system)
     ;; Mark as started

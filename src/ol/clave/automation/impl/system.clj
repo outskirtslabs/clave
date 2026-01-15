@@ -334,6 +334,32 @@
 
 ;;; Maintenance Cycle
 
+(defn- check-emergency-status!
+  "Log and emit event if certificate is in emergency renewal state."
+  [system bundle domain now]
+  (when-let [emergency-level (decisions/emergency-renewal? bundle now *maintenance-interval-ms*)]
+    (log/log! {:level :warn
+               :id    ::certificate-emergency
+               :data  {:domain domain
+                       :level emergency-level
+                       :not-after (:not-after bundle)}})
+    (emit-event! system (create-certificate-emergency-event domain emergency-level (:not-after bundle)))))
+
+(defn- maintain-certificate!
+  "Run normal maintenance for a certificate that exists in storage."
+  [system bundle domain now]
+  (let [resolved-config (resolve-config-with-timeout system domain *config-fn-timeout-ms*)
+        commands (decisions/check-cert-maintenance bundle resolved-config now *maintenance-interval-ms*)]
+    (run! #(submit-command! system %) commands)
+    (check-emergency-status! system bundle domain now)))
+
+(defn- recover-missing-certificate!
+  "Recover a certificate that exists in cache but not in storage."
+  [system cache-atom bundle domain]
+  (log/log! {:level :info :id ::storage-recovery :data {:domain domain}})
+  (cache/remove-certificate cache-atom bundle)
+  (submit-command! system {:command :obtain-certificate :domain domain}))
+
 (defn- run-maintenance-cycle!
   "Execute a single maintenance cycle.
 
@@ -354,35 +380,9 @@
       (when (:managed bundle)
         (try
           (let [domain (first (:names bundle))]
-            ;; Check storage consistency first
             (if (certificate-exists-in-storage? system bundle)
-              ;; Certificate exists in storage - run normal maintenance
-              (let [resolved-config (resolve-config-with-timeout system domain *config-fn-timeout-ms*)
-                    commands (decisions/check-cert-maintenance bundle resolved-config now *maintenance-interval-ms*)]
-                ;; Submit each command to the queue
-                (doseq [cmd commands]
-                  (submit-command! system cmd))
-                ;; Check for emergency status and emit warning event
-                (when-let [emergency-level (decisions/emergency-renewal? bundle now *maintenance-interval-ms*)]
-                  (log/log! {:level :warn
-                             :id    ::certificate-emergency
-                             :data  {:domain domain
-                                     :level emergency-level
-                                     :not-after (:not-after bundle)}})
-                  (emit-event! system (create-certificate-emergency-event
-                                       domain
-                                       emergency-level
-                                       (:not-after bundle)))))
-              ;; Certificate missing from storage - trigger re-obtain
-              (do
-                (log/log! {:level :info
-                           :id    ::storage-recovery
-                           :data  {:domain domain}})
-                ;; Remove stale bundle from cache
-                (cache/remove-certificate cache-atom bundle)
-                ;; Submit obtain command to get a fresh certificate
-                (submit-command! system {:command :obtain-certificate
-                                         :domain domain}))))
+              (maintain-certificate! system bundle domain now)
+              (recover-missing-certificate! system cache-atom bundle domain)))
           (catch Exception e
             (log/log! {:level :error
                        :id    ::maintenance-error
@@ -390,10 +390,7 @@
                        :error e})))))))
 
 (defn trigger-maintenance!
-  "Manually trigger a maintenance cycle.
-
-  This is primarily useful for testing - in normal operation the
-  maintenance loop runs automatically."
+  "See [[ol.clave.automation/trigger-maintenance!]]"
   [system]
   (run-maintenance-cycle! system))
 
@@ -417,19 +414,7 @@
     thread))
 
 (defn start
-  "Starts the automation system.
-
-  1. Validates configuration
-  2. Validates storage is functional
-  3. Initializes job queue (executor, semaphores, in-flight map)
-  4. Loads existing certificates from storage (synchronous)
-  5. Populates cache with loaded certificates
-  6. Starts maintenance loop (async)
-  7. Returns system handle
-
-  Multiple instances can safely share the same storage. Coordination
-  is handled via domain-level distributed locks during certificate
-  operations."
+  "See [[ol.clave.automation/start]]"
   [config]
   (when-not (:storage config)
     (throw (ex-info "Storage is required" {:type :config-error})))
@@ -453,13 +438,7 @@
     system))
 
 (defn stop
-  "Stops the automation system.
-
-  1. Signals maintenance loop to stop
-  2. Stops accepting new job submissions
-  3. Waits for in-flight jobs to complete (with timeout)
-  4. Shuts down executor
-  5. Closes event queue"
+  "See [[ol.clave.automation/stop]]"
   [system]
   (when system
     ;; Signal shutdown
@@ -480,7 +459,7 @@
     nil))
 
 (defn started?
-  "Returns true if the system is in started state."
+  "See [[ol.clave.automation/started?]]"
   [system]
   (boolean (and system @(:started? system))))
 
@@ -499,11 +478,7 @@
           issuers)))
 
 (defn lookup-cert
-  "Finds a certificate for a hostname.
-
-  Tries cache first, then falls back to storage if not found.
-  If found in storage, the certificate is loaded into the cache.
-  Only loads from storage for domains that are actively managed."
+  "See [[ol.clave.automation/lookup-cert]]"
   [system hostname]
   (or (cache/lookup-cert (:cache system) hostname)
       ;; Fallback: try to load from storage, but only for managed domains
@@ -1164,24 +1139,7 @@
             (.remove in-flight command-key)))))))
 
 (defn manage-domains
-  "Adds domains to management, triggering immediate certificate obtain.
-
-  Validates each domain before adding. Invalid domains are rejected
-  immediately with a clear error.
-
-  Returns:
-  - `nil` if all domains are valid and were queued for certificate obtain
-  - Error map with `:errors` vector if any domains are invalid
-
-  Error format:
-  ```clojure
-  {:errors [{:error :invalid-domain
-             :domain \"localhost\"
-             :message \"localhost is not a valid ACME domain...\"}]}
-  ```
-
-  Note: Validation can be bypassed with `:skip-domain-validation true` in
-  the system config. This is intended for testing only."
+  "See [[ol.clave.automation/manage-domains]]"
   [system domains]
   (let [config (:config system)
         skip-validation? (:skip-domain-validation config)
@@ -1207,16 +1165,7 @@
         nil))))
 
 (defn unmanage-domains
-  "Removes domains from management.
-
-  For each domain:
-  1. Finds the certificate bundle in the cache
-  2. Removes it from the cache
-  3. Removes from managed-domains set
-  4. Cancels any in-flight commands for that domain
-  5. Emits a :domain-removed event
-
-  Certificates remain in storage but are no longer actively managed."
+  "See [[ol.clave.automation/unmanage-domains]]"
   [system domains]
   (let [cache-atom (:cache system)
         managed-domains-atom (:managed-domains system)
@@ -1238,7 +1187,7 @@
       (emit-event! system (create-domain-removed-event domain)))))
 
 (defn list-domains
-  "Lists all managed domains with status."
+  "See [[ol.clave.automation/list-domains]]"
   [system]
   (let [{:keys [certs]} @(:cache system)]
     (vec (->> (vals certs)
@@ -1249,7 +1198,7 @@
                       :not-after (:not-after bundle)}))))))
 
 (defn get-domain-status
-  "Gets detailed status for a specific domain."
+  "See [[ol.clave.automation/get-domain-status]]"
   [system domain]
   (when-let [bundle (lookup-cert system domain)]
     {:domain domain
@@ -1259,7 +1208,7 @@
      :needs-renewal false}))  ;; TODO: Calculate from bundle
 
 (defn has-valid-cert?
-  "Returns true if the system has a valid certificate for the domain."
+  "See [[ol.clave.automation/has-valid-cert?]]"
   [system domain]
   (some? (lookup-cert system domain)))
 
@@ -1274,12 +1223,7 @@
             @queue-atom)))))
 
 (defn renew-managed
-  "Forces renewal of all managed certificates.
-
-  Submits renewal commands for every managed certificate in the cache.
-  Commands are submitted asynchronously - this function returns immediately.
-
-  Returns the number of certificates queued for renewal."
+  "See [[ol.clave.automation/renew-managed]]"
   [system]
   (let [cache-atom (:cache system)
         {:keys [certs]} @cache-atom
@@ -1294,21 +1238,7 @@
     @renewed))
 
 (defn revoke
-  "Revokes a certificate.
-
-  The `certificate` parameter can be:
-  - A domain string - looks up the certificate from the cache
-  - A bundle map - uses the bundle directly
-
-  Options:
-  | key | description |
-  |-----|-------------|
-  | `:remove-from-storage` | When true, deletes certificate files from storage |
-  | `:reason` | RFC 5280 revocation reason code (0-6, 8-10) |
-
-  Returns:
-  - `{:status :success}` on successful revocation
-  - `{:status :error :message ...}` on failure"
+  "See [[ol.clave.automation/revoke]]"
   [system certificate opts]
   (let [;; Resolve certificate to a bundle
         bundle (if (string? certificate)

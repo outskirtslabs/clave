@@ -33,19 +33,19 @@
 
   The config map supports:
 
-  | key | description |
-  |-----|-------------|
-  | `:storage` | Storage implementation (required) |
-  | `:issuers` | Vector of issuer configs with `:directory-url` and optional `:email`, `:eab` |
-  | `:issuer-selection` | `:in-order` (default) or `:shuffle` |
-  | `:key-type` | `:p256` (default), `:p384`, `:rsa2048`, `:rsa4096`, `:rsa8192`, `:ed25519` |
-  | `:key-reuse` | Reuse private key on renewal (default false) |
-  | `:solvers` | Map of solver types to implementations |
-  | `:ocsp` | OCSP config with `:enabled`, `:must-staple` |
-  | `:ari` | ARI config with `:enabled` |
-  | `:cache-capacity` | Max certificates in cache (nil = unlimited) |
-  | `:config-fn` | Function: domain -> config overrides |
-  | `:http-client` | HTTP client options for ACME requests |"
+  | key                 | description                                                                  |
+  |---------------------|------------------------------------------------------------------------------|
+  | `:storage`          | Storage implementation (required)                                            |
+  | `:issuers`          | Vector of issuer configs with `:directory-url` and optional `:email`, `:eab` |
+  | `:issuer-selection` | `:in-order` (default) or `:shuffle`                                          |
+  | `:key-type`         | `:p256` (default), `:p384`, `:rsa2048`, `:rsa4096`, `:rsa8192`, `:ed25519`   |
+  | `:key-reuse`        | Reuse private key on renewal (default false)                                 |
+  | `:solvers`          | Map of solver types to implementations                                       |
+  | `:ocsp`             | OCSP config with `:enabled`, `:must-staple`                                  |
+  | `:ari`              | ARI config with `:enabled`                                                   |
+  | `:cache-capacity`   | Max certificates in cache (nil = unlimited)                                  |
+  | `:config-fn`        | Function: domain -> config overrides                                         |
+  | `:http-client`      | HTTP client options for ACME requests                                        |"
   (:require
    [ol.clave.automation.impl.system :as system]))
 
@@ -192,8 +192,13 @@
 (defn renew-managed
   "Forces renewal of all managed certificates.
 
+  Submits renewal commands for every managed certificate in the cache.
+  Commands are submitted asynchronously - this function returns immediately.
+
   Normally certificates are renewed automatically. Use this for
   testing or when you need to force renewal.
+
+  Returns the number of certificates queued for renewal.
 
   | key | description |
   |-----|-------------|
@@ -204,11 +209,25 @@
 (defn revoke
   "Revokes a certificate.
 
+  The `certificate` parameter can be:
+  - A domain string - looks up the certificate from the cache
+  - A bundle map - uses the bundle directly
+
   | key | description |
   |-----|-------------|
   | `system` | System handle from `start` |
-  | `certificate` | Certificate to revoke |
-  | `opts` | Options with `:remove-from-storage` |"
+  | `certificate` | Domain string or bundle map |
+  | `opts` | Options map (see below) |
+
+  Options:
+
+  | key | description |
+  |-----|-------------|
+  | `:remove-from-storage` | When true, deletes certificate files from storage |
+  | `:reason` | RFC 5280 revocation reason code (0-6, 8-10) |
+
+  Returns `{:status :success}` on successful revocation,
+  or `{:status :error :message ...}` on failure."
   [system certificate opts]
   (system/revoke system certificate opts))
 

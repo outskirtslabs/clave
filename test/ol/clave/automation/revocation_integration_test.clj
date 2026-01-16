@@ -1,122 +1,133 @@
 (ns ol.clave.automation.revocation-integration-test
   "Integration tests for certificate revocation.
-  Tests run against Pebble ACME test server."
+  Tests both high-level automation API and low-level commands API."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.challenge :as challenge]
+   [ol.clave.acme.commands :as commands]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.config :as config]
+   [ol.clave.errors :as errors]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]
+   [ol.clave.lease :as lease]
    [ol.clave.specs :as specs]
    [ol.clave.storage :as storage]
-   [ol.clave.storage.file :as file-storage])
-  (:import
-   [java.util.concurrent TimeUnit]))
+   [ol.clave.storage.file :as file-storage]))
 
-;; Use :each to give each test a fresh Pebble instance with clean state.
-;; This prevents authorization state accumulation across tests.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(def ^:private shared-certs (atom nil))
 
-(deftest revoke-sends-revocation-request-to-ca
-  (testing "revoke sends revocation request to CA"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
-          solver {:present (fn [_lease chall account-key]
-                             (let [token (::specs/token chall)
-                                   key-auth (challenge/key-authorization chall account-key)]
-                               (pebble/challtestsrv-add-http01 token key-auth)
-                               {:token token}))
-                  :cleanup (fn [_lease _chall state]
-                             (pebble/challtestsrv-del-http01 (:token state))
-                             nil)}
-          config {:storage storage-impl
-                  :issuers [{:directory-url (pebble/uri)}]
-                  :solvers {:http-01 solver}
-                  :http-client pebble/http-client-opts}
-          system (automation/create-started! config)]
-      (try
-        (let [queue (automation/get-event-queue system)]
-          ;; Step 1: Obtain certificate
-          (automation/manage-domains system [domain])
-          ;; Consume domain-added event
-          (.poll queue 5 TimeUnit/SECONDS)
-          ;; Wait for certificate-obtained
-          (loop [attempts 0]
-            (when (< attempts 12)
-              (let [evt (.poll queue 5 TimeUnit/SECONDS)]
-                (when-not (= :certificate-obtained (:type evt))
-                  (recur (inc attempts))))))
-          ;; Verify certificate exists
-          (let [bundle (automation/lookup-cert system domain)]
-            (is (some? bundle) "Certificate should exist before revoke")
-            ;; Step 2: Call revoke
-            (let [result (automation/revoke system domain {})]
-              ;; Step 3-4: Verify revocation request succeeded
-              (is (= :success (:status result)) "Revoke should succeed")
-              ;; Verify certificate removed from cache
-              (is (nil? (automation/lookup-cert system domain))
-                  "Certificate should be removed from cache after revoke"))))
-        (finally
-          (automation/stop system))))))
+(defn- commands-fixture
+  "Issues certificates for low-level commands tests."
+  [f]
+  (let [bg-lease (lease/background)
+        session-a (test-util/fresh-session)
+        [session-a cert-a _] (test-util/issue-certificate session-a)
+        session-b (test-util/fresh-session)
+        [session-b cert-b _] (test-util/issue-certificate session-b)
+        session-c (test-util/fresh-session)
+        [session-c cert-c _] (test-util/issue-certificate session-c)
+        [session-c _] (commands/revoke-certificate bg-lease session-c cert-c)
+        session-d (test-util/fresh-session)
+        [session-d cert-d keypair-d] (test-util/issue-certificate session-d)]
+    (reset! shared-certs {:session-a session-a :cert-a cert-a
+                          :session-b session-b :cert-b cert-b
+                          :session-c session-c :cert-c cert-c
+                          :session-d session-d :cert-d cert-d :keypair-d keypair-d})
+    (try
+      (f)
+      (finally
+        (reset! shared-certs nil)))))
 
-(deftest revoke-with-remove-from-storage-deletes-files
-  (testing "revoke with remove-from-storage deletes files"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
-          solver {:present (fn [_lease chall account-key]
-                             (let [token (::specs/token chall)
-                                   key-auth (challenge/key-authorization chall account-key)]
-                               (pebble/challtestsrv-add-http01 token key-auth)
-                               {:token token}))
-                  :cleanup (fn [_lease _chall state]
-                             (pebble/challtestsrv-del-http01 (:token state))
-                             nil)}
-          config {:storage storage-impl
-                  :issuers [{:directory-url (pebble/uri)}]
-                  :solvers {:http-01 solver}
-                  :http-client pebble/http-client-opts}
-          system (automation/create-started! config)]
-      (try
-        (let [queue (automation/get-event-queue system)]
-          ;; Step 1: Obtain certificate
-          (automation/manage-domains system [domain])
-          ;; Consume domain-added event
-          (.poll queue 5 TimeUnit/SECONDS)
-          ;; Wait for certificate-obtained
-          (loop [attempts 0]
-            (when (< attempts 12)
-              (let [evt (.poll queue 5 TimeUnit/SECONDS)]
-                (when-not (= :certificate-obtained (:type evt))
-                  (recur (inc attempts))))))
-          ;; Verify certificate exists
-          (let [bundle (automation/lookup-cert system domain)
-                issuer-key (:issuer-key bundle)]
-            (is (some? bundle) "Certificate should exist before revoke")
-            ;; Step 2: Verify certificate files exist in storage
-            ;; Use config functions to get correct storage paths
-            (let [cert-path (config/cert-storage-key issuer-key domain)
+(use-fixtures :once pebble/pebble-challenge-fixture commands-fixture)
+
+(defn- make-http01-solver []
+  {:present (fn [_lease chall account-key]
+              (let [token (::specs/token chall)
+                    key-auth (challenge/key-authorization chall account-key)]
+                (pebble/challtestsrv-add-http01 token key-auth)
+                {:token token}))
+   :cleanup (fn [_lease _chall state]
+              (pebble/challtestsrv-del-http01 (:token state))
+              nil)})
+
+(defn- make-config [storage solver]
+  {:storage storage
+   :issuers [{:directory-url (pebble/uri)}]
+   :solvers {:http-01 solver}
+   :http-client pebble/http-client-opts})
+
+(defn- has-event? [events type]
+  (some #(= type (:type %)) events))
+
+(deftest automation-revocation-test
+  (let [solver (make-http01-solver)]
+
+    (testing "revoke sends revocation request to CA"
+      (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+            domain "revoke1.localhost"
+            system (automation/create-started! (make-config storage solver))]
+        (try
+          (let [queue (automation/get-event-queue system)]
+            (automation/manage-domains system [domain])
+            (let [events (test-util/collect-events-async queue 10 200)]
+              (is (has-event? events :certificate-obtained)))
+            (let [bundle (automation/lookup-cert system domain)]
+              (is (some? bundle))
+              (let [result (automation/revoke system domain {})]
+                (is (= :success (:status result)))
+                (is (nil? (automation/lookup-cert system domain))))))
+          (finally
+            (automation/stop system)))))
+
+    (testing "revoke with remove-from-storage deletes files"
+      (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+            domain "revoke2.localhost"
+            system (automation/create-started! (make-config storage solver))]
+        (try
+          (let [queue (automation/get-event-queue system)]
+            (automation/manage-domains system [domain])
+            (let [events (test-util/collect-events-async queue 10 200)]
+              (is (has-event? events :certificate-obtained)))
+            (let [bundle (automation/lookup-cert system domain)
+                  issuer-key (:issuer-key bundle)
+                  cert-path (config/cert-storage-key issuer-key domain)
                   key-path (config/key-storage-key issuer-key domain)]
-              (is (storage/exists? storage-impl nil cert-path)
-                  "Certificate file should exist in storage")
-              (is (storage/exists? storage-impl nil key-path)
-                  "Key file should exist in storage")
-              ;; Step 3: Call revoke with :remove-from-storage true
+              (is (some? bundle))
+              (is (storage/exists? storage nil cert-path))
+              (is (storage/exists? storage nil key-path))
               (let [result (automation/revoke system domain {:remove-from-storage true})]
-                (is (= :success (:status result)) "Revoke should succeed")
-                ;; Step 4: Verify certificate files are deleted
-                (is (not (storage/exists? storage-impl nil cert-path))
-                    "Certificate file should be deleted from storage")
-                (is (not (storage/exists? storage-impl nil key-path))
-                    "Key file should be deleted from storage")
-                ;; Step 5: Verify certificate is removed from cache
-                (is (nil? (automation/lookup-cert system domain))
-                    "Certificate should be removed from cache after revoke")
-                ;; Step 6: Verify domain is no longer in list-domains
-                (let [domains (automation/list-domains system)]
-                  (is (not (some #(= domain (:domain %)) domains))
-                      "Domain should not appear in list-domains after revoke"))))))
-        (finally
-          (automation/stop system))))))
+                (is (= :success (:status result)))
+                (is (not (storage/exists? storage nil cert-path)))
+                (is (not (storage/exists? storage nil key-path)))
+                (is (nil? (automation/lookup-cert system domain)))
+                (is (not (some #(= domain (:domain %)) (automation/list-domains system)))))))
+          (finally
+            (automation/stop system)))))))
+
+(deftest commands-revocation-test
+  (testing "invalid reason code returns badRevocationReason"
+    (let [bg-lease (lease/background)
+          {:keys [session-a cert-a]} @shared-certs]
+      (is (thrown-with-error-type? ::errors/revocation-failed
+                                   (commands/revoke-certificate bg-lease session-a cert-a {:reason 99})))))
+
+  (testing "revokes certificate using account key"
+    (let [bg-lease (lease/background)
+          {:keys [session-b cert-b]} @shared-certs
+          [session' result] (commands/revoke-certificate bg-lease session-b cert-b)]
+      (is (some? session'))
+      (is (nil? result))))
+
+  (testing "already revoked certificate returns error"
+    (let [bg-lease (lease/background)
+          {:keys [session-c cert-c]} @shared-certs]
+      (is (thrown-with-error-type? ::errors/revocation-failed
+                                   (commands/revoke-certificate bg-lease session-c cert-c)))))
+
+  (testing "revokes certificate using certificate keypair"
+    (let [bg-lease (lease/background)
+          {:keys [session-d cert-d keypair-d]} @shared-certs
+          [session' result] (commands/revoke-certificate bg-lease session-d cert-d {:signing-key keypair-d})]
+      (is (some? session'))
+      (is (nil? result)))))

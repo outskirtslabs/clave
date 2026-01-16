@@ -1,23 +1,18 @@
 (ns ol.clave.automation.maintenance-loop-integration-test
-  "Integration tests for maintenance loop: automatic renewal, error handling.
-  Tests run against Pebble ACME test server."
+  "Integration tests for maintenance loop: automatic renewal, error handling."
   (:require
-   [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.config :as config]
    [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.automation.impl.system :as system]
-   [ol.clave.certificate :as certificate]
-   [ol.clave.certificate.impl.keygen :as keygen]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.security.cert X509Certificate]
    [java.time Instant]
    [java.time.temporal ChronoUnit]
    [java.util.concurrent TimeUnit]))
@@ -65,30 +60,29 @@
     (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
           domain "interval.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
-          [_ ^X509Certificate cert kp] (test-util/issue-certificate (test-util/fresh-session))]
-      (storage/store-string! storage nil (config/cert-storage-key issuer-key domain)
-                             (keygen/pem-encode "CERTIFICATE" (.getEncoded cert)))
-      (storage/store-string! storage nil (config/key-storage-key issuer-key domain)
-                             (certificate/private-key->pem (.getPrivate kp)))
-      (storage/store-string! storage nil (config/meta-storage-key issuer-key domain)
-                             (pr-str {:names [domain] :issuer issuer-key :managed true}))
-      (binding [system/*maintenance-interval-ms* 1
-                system/*maintenance-jitter-ms* 5
-                decisions/*renewal-threshold* 1.01]
+          now (Instant/now)]
+      ;; Store a certificate that's past the renewal threshold (89 days old of 90 day lifetime)
+      (store-cert! storage issuer-key domain
+                   (test-util/generate-test-certificate domain
+                                                        (.minus now 89 ChronoUnit/DAYS)
+                                                        (.plus now 1 ChronoUnit/DAYS)))
+      (binding [system/*maintenance-interval-ms* 100
+                system/*maintenance-jitter-ms* 50]
         (let [t0 (System/currentTimeMillis)
-              system (automation/start {:storage storage
-                                        :issuers [{:directory-url (pebble/uri)}]
-                                        :solvers {:http-01 (make-solver)}
-                                        :http-client pebble/http-client-opts})]
+              system (automation/create {:storage storage
+                                         :issuers [{:directory-url (pebble/uri)}]
+                                         :solvers {:http-01 (make-solver)}
+                                         :http-client pebble/http-client-opts})
+              queue (automation/get-event-queue system)]
+          (automation/start! system)
           (try
-            (let [queue (automation/get-event-queue system)
-                  renewed (loop [n 0]
-                            (when (< n 60)
+            (let [renewed (loop [n 0]
+                            (when (< n 30)
                               (let [evt (.poll queue 1 TimeUnit/SECONDS)]
                                 (if (= :certificate-renewed (:type evt))
                                   evt
                                   (recur (inc n))))))]
-              (is (some? renewed))
+              (is (some? renewed) "Should receive certificate-renewed event")
               (is (< (- (System/currentTimeMillis) t0) 20000)))
             (finally
               (automation/stop system))))))))
@@ -109,11 +103,11 @@
                           (throw (ex-info "Simulated failure" {:domain domain})))
                         nil)]
         (binding [decisions/*renewal-threshold* 1.01]
-          (let [system (automation/start {:storage storage
-                                          :issuers [{:directory-url (pebble/uri)}]
-                                          :solvers {:http-01 (make-solver)}
-                                          :http-client pebble/http-client-opts
-                                          :config-fn config-fn})]
+          (let [system (automation/create-started! {:storage storage
+                                                    :issuers [{:directory-url (pebble/uri)}]
+                                                    :solvers {:http-01 (make-solver)}
+                                                    :http-client pebble/http-client-opts
+                                                    :config-fn config-fn})]
             (try
               (let [queue (automation/get-event-queue system)]
                 (automation/trigger-maintenance! system)
@@ -145,11 +139,11 @@
                                                           (.plus now 89 ChronoUnit/DAYS))))
       (binding [system/*config-fn-timeout-ms* 100
                 decisions/*renewal-threshold* 1.01]
-        (let [system (automation/start {:storage storage
-                                        :issuers [{:directory-url (pebble/uri)}]
-                                        :solvers {:http-01 (make-solver)}
-                                        :http-client pebble/http-client-opts
-                                        :config-fn config-fn})]
+        (let [system (automation/create-started! {:storage storage
+                                                  :issuers [{:directory-url (pebble/uri)}]
+                                                  :solvers {:http-01 (make-solver)}
+                                                  :http-client pebble/http-client-opts
+                                                  :config-fn config-fn})]
           (try
             (let [queue (automation/get-event-queue system)]
               (automation/trigger-maintenance! system)
@@ -174,11 +168,11 @@
                                                           (.minus now 1 ChronoUnit/DAYS)
                                                           (.plus now 89 ChronoUnit/DAYS))))
       (binding [decisions/*renewal-threshold* 1.01]
-        (let [system (automation/start {:storage storage
-                                        :issuers [{:directory-url (pebble/uri)}]
-                                        :solvers {:http-01 (make-solver)}
-                                        :http-client pebble/http-client-opts
-                                        :config-fn config-fn})]
+        (let [system (automation/create-started! {:storage storage
+                                                  :issuers [{:directory-url (pebble/uri)}]
+                                                  :solvers {:http-01 (make-solver)}
+                                                  :http-client pebble/http-client-opts
+                                                  :config-fn config-fn})]
           (try
             (let [queue (automation/get-event-queue system)]
               (automation/trigger-maintenance! system)
@@ -211,10 +205,10 @@
                    (test-util/generate-test-certificate d-renewal
                                                         (.minus now 80 ChronoUnit/DAYS)
                                                         (.plus now 10 ChronoUnit/DAYS)))
-      (let [system (automation/start {:storage storage
-                                      :issuers [{:directory-url (pebble/uri)}]
-                                      :solvers {:http-01 (make-solver)}
-                                      :http-client pebble/http-client-opts})]
+      (let [system (automation/create-started! {:storage storage
+                                                :issuers [{:directory-url (pebble/uri)}]
+                                                :solvers {:http-01 (make-solver)}
+                                                :http-client pebble/http-client-opts})]
         (try
           (is (some? (automation/lookup-cert system d-valid)))
           (is (some? (automation/lookup-cert system d-expired)))

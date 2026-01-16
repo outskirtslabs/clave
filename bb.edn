@@ -37,6 +37,10 @@
                   (apply shell "clj-kondo" "--lint" *command-line-args*)
                   (apply shell "clj-kondo --lint" paths))}
 
+         lint:unused
+         {:doc  "Run clojure-lsp diagnostics to find unused public functions"
+          :task (shell "clojure-lsp diagnostics")}
+
          deps-tree
          {:doc  "Show dependency tree"
           :task (clojure "-X:deps tree :aliases '[:dev]'")}

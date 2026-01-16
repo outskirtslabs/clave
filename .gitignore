@@ -13,3 +13,6 @@ example-project
 prompts/PROMPTS.md
 .box*
 .cljdoc-preview
+.tmuxb_session
+.claude/
+.brepl/

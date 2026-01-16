@@ -350,7 +350,7 @@
 (defn- recover-missing-certificate!
   "Recover a certificate that exists in cache but not in storage."
   [system cache-atom bundle domain]
-  (log/log! {:level :info :id ::storage-recovery :data {:domain domain}})
+  (log/log! {:level :debug :id ::storage-recovery :data {:domain domain}})
   (cache/remove-certificate cache-atom bundle)
   (submit-command! system {:command :obtain-certificate :domain domain}))
 

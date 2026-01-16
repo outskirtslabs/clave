@@ -80,11 +80,10 @@
         running (atom true)
         ^ExecutorService executor (Executors/newVirtualThreadPerTaskExecutor)]
 
-    (log/log! {:level :info
+    (log/log! {:level :debug
                :id    ::bootstrap-server-started
                :data  {:port port}})
 
-    ;; Accept loop in virtual thread
     (Thread/startVirtualThread
      (bound-fn []
        (while @running
@@ -95,7 +94,6 @@
                        (bound-fn []
                          (handle-alpn-connection! socket running))))
            (catch java.net.SocketException _
-             ;; Expected when server socket is closed
              nil)
            (catch Exception e
              (when @running
@@ -115,7 +113,7 @@
     (.close server-socket)
     (catch Exception _))
   (.shutdownNow executor)
-  (log/log! {:level :info
+  (log/log! {:level :debug
              :id    ::bootstrap-server-stopped
              :data  {}}))
 

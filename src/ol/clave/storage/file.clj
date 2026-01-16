@@ -667,5 +667,5 @@
                    root
                    (Paths/get (str root) (make-array String 0)))]
      (create-dirs! p)
-     (t/log! {:level :info :id ::initialized :data {:path (str p)}})
+     (t/log! {:level :debug :id ::initialized :data {:path (str p)}})
      (->FileStorage (.normalize p)))))

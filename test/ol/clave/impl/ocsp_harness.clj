@@ -30,8 +30,12 @@
    [org.bouncycastle.asn1.x509 SubjectPublicKeyInfo]
    [org.bouncycastle.cert X509CertificateHolder X509v3CertificateBuilder]
    [org.bouncycastle.cert.ocsp
-    BasicOCSPRespBuilder CertificateID
-    OCSPReq OCSPRespBuilder RevokedStatus UnknownStatus]
+    BasicOCSPRespBuilder
+    CertificateID
+    OCSPReq
+    OCSPRespBuilder
+    RevokedStatus
+    UnknownStatus]
    [org.bouncycastle.operator.jcajce JcaContentSignerBuilder JcaDigestCalculatorProviderBuilder]))
 
 ;; =============================================================================

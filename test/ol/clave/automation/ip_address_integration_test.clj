@@ -3,8 +3,8 @@
   Tests RFC 8555 IP identifier support via HTTP-01 challenge."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.automation :as automation]
    [ol.clave.acme.challenge :as challenge]
+   [ol.clave.automation :as automation]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]

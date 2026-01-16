@@ -1,8 +1,8 @@
 (ns ol.clave.impl.certificate-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.errors :as errors]
    [ol.clave.certificate.impl.parse :as cert]
+   [ol.clave.errors :as errors]
    [ol.clave.specs :as specs])
   (:import
    [java.security.cert X509Certificate]))

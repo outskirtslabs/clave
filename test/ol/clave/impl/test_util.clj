@@ -5,6 +5,7 @@
    [ol.clave.acme.account :as account]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.acme.commands :as commands]
+   [ol.clave.acme.order :as order]
    [ol.clave.certificate.impl.csr :as csr]
    [ol.clave.certificate.impl.keygen :as kg]
    [ol.clave.certificate.impl.x509 :as x509]
@@ -12,7 +13,6 @@
    [ol.clave.crypto.impl.der :as der]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.lease :as lease]
-   [ol.clave.acme.order :as order]
    [ol.clave.specs :as specs])
   (:import
    [java.io ByteArrayInputStream]

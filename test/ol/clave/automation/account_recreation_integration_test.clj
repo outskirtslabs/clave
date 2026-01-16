@@ -4,10 +4,10 @@
   with the CA when the CA no longer has the account."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.automation :as automation]
-   [ol.clave.automation.impl.config :as config]
    [ol.clave.acme.account :as account]
    [ol.clave.acme.challenge :as challenge]
+   [ol.clave.automation :as automation]
+   [ol.clave.automation.impl.config :as config]
    [ol.clave.crypto.impl.core :as crypto]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]

@@ -4,14 +4,14 @@
   (:require
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.certificate :as clave]
    [ol.clave.acme.account :as account]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.acme.commands :as cmd]
-   [ol.clave.impl.pebble-harness :as pebble]
-   [ol.clave.lease :as lease]
    [ol.clave.acme.order :as order]
    [ol.clave.acme.solver.http :as http-solver]
+   [ol.clave.certificate :as clave]
+   [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.lease :as lease]
    [ol.clave.specs :as specs]))
 
 (use-fixtures :once pebble/pebble-challenge-fixture)

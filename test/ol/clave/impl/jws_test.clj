@@ -1,11 +1,11 @@
 (ns ol.clave.impl.jws-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.errors :as errors]
+   [ol.clave.certificate.impl.keygen :as kg]
    [ol.clave.crypto.impl.core :as crypto]
    [ol.clave.crypto.impl.json :as json]
    [ol.clave.crypto.impl.jws :as jws]
-   [ol.clave.certificate.impl.keygen :as kg]
+   [ol.clave.errors :as errors]
    [ol.clave.impl.test-util])
   (:import
    [java.nio.charset StandardCharsets]

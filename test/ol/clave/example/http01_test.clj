@@ -1,8 +1,8 @@
 (ns ol.clave.example.http01-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.example.http01 :as http01]
-   [ol.clave.acme.solver.http :as http-solver])
+   [ol.clave.acme.solver.http :as http-solver]
+   [ol.clave.example.http01 :as http01])
   (:import
    [java.net HttpURLConnection URL]))
 

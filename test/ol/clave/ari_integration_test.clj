@@ -3,8 +3,8 @@
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.commands :as commands]
-   [ol.clave.errors :as errors]
    [ol.clave.acme.impl.ari :as ari]
+   [ol.clave.errors :as errors]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]
    [ol.clave.lease :as lease]))

@@ -3,6 +3,7 @@
   Tests run against Pebble ACME test server."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
+   [ol.clave.acme.challenge :as challenge]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.config :as config]
    [ol.clave.certificate :as certificate]
@@ -10,7 +11,6 @@
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
-   [ol.clave.acme.challenge :as challenge]
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import

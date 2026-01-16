@@ -1,15 +1,15 @@
 (ns ol.clave.integration-alternate-test
   "Integration tests requiring Pebble with alternate roots enabled."
   (:require
-   [ol.clave.certificate.impl.keygen :as kg]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.account :as account]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.acme.commands :as commands]
+   [ol.clave.acme.order :as order]
    [ol.clave.certificate.impl.csr :as csr]
+   [ol.clave.certificate.impl.keygen :as kg]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.lease :as lease]
-   [ol.clave.acme.order :as order]
    [ol.clave.specs :as specs]))
 
 (use-fixtures :once pebble/pebble-alternate-roots-fixture)

@@ -3,7 +3,7 @@
    [clojure.test :refer [deftest is testing]]
    [ol.clave.automation.impl.decisions :as decisions])
   (:import
-   [java.time Instant Duration]))
+   [java.time Duration Instant]))
 
 (def ^:private test-maintenance-interval-ms 3600000)
 

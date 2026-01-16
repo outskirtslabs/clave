@@ -1,10 +1,10 @@
 (ns ol.clave.order-helpers-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.errors :as errors]
    [ol.clave.acme.impl.order :as impl]
-   [ol.clave.impl.test-util]
    [ol.clave.acme.order :as order]
+   [ol.clave.errors :as errors]
+   [ol.clave.impl.test-util]
    [ol.clave.specs :as specs]))
 
 (deftest create-identifier-normalizes-inputs

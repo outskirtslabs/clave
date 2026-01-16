@@ -5,8 +5,12 @@
    [clojure.test :refer [deftest is testing]]
    [ol.clave.automation.impl.decisions :as decisions])
   (:import
-   [java.net ConnectException NoRouteToHostException SocketException
-    SocketTimeoutException UnknownHostException]))
+   [java.net
+    ConnectException
+    NoRouteToHostException
+    SocketException
+    SocketTimeoutException
+    UnknownHostException]))
 
 (deftest connection-refused-is-classified-as-network-error
   (testing "ConnectException (connection refused) is classified as network error"

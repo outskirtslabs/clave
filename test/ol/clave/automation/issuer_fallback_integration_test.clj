@@ -3,11 +3,11 @@
   Tests run against Pebble ACME test server instances."
   (:require
    [clojure.test :refer [deftest is testing]]
+   [ol.clave.acme.challenge :as challenge]
+   [ol.clave.acme.impl.http.impl :as http]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.config :as config]
    [ol.clave.automation.impl.decisions :as decisions]
-   [ol.clave.acme.challenge :as challenge]
-   [ol.clave.acme.impl.http.impl :as http]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]

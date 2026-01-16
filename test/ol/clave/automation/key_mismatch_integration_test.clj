@@ -3,9 +3,9 @@
   Tests run against Pebble ACME test server."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
+   [ol.clave.acme.challenge :as challenge]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.config :as config]
-   [ol.clave.acme.challenge :as challenge]
    [ol.clave.certificate.impl.keygen :as keygen]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]

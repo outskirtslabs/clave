@@ -6,11 +6,11 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.acme.commands :as commands]
+   [ol.clave.acme.order :as order]
    [ol.clave.errors :as errors]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]
-   [ol.clave.lease :as lease]
-   [ol.clave.acme.order :as order])
+   [ol.clave.lease :as lease])
   (:import
    [java.net ServerSocket]))
 

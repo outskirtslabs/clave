@@ -11,8 +11,8 @@
   The test focuses on verifying concurrent request handling works correctly."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.automation :as automation]
    [ol.clave.acme.challenge :as challenge]
+   [ol.clave.automation :as automation]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.specs :as specs]
    [ol.clave.storage.file :as file-storage])

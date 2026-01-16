@@ -3,10 +3,10 @@
   Tests that ARI data is fetched and used for renewal timing."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
+   [ol.clave.acme.challenge :as challenge]
    [ol.clave.acme.commands :as cmd]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.decisions :as decisions]
-   [ol.clave.acme.challenge :as challenge]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]

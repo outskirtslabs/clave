@@ -17,14 +17,24 @@
    [java.util Arrays Date]
    [org.bouncycastle.asn1 ASN1InputStream ASN1OctetString ASN1Sequence]
    [org.bouncycastle.asn1.x500 X500Name]
-   [org.bouncycastle.asn1.x509 AccessDescription AuthorityInformationAccess
-    BasicConstraints Extension GeneralName SubjectPublicKeyInfo]
+   [org.bouncycastle.asn1.x509
+    AccessDescription
+    AuthorityInformationAccess
+    BasicConstraints
+    Extension
+    GeneralName
+    SubjectPublicKeyInfo]
    [org.bouncycastle.cert X509CertificateHolder X509v3CertificateBuilder]
    [org.bouncycastle.cert.jcajce JcaX509CertificateConverter]
-   [org.bouncycastle.cert.ocsp BasicOCSPResp BasicOCSPRespBuilder CertificateID OCSPReq
-    OCSPResp OCSPRespBuilder RevokedStatus]
-   [org.bouncycastle.operator.jcajce JcaContentSignerBuilder
-    JcaDigestCalculatorProviderBuilder]))
+   [org.bouncycastle.cert.ocsp
+    BasicOCSPResp
+    BasicOCSPRespBuilder
+    CertificateID
+    OCSPReq
+    OCSPResp
+    OCSPRespBuilder
+    RevokedStatus]
+   [org.bouncycastle.operator.jcajce JcaContentSignerBuilder JcaDigestCalculatorProviderBuilder]))
 
 ;; Test CA setup
 

@@ -2,8 +2,8 @@
   "Unit tests for ARI identifier derivation per RFC 9773."
   (:require
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.errors :as errors]
    [ol.clave.acme.impl.ari :as ari]
+   [ol.clave.errors :as errors]
    [ol.clave.impl.test-util])
   (:import
    [java.io ByteArrayInputStream]

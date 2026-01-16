@@ -4,12 +4,12 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.acme.commands :as commands]
+   [ol.clave.acme.order :as order]
    [ol.clave.certificate.impl.csr :as csr]
    [ol.clave.certificate.impl.keygen :as kg]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as util]
    [ol.clave.lease :as lease]
-   [ol.clave.acme.order :as order]
    [ol.clave.specs :as specs]))
 
 (use-fixtures :once pebble/pebble-challenge-fixture)

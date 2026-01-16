@@ -3,7 +3,7 @@
    [clojure.test :refer [deftest is testing]]
    [ol.clave.automation.impl.cache :as cache])
   (:import
-   [java.time Instant Duration]))
+   [java.time Duration Instant]))
 
 ;; Helper to create test bundles
 (defn- make-bundle

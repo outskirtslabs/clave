@@ -7,7 +7,11 @@
    [ol.clave.storage.file :as file])
   (:import
    [java.nio.charset StandardCharsets]
-   [java.nio.file FileVisitOption Files NoSuchFileException Path]
+   [java.nio.file
+    FileVisitOption
+    Files
+    NoSuchFileException
+    Path]
    [java.nio.file.attribute FileAttribute]
    [java.time Duration]
    [java.util Arrays]))

@@ -2,8 +2,8 @@
   "Unit tests for Terms of Service change detection."
   (:require
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.impl.test-util]
    [ol.clave.acme.impl.tos :as tos]
+   [ol.clave.impl.test-util]
    [ol.clave.specs :as specs]))
 
 (def ^:private tos-v1 "https://example.com/tos-v1")

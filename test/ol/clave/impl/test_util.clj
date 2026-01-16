@@ -1,5 +1,7 @@
 (ns ol.clave.impl.test-util
   (:require
+   [taoensso.trove :as trove]
+   [taoensso.trove.console :as trove-backend]
    [babashka.fs :as fs]
    [clojure.test :as t :refer [do-report]]
    [ol.clave.acme.account :as account]
@@ -26,6 +28,8 @@
    [java.util.concurrent TimeUnit]))
 
 ((requiring-resolve 'hashp.install/install!))
+
+(trove/set-log-fn! (trove-backend/get-log-fn {:min-level :trace}))
 
 (defn temp-storage-dir
   "Creates a temporary directory for storage tests with JVM shutdown hook cleanup.

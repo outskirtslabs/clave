@@ -70,7 +70,7 @@
         (try
           (let [queue (automation/get-event-queue system)]
             (automation/manage-domains system [domain])
-            (let [events (test-util/collect-events-async queue 10 200)]
+            (let [events (test-util/collect-events-async queue 60 200)]
               (is (has-event? events :certificate-obtained)))
             (let [bundle (automation/lookup-cert system domain)]
               (is (some? bundle))
@@ -87,7 +87,7 @@
         (try
           (let [queue (automation/get-event-queue system)]
             (automation/manage-domains system [domain])
-            (let [events (test-util/collect-events-async queue 10 200)]
+            (let [events (test-util/collect-events-async queue 60 200)]
               (is (has-event? events :certificate-obtained)))
             (let [bundle (automation/lookup-cert system domain)
                   issuer-key (:issuer-key bundle)

@@ -344,6 +344,7 @@
   [system bundle domain now]
   (let [resolved-config (resolve-config-with-timeout system domain *config-fn-timeout-ms*)
         commands (decisions/check-cert-maintenance bundle resolved-config now *maintenance-interval-ms*)]
+    (log/log! {:level :trace :id ::maintenance-cert :data {:domain domain}})
     (run! #(submit-command! system %) commands)
     (check-emergency-status! system bundle domain now)))
 
@@ -370,6 +371,7 @@
   (let [cache-atom (:cache system)
         {:keys [certs]} @cache-atom
         now (Instant/now)]
+    (log/log! {:level :trace :id ::maintenance-start})
     (doseq [[_hash bundle] certs]
       (when (:managed bundle)
         (try
@@ -620,6 +622,7 @@
   Automatically wraps solvers for distributed challenge solving when storage is available.
   Returns {:status :success :bundle ...} on success, or {:status :error ...} on failure."
   [system domain issuer solvers key-type existing-keypair opts]
+  (log/log! {:level :trace :id ::try-obtain-start :data {:domain domain :issuer (or (:issuer-key issuer) (:directory-url issuer))}})
   (let [issuer-key (or (:issuer-key issuer)
                        (config/issuer-key-from-url (:directory-url issuer)))
         ;; Wrap solvers for distributed challenge solving
@@ -631,6 +634,7 @@
         session (create-acme-session system issuer)
         ^java.security.KeyPair cert-keypair (or existing-keypair (keygen/generate key-type))
         obtain-opts (select-keys opts [:preferred-challenges])
+        _ (log/log! {:level :trace :id ::acme-obtain-starting :data {:domain domain}})
         [_session result] (certificate/obtain-for-sans
                            (lease/background)
                            session
@@ -638,6 +642,7 @@
                            cert-keypair
                            wrapped-solvers
                            obtain-opts)
+        _ (log/log! {:level :trace :id ::acme-obtain-completed :data {:domain domain}})
         cert-data (first (:certificates result))
         chain-pem (:chain-pem cert-data)
         key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
@@ -698,8 +703,10 @@
   (let [domain (:domain cmd)
         storage (:storage system)
         lock-key (domain-cert-lock-key domain)]
+    (log/log! {:level :trace :id ::obtain-start :data {:domain domain}})
     ;; Acquire distributed lock for this domain
     (storage/lock! storage nil lock-key)
+    (log/log! {:level :trace :id ::lock-acquired :data {:domain domain}})
     (try
       ;; Double-check: another instance may have obtained cert while we waited
       (if-let [existing-bundle (load-cert-from-storage-for-domain system domain)]
@@ -710,8 +717,9 @@
         ;; No certificate found - proceed with ACME workflow
         (do-obtain-certificate! system cmd))
       (finally
-        ;; Always release the lock
-        (storage/unlock! storage nil lock-key)))))
+        (log/log! {:level :trace :id ::lock-released :data {:domain domain}})
+        (storage/unlock! storage nil lock-key)
+        (log/log! {:level :trace :id ::obtain-end :data {:domain domain}})))))
 
 (defn- do-renew-certificate!
   "Internal function to execute the renewal workflow (without locking).
@@ -776,7 +784,9 @@
         storage (:storage system)
         lock-key (domain-cert-lock-key domain)]
     ;; Acquire distributed lock for this domain
+    (log/log! {:level :trace :id ::renew-start :data {:domain domain :lock-key lock-key}})
     (storage/lock! storage nil lock-key)
+    (log/log! {:level :trace :id ::renew-acquired-lock :data {:domain domain}})
     (try
       ;; Double-check: another instance may have renewed while we waited
       (if-let [stored-bundle (load-cert-from-storage-for-domain system domain)]
@@ -791,8 +801,8 @@
         ;; No certificate found (shouldn't happen for renewal) - proceed anyway
         (do-renew-certificate! system cmd))
       (finally
-        ;; Always release the lock
-        (storage/unlock! storage nil lock-key)))))
+        (storage/unlock! storage nil lock-key)
+        (log/log! {:level :trace :id ::renew-released-lock :data {:domain domain}})))))
 
 ;;; OCSP Fetching
 
@@ -980,6 +990,7 @@
   Returns result map with :status (:success or :error).
   After max duration, returns final error with :reason :max-duration-exceeded."
   [system f]
+  (log/log! {:level :trace :id ::do-with-retry-start})
   (let [start-time (Instant/now)
         max-duration decisions/*max-retry-duration-ms*
         shutdown? (:shutdown? system)]
@@ -1006,9 +1017,11 @@
               (let [delay-ms (long (nth decisions/retry-intervals
                                         interval-idx
                                         (last decisions/retry-intervals)))]
+                (log/log! {:level :trace :id ::retry-sleeping :data {:delay-ms delay-ms :attempt attempts}})
                 (Thread/sleep delay-ms)))
 
             ;; execute the operation
+            (log/log! {:level :trace :id ::retry-attempt :data {:attempt attempts}})
             (let [result (try
                            (f)
                            (catch Exception e
@@ -1048,6 +1061,7 @@
   retries on transient failures for up to 30 days. OCSP/ARI operations
   are not retried - they rely on the next maintenance tick."
   [system cmd]
+  (log/log! {:level :trace :id ::execute-command :data {:command (:command cmd)}})
   (case (:command cmd)
     :obtain-certificate (do-with-retry system #(obtain-certificate! system cmd))
     :renew-certificate (do-with-retry system #(renew-certificate! system cmd))
@@ -1141,22 +1155,29 @@
   (let [command-key (decisions/command-key cmd)
         ^ConcurrentHashMap in-flight (:in-flight system)]
     ;; Check if already in-flight (deduplication)
-    (when-not (.putIfAbsent in-flight command-key true)
+    (if (.putIfAbsent in-flight command-key true)
+      (log/log! {:level :trace :id ::command-deduplicated :data {:command-key command-key}})
       (let [semaphore (if (decisions/fast-command? cmd)
                         (:fast-semaphore system)
                         (:slow-semaphore system))
             ^java.util.concurrent.ExecutorService executor (:executor system)]
+        (log/log! {:level :trace :id ::command-submitting :data {:command-key command-key}})
         (try
           ;; Submit bound Runnable that propagates dynamic bindings
           (.submit executor
                    ^Runnable
                    (let [task-fn (bound-fn []
                                    (try
+                                     (log/log! {:level :trace :id ::command-waiting-semaphore :data {:command-key command-key}})
                                      (.acquire ^Semaphore semaphore)
+                                     (log/log! {:level :trace :id ::command-acquired-semaphore :data {:command-key command-key}})
                                      (try
+                                       (log/log! {:level :trace :id ::command-executing :data {:command-key command-key}})
                                        (let [result (execute-command! system cmd)]
+                                         (log/log! {:level :trace :id ::command-completed :data {:command-key command-key :status (:status result)}})
                                          (on-command-complete! system cmd result))
                                        (catch Exception e
+                                         (log/log! {:level :trace :id ::command-exception :data {:command-key command-key :error (ex-message e)}})
                                          ;; On error, emit a failure event instead of swallowing
                                          (on-command-complete! system cmd
                                                                {:status :error

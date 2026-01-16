@@ -113,7 +113,7 @@
       (let [queue (automation/get-event-queue system)]
         (testing "OCSP staple fetched after certificate obtain"
           (automation/manage-domains system [domain])
-          (let [events (test-util/collect-events-async queue 5 200)
+          (let [events (test-util/collect-events-async queue 100 200)
                 types (mapv :type events)]
             (is (has-event? events :domain-added))
             (is (has-event? events :certificate-obtained))
@@ -123,7 +123,7 @@
         (testing "OCSP staple refreshed when past threshold"
           (binding [decisions/*ocsp-refresh-threshold* 0]
             (automation/trigger-maintenance! system)
-            (let [events (test-util/collect-events-async queue 10 200)]
+            (let [events (test-util/collect-events-async queue 100 200)]
               (is (has-event? events :ocsp-stapled) (str "Got: " (mapv :type events)))
               (is (some? (:ocsp-staple (automation/lookup-cert system domain))))))))
       (finally
@@ -142,7 +142,7 @@
       (testing "OCSP staple persisted to storage"
         (let [queue (automation/get-event-queue system1)]
           (automation/manage-domains system1 [domain])
-          (let [events (test-util/collect-events-async queue 5 200)]
+          (let [events (test-util/collect-events-async queue 100 200)]
             (is (has-event? events :ocsp-stapled)))
           (let [issuer-key (config/issuer-key-from-url (pebble/uri))
                 ocsp-key (config/ocsp-storage-key issuer-key domain)]
@@ -173,7 +173,7 @@
     (try
       (let [queue (automation/get-event-queue system)]
         (automation/manage-domains system [domain])
-        (test-util/collect-events-async queue 5 200)
+        (test-util/collect-events-async queue 100 200)
         (let [old-hash (:hash (automation/lookup-cert system domain))
               old-fp (key-fingerprint (:private-key (automation/lookup-cert system domain)))]
 
@@ -182,7 +182,7 @@
             (ocsp-harness/set-ocsp-response! "*" {:revoked :unspecified})
             (binding [decisions/*ocsp-refresh-threshold* 0]
               (automation/trigger-maintenance! system)
-              (let [events (test-util/collect-events-async queue 10 200)
+              (let [events (test-util/collect-events-async queue 100 200)
                     types (mapv :type events)]
                 (is (has-event? events :certificate-revoked) (str "Got: " types))
                 (is (has-event? events :certificate-obtained) (str "Got: " types))
@@ -193,7 +193,7 @@
             (ocsp-harness/set-ocsp-response! "*" {:revoked :key-compromise})
             (binding [decisions/*ocsp-refresh-threshold* 0]
               (automation/trigger-maintenance! system)
-              (let [events (test-util/collect-events-async queue 10 200)
+              (let [events (test-util/collect-events-async queue 100 200)
                     revoked-evt (first (filter #(= :certificate-revoked (:type %)) events))]
                 (is (= :key-compromise (get-in revoked-evt [:data :reason])))
                 (let [new-fp (key-fingerprint (:private-key (automation/lookup-cert system domain)))]

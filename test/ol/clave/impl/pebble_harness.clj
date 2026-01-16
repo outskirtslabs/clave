@@ -7,10 +7,16 @@
    (java.net ServerSocket)))
 
 (def http-client-opts
+  "HTTP client options for Pebble tests.
+  Includes SSL context for self-signed certs and timeouts to prevent hangs."
   (assoc http/default-client-opts
          :ssl-context
          {:trust-store-pass "changeit"
-          :trust-store "test/fixtures/pebble-truststore.p12"}))
+          :trust-store "test/fixtures/pebble-truststore.p12"}
+         ;; Add timeouts to prevent indefinite hangs during parallel execution
+         :connect-timeout 10000   ; 10 second connection timeout
+         :request {:timeout 30000 ; 30 second request timeout
+                   :headers (:headers (:request http/default-client-opts))}))
 
 (def default-pebble-config
   "Default Pebble configuration as EDN.

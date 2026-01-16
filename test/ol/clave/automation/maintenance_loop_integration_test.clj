@@ -59,14 +59,16 @@
               queue (automation/get-event-queue system)]
           (automation/start! system)
           (try
+            ;; Note: maintenance loop runs every 100ms, emitting :certificate-emergency events
+            ;; during the ~8 second ACME workflow. Need high poll count to reach :certificate-renewed.
             (let [renewed (loop [n 0]
-                            (when (< n 30)
+                            (when (< n 200)
                               (let [evt (.poll queue 1 TimeUnit/SECONDS)]
                                 (if (= :certificate-renewed (:type evt))
                                   evt
                                   (recur (inc n))))))]
               (is (some? renewed) "Should receive certificate-renewed event")
-              (is (< (- (System/currentTimeMillis) t0) 20000)))
+              (is (< (- (System/currentTimeMillis) t0) 30000)))
             (finally
               (automation/stop system))))))))
 

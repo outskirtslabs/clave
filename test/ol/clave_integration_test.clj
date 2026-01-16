@@ -49,7 +49,8 @@
 
 (deftest http01-with-factory-solver-test
   (testing "obtain-certificate works with http-solver/solver factory"
-    (let [registry (atom {})
+    (let [solver (http-solver/solver)
+          registry (:registry solver)
           ;; Sync registry writes with challtestsrv
           _ (add-watch registry :challtestsrv
                        (fn [_ _ old-val new-val]
@@ -62,7 +63,7 @@
                              (fresh-session)
                              [(order/create-identifier :dns "localhost")]
                              (clave/keypair)
-                             {:http-01 (http-solver/solver registry)}
+                             {:http-01 solver}
                              {})]
       (is (= "valid" (::specs/status (:order result))))
       (is (empty? @registry) "Registry should be empty after cleanup"))))

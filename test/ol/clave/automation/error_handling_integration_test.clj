@@ -31,7 +31,6 @@
                             (into-array FileAttribute [])))
           storage-impl (file-storage/file-storage storage-dir)
           exception-message "Simulated solver failure from test"
-          ;; Create two solvers - one that fails, one that succeeds
           ;; We'll test that the system continues working after failure
           call-count (atom 0)
           throwing-solver {:present (fn [_lease _chall _account-key]

@@ -32,7 +32,6 @@
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
-          ;; Create solver for renewal
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -104,7 +103,6 @@
           ;; Three domains: A, B, C - B will fail
           domains ["a.localhost" "b.localhost" "c.localhost"]
           issuer-key (config/issuer-key-from-url (pebble/uri))
-          ;; Create solver
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -189,7 +187,6 @@
           domain-x "timeout.localhost"
           domain-y "normal.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
-          ;; Create solver
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -284,7 +281,6 @@
           domain-x "throwing.localhost"
           domain-y "normal-ex.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
-          ;; Create solver for renewal
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]

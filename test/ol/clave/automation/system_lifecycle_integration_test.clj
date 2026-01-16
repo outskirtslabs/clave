@@ -121,7 +121,6 @@
     (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
-          ;; Create an HTTP-01 solver with a delay to simulate slow operations
           solver-started (atom false)
           solver {:present (fn [_lease chall account-key]
                              ;; Signal that solver has started

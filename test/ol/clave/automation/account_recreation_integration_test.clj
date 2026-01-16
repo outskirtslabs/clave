@@ -43,7 +43,6 @@
           _ (store-account-keypair! storage-impl issuer-key pre-existing-keypair)
           _ (is (storage/exists? storage-impl nil (config/account-private-key-storage-key issuer-key))
                 "Pre-existing account key should be in storage")
-          ;; Create an HTTP-01 solver
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]

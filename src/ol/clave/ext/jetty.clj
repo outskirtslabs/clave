@@ -207,22 +207,22 @@
   For normal HTTPS traffic: looks up certs by SNI hostname via lookup-fn.
   For ACME TLS-ALPN-01 challenges: serves challenge cert when ALPN is 'acme-tls/1'.
 
-  | key                  | description                                       |
-  |----------------------|---------------------------------------------------|
-  | `lookup-fn`          | Function `(fn [hostname] bundle)` for SNI lookup  |
-  | `challenge-registry` | Atom with domain->challenge-cert-data map         |
+  | key               | description                                      |
+  |-------------------|--------------------------------------------------|
+  | `lookup-fn`       | Function `(fn [hostname] bundle)` for SNI lookup |
+  | `tls-alpn-solver` | TLS-ALPN solver with `:registry` key )           |
 
   Returns a `javax.net.ssl.SSLContext` ready for use with Jetty.
 
   ```clojure
-  (def challenge-registry (atom {}))
+  (def tls-alpn-solver (tls-alpn/switchable-solver {:port 443}))
   (def ssl-ctx (sni-alpn-ssl-context
                  (fn [hostname] (auto/lookup-cert system hostname))
-                 challenge-registry))
+                 tls-alpn-solver))
   (jetty/run-jetty handler {:ssl-context ssl-ctx ...})
   ```"
-  ^SSLContext [lookup-fn challenge-registry]
-  (let [key-manager (sni-alpn-key-manager lookup-fn challenge-registry)
+  ^SSLContext [lookup-fn tls-alpn-solver]
+  (let [key-manager (sni-alpn-key-manager lookup-fn (:registry tls-alpn-solver))
         ssl-context (SSLContext/getInstance "TLS")]
     (.init ssl-context
            (into-array KeyManager [key-manager])

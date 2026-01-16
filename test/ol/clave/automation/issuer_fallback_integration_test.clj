@@ -78,7 +78,6 @@
                              (str "https://localhost:" (:listen-port ports-a) "/dir"))
               issuer-key-b (config/issuer-key-from-url
                             (str "https://localhost:" (:listen-port ports-b) "/dir"))
-              ;; Create an HTTP-01 solver that works with the challenge test server
               solver {:present (fn [_lease chall account-key]
                                  (let [token (::specs/token chall)
                                        key-auth (challenge/key-authorization chall account-key)]
@@ -178,7 +177,6 @@
         (let [storage-dir (test-util/temp-storage-dir)
               storage-impl (file-storage/file-storage storage-dir)
               directory-url (str "https://localhost:" (:listen-port ports) "/dir")
-              ;; Create solver that uses challenge test server
               solver {:present (fn [_lease chall account-key]
                                  (let [token (::specs/token chall)
                                        key-auth (challenge/key-authorization chall account-key)]

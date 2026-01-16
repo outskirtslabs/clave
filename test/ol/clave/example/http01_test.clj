@@ -8,20 +8,22 @@
 
 (deftest handler-serves-challenge-content
   (testing "handler returns key authorization for known token"
-    (let [store (atom {"token-1" "key-auth"})
-          handler (http-solver/handler store)
+    (let [solver (http-solver/solver)
+          _ (reset! (:registry solver) {"token-1" "key-auth"})
+          handler (http-solver/handler solver)
           resp (handler {:uri "/.well-known/acme-challenge/token-1"})]
       (is (= 200 (:status resp)))
       (is (= "text/plain" (get-in resp [:headers "content-type"])))
       (is (= "key-auth" (:body resp)))))
   (testing "handler returns 404 for unknown token"
-    (let [store (atom {})
-          handler (http-solver/handler store)
+    (let [solver (http-solver/solver)
+          handler (http-solver/handler solver)
           resp (handler {:uri "/.well-known/acme-challenge/missing"})]
       (is (= 404 (:status resp)))))
   (testing "handler passes through non-challenge paths"
-    (let [store (atom {"token-1" "key-auth"})
-          handler (http-solver/handler store)
+    (let [solver (http-solver/solver)
+          _ (reset! (:registry solver) {"token-1" "key-auth"})
+          handler (http-solver/handler solver)
           resp (handler {:uri "/other-path"})]
       (is (= 404 (:status resp))))))
 

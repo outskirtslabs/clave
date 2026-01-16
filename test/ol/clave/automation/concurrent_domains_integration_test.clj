@@ -42,7 +42,6 @@
           max-concurrent (atom 0)
           operation-count (atom 0)
           all-started (CountDownLatch. 3)
-          ;; Create a solver with artificial delay to create overlap
           slow-solver {:present (fn [_lease chall account-key]
                                   ;; Track start of operation
                                   (swap! operation-count inc)

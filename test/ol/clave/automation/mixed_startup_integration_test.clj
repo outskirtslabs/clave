@@ -76,7 +76,6 @@
                         renewal-domain
                         (.minus now 80 ChronoUnit/DAYS)
                         (.plus now 10 ChronoUnit/DAYS))
-          ;; Create solver for renewals
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]

@@ -109,7 +109,6 @@
           cert-key (config/cert-storage-key issuer-key domain)
           key-key (config/key-storage-key issuer-key domain)
           meta-key (config/meta-storage-key issuer-key domain)
-          ;; Create solver for renewal
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]

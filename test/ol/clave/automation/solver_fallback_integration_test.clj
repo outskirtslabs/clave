@@ -39,7 +39,6 @@
                                            (swap! http01-attempts inc)
                                            (throw (RuntimeException. "HTTP-01 solver intentionally broken")))
                                 :cleanup (fn [_lease _chall _state] nil)}
-          ;; Create working TLS-ALPN-01 solver
           working-tls-alpn01-solver {:present (fn [_lease chall account-key]
                                                 (swap! tls-alpn01-attempts inc)
                                                 (let [key-auth (challenge/key-authorization chall account-key)]

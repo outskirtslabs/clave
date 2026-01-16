@@ -91,44 +91,31 @@
   [handler {::keys [config] :as opts}]
   (let [{:keys [domains]} (validate! config)
         ssl-port          (get opts :ssl-port 443)
-        ;; HTTP-01 solver setup
-        http-registry     (atom {})
-        http-solver-inst  (http-solver/solver http-registry)
-        ;; TLS-ALPN-01 solver setup
-        alpn-registry     (atom {})
-        alpn-mode         (atom :bootstrap)
-        alpn-solver-inst  (tls-alpn-solver/solver alpn-registry {:port ssl-port :mode alpn-mode})
+        http-solver-inst  (http-solver/solver)
+        tls-alpn-solver   (tls-alpn-solver/switchable-solver {:port ssl-port})
         auto-config       (-> config
                               (dissoc :domains :redirect-http?)
                               (assoc :solvers {:http-01     http-solver-inst
-                                               :tls-alpn-01 alpn-solver-inst}))
-        system            (auto/start auto-config)]
+                                               :tls-alpn-01 tls-alpn-solver}))
+        system            (auto/start auto-config)
+        ssl-context       (jetty-ext/sni-alpn-ssl-context #(auto/lookup-cert system %) tls-alpn-solver)
+        wrapped-handler   (cond-> handler
+                            (:redirect-http? config) (common/wrap-redirect-https {:ssl-port ssl-port})
+                            true                     (http-solver/wrap-acme-challenge http-solver-inst))
+        jetty-opts        (-> opts
+                              (dissoc ::config)
+                              (assoc :ssl? true
+                                     :ssl-context ssl-context
+                                     :join? false))]
     (try
-      ;; Bootstrap: manage domains
-      ;; - If ACME selects HTTP-01, middleware handles challenge
-      ;; - If ACME selects TLS-ALPN-01, solver starts temp SSLServerSocket
       (auto/manage-domains system domains)
       (common/wait-for-certificates system domains)
       (catch Exception e
         (auto/stop system)
         (throw e)))
-    ;; Switch TLS-ALPN to integrated mode for renewals (uses Jetty's KeyManager)
-    (reset! alpn-mode :integrated)
-    ;; Use sni-alpn-ssl-context for both SNI cert lookup and ALPN challenges
-    (let [ssl-context     (jetty-ext/sni-alpn-ssl-context
-                           (fn [hostname]
-                             (auto/lookup-cert system hostname))
-                           alpn-registry)
-          wrapped-handler (cond-> handler
-                            (:redirect-http? config) (common/wrap-redirect-https {:ssl-port ssl-port})
-                            true                     (http-solver/wrap-acme-challenge http-registry))
-          jetty-opts      (-> opts
-                              (dissoc ::config)
-                              (assoc :ssl? true
-                                     :ssl-context ssl-context
-                                     :join? false))]
-      {:server (jetty/run-jetty wrapped-handler jetty-opts)
-       :system system})))
+    (tls-alpn-solver/switch-to-integrated! tls-alpn-solver)
+    {:server (jetty/run-jetty wrapped-handler jetty-opts)
+     :system system}))
 
 (defn stop
   "Stop a server context returned by [[run-jetty]].

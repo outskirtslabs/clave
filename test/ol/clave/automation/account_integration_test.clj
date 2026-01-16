@@ -25,7 +25,6 @@
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
-          ;; Create an HTTP-01 solver
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -67,7 +66,6 @@
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
-          ;; Create an HTTP-01 solver
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -121,7 +119,6 @@
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
-          ;; Create an HTTP-01 solver for certificate issuance
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]

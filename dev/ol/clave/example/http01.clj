@@ -14,20 +14,20 @@
 (defn start!
   "Start an HTTP-01 challenge server.
 
-  Returns a map with `:store_`, `:server`, `:stop`, and `:port`.
-  The `:store_` atom can be passed to [[ol.clave.solver.http/solver]]."
+  Returns a map with `:solver`, `:server`, `:stop`, and `:port`.
+  The `:solver` can be passed directly to obtain-certificate."
   ([]
    (start! nil))
   ([{:keys [port host]
      :or {port 5002}}]
-   (let [store_ (atom {})
-         server (run-jetty (http-solver/handler store_)
+   (let [solver (http-solver/solver)
+         server (run-jetty (http-solver/handler solver)
                            {:port port
                             :host host
                             :join? false})
          stop (fn [] (.stop server))
          actual-port (server-port server)]
-     {:store_ store_
+     {:solver solver
       :server server
       :stop stop
       :port actual-port})))
@@ -59,10 +59,10 @@
 
 (defn register!
   "Register a `token` -> `content` mapping for HTTP-01 challenges."
-  [{:keys [store_]} token content]
-  (swap! store_ assoc token content))
+  [{:keys [solver]} token content]
+  (swap! (:registry solver) assoc token content))
 
 (defn unregister!
   "Remove a HTTP-01 challenge mapping."
-  [{:keys [store_]} token]
-  (swap! store_ dissoc token))
+  [{:keys [solver]} token]
+  (swap! (:registry solver) dissoc token))

@@ -39,7 +39,6 @@
           storage-impl (file-storage/file-storage storage-dir)
           ;; Track how many times obtain is attempted
           obtain-attempts (atom 0)
-          ;; Create a solver that tracks calls (won't be reached for blocked domain)
           tracking-solver {:present (fn [_lease _chall _account-key]
                                       (swap! obtain-attempts inc)
                                       ;; Won't be called - blocked domain fails at order creation

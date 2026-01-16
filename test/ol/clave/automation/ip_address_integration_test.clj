@@ -21,7 +21,6 @@
           storage-impl (file-storage/file-storage storage-dir)
           ;; Use 127.0.0.1 since Pebble's challenge server listens there
           ip-address "127.0.0.1"
-          ;; Create an HTTP-01 solver that works with pebble's challenge test server
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]

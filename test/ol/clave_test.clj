@@ -59,35 +59,37 @@
 
 (deftest http01-solver-test
   (testing "present adds token to registry"
-    (let [registry (atom {})
-          solver (http-solver/solver registry)
+    (let [solver (http-solver/solver)
+          registry (:registry solver)
           state ((:present solver) nil {:ol.clave.specs/token "tok-123"} (account/generate-keypair))]
       (is (= "tok-123" (:token state)))
       (is (str/starts-with? (get @registry "tok-123") "tok-123."))))
 
   (testing "cleanup removes token from registry"
-    (let [registry (atom {"tok-123" "key-auth"})
-          solver (http-solver/solver registry)]
+    (let [solver (http-solver/solver)
+          registry (:registry solver)
+          _ (reset! registry {"tok-123" "key-auth"})]
       ((:cleanup solver) nil {:ol.clave.specs/token "tok-123"} {:token "tok-123"})
       (is (empty? @registry)))))
 
 (deftest wrap-acme-challenge-test
   (testing "serves key-authorization for registered token"
-    (let [registry (atom {"test-token" "test-token.key-auth"})
-          handler (http-solver/wrap-acme-challenge (fn [_] {:status 200 :body "app"}) registry)
+    (let [solver (http-solver/solver)
+          _ (reset! (:registry solver) {"test-token" "test-token.key-auth"})
+          handler (http-solver/wrap-acme-challenge (fn [_] {:status 200 :body "app"}) solver)
           response (handler {:uri "/.well-known/acme-challenge/test-token"})]
       (is (= 200 (:status response)))
       (is (= "test-token.key-auth" (:body response)))))
 
   (testing "returns 404 for unknown token"
-    (let [registry (atom {})
-          handler (http-solver/wrap-acme-challenge (fn [_] {:status 200 :body "app"}) registry)
+    (let [solver (http-solver/solver)
+          handler (http-solver/wrap-acme-challenge (fn [_] {:status 200 :body "app"}) solver)
           response (handler {:uri "/.well-known/acme-challenge/unknown-token"})]
       (is (= 404 (:status response)))))
 
   (testing "passes through non-challenge requests"
-    (let [registry (atom {})
-          handler (http-solver/wrap-acme-challenge (fn [_] {:status 200 :body "app"}) registry)
+    (let [solver (http-solver/solver)
+          handler (http-solver/wrap-acme-challenge (fn [_] {:status 200 :body "app"}) solver)
           response (handler {:uri "/other-path"})]
       (is (= 200 (:status response)))
       (is (= "app" (:body response))))))

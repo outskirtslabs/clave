@@ -22,7 +22,6 @@
     (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
-          ;; Create an HTTP-01 solver that works with pebble's challenge test server
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]

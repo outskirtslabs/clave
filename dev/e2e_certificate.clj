@@ -14,7 +14,6 @@
   (:require
    [ol.clave.acme.account :as account]
    [ol.clave.acme.commands :as commands]
-   [ol.clave.acme.solver.http :as http-solver]
    [ol.clave.certificate :as clave]
    [ol.clave.example.http01 :as http01]
    [ol.clave.lease :as lease]
@@ -62,7 +61,7 @@
                         (lease/background) session
                         ["foobar.com"]
                         cert-keypair
-                        {:http-01 (http-solver/solver (:store_ http01-server))})]
+                        {:http-01 (:solver http01-server)})]
 
         (spit "./cert.pem" (-> result :certificates first :chain-pem))
         (spit "./key.pem" (private-key->pem (.getPrivate cert-keypair)))

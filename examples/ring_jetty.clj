@@ -3,8 +3,13 @@
 
   This example demonstrates:
   1. Starting Jetty with clave automation for auto-renewing certificates
-  2. HTTP server on port 8081, HTTPS on port 8443
-  3. Automatic HTTP-01 challenge solving via the HTTP port
+  2. HTTP server on port 5002, HTTPS on port 5001
+  3. Automatic challenge solving via HTTP-01 and TLS-ALPN-01
+
+  Both HTTP-01 and TLS-ALPN-01 solvers are configured automatically.
+  The ACME server selects which challenge type to use.
+
+  Ports 5001/5002 match Pebble's validation ports (tlsPort/httpPort in pebble-config.json).
 
   ## Running the Example
 
@@ -18,12 +23,12 @@
 
   Test the servers:
 
-    curl -vk http://localhost:8081
-    curl -vk https://localhost:8443
+    curl -vk http://localhost:5002
+    curl -vk https://localhost:5001
 
   Check the certificate:
 
-    echo | openssl s_client -connect localhost:8443 -servername localhost 2>/dev/null | openssl x509 -text -noout"
+    echo | openssl s_client -connect localhost:5001 -servername localhost 2>/dev/null | openssl x509 -text -noout"
   (:require
    [ol.clave.ext.ring-jetty-adapter :as clave-jetty]
    [ol.clave.storage.file :as file-storage]
@@ -41,14 +46,14 @@
 
 (defn -main
   "Main entry point for the example."
-  [& _args]
+  [& _]
   (println "Starting Jetty w/ clave")
   (let [ctx (clave-jetty/run-jetty
              hello-handler
-             {;; these are standard jetty adapter run-jetty options
-              :port                8081
-              :ssl-port            8443
-              ::clave-jetty/config {:domains      ["localhost"]
+             {;; Ports match Pebble's validation ports (tlsPort/httpPort)
+              :port                5002
+              :ssl-port            5001
+              ::clave-jetty/config {:domains     ["localhost"]
                                     ;; in prod the remaining config keys are not necessary, they are only for this demo environment
                                     :storage     (file-storage/file-storage "/tmp/clave-ring-jetty-example")
                                     :issuers     [{:directory-url "https://localhost:14000/dir"
@@ -58,8 +63,8 @@
 
     (println)
     (println "Servers running:")
-    (println "   HTTP: http://localhost:8081")
-    (println "  HTTPS: https://localhost:8443")
+    (println "   HTTP: http://localhost:5002")
+    (println "  HTTPS: https://localhost:5001")
     (println)
     (println "Press Ctrl+C to stop")
 

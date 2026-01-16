@@ -110,3 +110,122 @@
            nil  ; TrustManager - use default
            (SecureRandom.))
     ssl-context))
+
+;; TLS-ALPN-01 Challenge Support
+
+(def ^:private acme-challenge-alias
+  "Special alias used internally for ALPN challenge certificates."
+  "::acme-tls-alpn-challenge::")
+
+(def ^:private acme-tls-1-protocol
+  "ALPN protocol identifier for TLS-ALPN-01 challenges (RFC 8737)."
+  "acme-tls/1")
+
+(defn sni-alpn-key-manager
+  "Create an X509ExtendedKeyManager that handles both SNI and ALPN challenges.
+
+  Extends the SNI-based certificate selection with TLS-ALPN-01 challenge support.
+  During TLS handshake:
+  1. If ALPN protocol is 'acme-tls/1' and challenge-registry has data, serve challenge cert
+  2. Otherwise, use lookup-fn for normal SNI-based cert selection
+
+  This does NOT interfere with HTTP/2 (h2) negotiation because:
+  - Regular clients offer [\"h2\", \"http/1.1\"] -> normal cert via SNI lookup
+  - ACME servers offer [\"acme-tls/1\"] exclusively -> challenge cert
+
+  | key                  | description                                       |
+  |----------------------|---------------------------------------------------|
+  | `lookup-fn`          | Function `(fn [hostname] bundle)` for SNI lookup  |
+  | `challenge-registry` | Atom with domain->challenge-cert-data map         |
+
+  The challenge-registry contains maps as returned by `tlsalpn01-challenge-cert`:
+  - `:x509` - The X509Certificate to serve
+  - `:keypair` - The KeyPair with private key"
+  ^X509ExtendedKeyManager [lookup-fn challenge-registry]
+  (proxy [X509ExtendedKeyManager] []
+    (chooseEngineServerAlias [_key-type _issuers ^SSLEngine engine]
+      ;; Check ALPN first - ACME servers send only "acme-tls/1"
+      (let [alpn (.getHandshakeApplicationProtocol engine)]
+        (if (and (= acme-tls-1-protocol alpn)
+                 (seq @challenge-registry))
+          (do
+            (log/log! {:level :debug
+                       :id    ::alpn-challenge-detected
+                       :data  {:alpn alpn}})
+            acme-challenge-alias)
+          ;; Fall back to SNI lookup
+          (if-let [hostname (extract-sni-hostname engine)]
+            (if-let [bundle (lookup-fn hostname)]
+              (do
+                (log/log! {:level :debug
+                           :id    ::sni-cert-selected
+                           :data  {:hostname hostname
+                                   :subjects (:names bundle)}})
+                hostname)
+              (do
+                (log/log! {:level :debug
+                           :id    ::sni-cert-not-found
+                           :data  {:hostname hostname}})
+                nil))
+            (do
+              (log/log! {:level :debug
+                         :id    ::sni-no-hostname
+                         :data  {}})
+              nil)))))
+
+    (chooseServerAlias [_key-type _issuers ^Socket _socket]
+      nil)
+
+    (getCertificateChain [alias]
+      (if (= acme-challenge-alias alias)
+        ;; Return challenge cert from registry
+        (when-let [[_domain cert-data] (first @challenge-registry)]
+          (into-array X509Certificate [(:x509 cert-data)]))
+        ;; SNI lookup
+        (when-let [bundle (lookup-fn alias)]
+          (into-array X509Certificate (:certificate bundle)))))
+
+    (getPrivateKey [alias]
+      (if (= acme-challenge-alias alias)
+        ;; Return challenge private key from registry
+        (when-let [[_domain cert-data] (first @challenge-registry)]
+          (.getPrivate ^java.security.KeyPair (:keypair cert-data)))
+        ;; SNI lookup
+        (when-let [bundle (lookup-fn alias)]
+          (:private-key bundle))))
+
+    (getServerAliases [_key-type _issuers]
+      (into-array String []))
+
+    (chooseEngineClientAlias [_key-types _issuers _engine] nil)
+    (chooseClientAlias [_key-types _issuers _socket] nil)
+    (getClientAliases [_key-type _issuers] nil)))
+
+(defn sni-alpn-ssl-context
+  "Create an SSLContext with SNI cert selection and ALPN challenge support.
+
+  For normal HTTPS traffic: looks up certs by SNI hostname via lookup-fn.
+  For ACME TLS-ALPN-01 challenges: serves challenge cert when ALPN is 'acme-tls/1'.
+
+  | key                  | description                                       |
+  |----------------------|---------------------------------------------------|
+  | `lookup-fn`          | Function `(fn [hostname] bundle)` for SNI lookup  |
+  | `challenge-registry` | Atom with domain->challenge-cert-data map         |
+
+  Returns a `javax.net.ssl.SSLContext` ready for use with Jetty.
+
+  ```clojure
+  (def challenge-registry (atom {}))
+  (def ssl-ctx (sni-alpn-ssl-context
+                 (fn [hostname] (auto/lookup-cert system hostname))
+                 challenge-registry))
+  (jetty/run-jetty handler {:ssl-context ssl-ctx ...})
+  ```"
+  ^SSLContext [lookup-fn challenge-registry]
+  (let [key-manager (sni-alpn-key-manager lookup-fn challenge-registry)
+        ssl-context (SSLContext/getInstance "TLS")]
+    (.init ssl-context
+           (into-array KeyManager [key-manager])
+           nil  ; TrustManager - use default
+           (SecureRandom.))
+    ssl-context))

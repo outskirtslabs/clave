@@ -4,7 +4,7 @@
   Provides a high-level API for running Jetty with auto-renewing TLS certificates.
   Wraps ring-jetty-adapter with the same `[handler opts]` signature.
 
-  Automatically configures an HTTP-01 solver using the HTTP port to serve challenges.
+  Automatically configures both HTTP-01 and TLS-ALPN-01 solvers.
 
   Uses SNI-based certificate selection: certificates are looked up fresh on each
   TLS handshake, so renewals take effect immediately without server restart.
@@ -26,6 +26,7 @@
   ```"
   (:require
    [ol.clave.acme.solver.http :as http-solver]
+   [ol.clave.acme.solver.tls-alpn :as tls-alpn-solver]
    [ol.clave.automation :as auto]
    [ol.clave.ext.common :as common]
    [ol.clave.ext.jetty :as jetty-ext]
@@ -45,11 +46,11 @@
   "Serve `handler` over HTTPS for all `domains` with automatic certificate management.
 
   This is an opinionated, high-level convenience function that applies sane
-  defaults for production use: HTTP-01 challenge solving, HTTP to HTTPS
-  redirects, and SNI-based certificate selection.
+  defaults for production use: challenge solving, HTTP to HTTPS redirects,
+  and SNI-based certificate selection.
 
   Blocks until the initial certificate is obtained, then starts serving.
-  Redirects all HTTP requests to HTTPS.
+  Redirects all HTTP requests to HTTPS (when HTTP port is configured).
   Obtains and renews TLS certificates automatically.
   Certificate renewals take effect immediately via SNI-based selection.
 
@@ -70,10 +71,10 @@
 
   Clave config is provided via the `:ol.clave.ext.ring-jetty-adapter/config` key in `opts`:
 
-  | key               | description                            | default |
-  |-------------------|----------------------------------------|---------|
-  | `:domains`        | Domains to manage certs for (required) |         |
-  | `:redirect-http?` | Wrap handler with HTTP->HTTPS redirect | true    |
+  | key               | description                             | default   |
+  |-------------------|-----------------------------------------|-----------|
+  | `:domains`        | Domains to manage certs for (required)  |           |
+  | `:redirect-http?` | Wrap handler with HTTP->HTTPS redirect  | true      |
 
   Additional automation config keys (e.g., `:issuers`, `:storage` etc.) are passed through to [[ol.clave.automation/start]].
 
@@ -81,38 +82,53 @@
 
   ```clojure
   (def server (run-jetty handler
-             {::config {:domains [\"example.com\"]}}))
+                {:port 80 :ssl-port 443
+                 ::config {:domains [\"example.com\"]}}))
+
   ;; Later:
   (stop server)
   ```"
   [handler {::keys [config] :as opts}]
-  (let [{:keys [domains]}    (validate! config)
-        ssl-port             (get opts :ssl-port 443)
-        http-solver-registry (atom {})
-        solver               (http-solver/solver http-solver-registry)
-        auto-config          (-> config
-                                 (dissoc :domain :redirect-http? :key-password)
-                                 (assoc :solvers {:http-01 solver}))
-        system               (auto/start auto-config)
-        ssl-context          (jetty-ext/sni-ssl-context
-                              (fn [hostname]
-                                (auto/lookup-cert system hostname)))
-        wrapped-handler      (cond-> handler
-                               (:redirect-http? config) (common/wrap-redirect-https {:ssl-port ssl-port})
-                               true                     (http-solver/wrap-acme-challenge http-solver-registry))
-        jetty-opts           (-> opts
-                                 (dissoc ::config)
-                                 (assoc :ssl? true
-                                        :ssl-context ssl-context
-                                        :join? false))]
+  (let [{:keys [domains]} (validate! config)
+        ssl-port          (get opts :ssl-port 443)
+        ;; HTTP-01 solver setup
+        http-registry     (atom {})
+        http-solver-inst  (http-solver/solver http-registry)
+        ;; TLS-ALPN-01 solver setup
+        alpn-registry     (atom {})
+        alpn-mode         (atom :bootstrap)
+        alpn-solver-inst  (tls-alpn-solver/solver alpn-registry {:port ssl-port :mode alpn-mode})
+        auto-config       (-> config
+                              (dissoc :domains :redirect-http?)
+                              (assoc :solvers {:http-01     http-solver-inst
+                                               :tls-alpn-01 alpn-solver-inst}))
+        system            (auto/start auto-config)]
     (try
+      ;; Bootstrap: manage domains
+      ;; - If ACME selects HTTP-01, middleware handles challenge
+      ;; - If ACME selects TLS-ALPN-01, solver starts temp SSLServerSocket
       (auto/manage-domains system domains)
       (common/wait-for-certificates system domains)
       (catch Exception e
         (auto/stop system)
         (throw e)))
-    {:server (jetty/run-jetty wrapped-handler jetty-opts)
-     :system system}))
+    ;; Switch TLS-ALPN to integrated mode for renewals (uses Jetty's KeyManager)
+    (reset! alpn-mode :integrated)
+    ;; Use sni-alpn-ssl-context for both SNI cert lookup and ALPN challenges
+    (let [ssl-context     (jetty-ext/sni-alpn-ssl-context
+                           (fn [hostname]
+                             (auto/lookup-cert system hostname))
+                           alpn-registry)
+          wrapped-handler (cond-> handler
+                            (:redirect-http? config) (common/wrap-redirect-https {:ssl-port ssl-port})
+                            true                     (http-solver/wrap-acme-challenge http-registry))
+          jetty-opts      (-> opts
+                              (dissoc ::config)
+                              (assoc :ssl? true
+                                     :ssl-context ssl-context
+                                     :join? false))]
+      {:server (jetty/run-jetty wrapped-handler jetty-opts)
+       :system system})))
 
 (defn stop
   "Stop a server context returned by [[run-jetty]].

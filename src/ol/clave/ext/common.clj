@@ -105,6 +105,19 @@
            {:status  301
             :headers {"Location" (.toString redirect-uri)}}))))))
 
+(defn no-op-solver
+  "Create a no-op ACME solver for testing.
+
+  Returns a solver that does nothing.
+  Useful with `PEBBLE_VA_ALWAYS_VALID=1` where challenge validation is skipped.
+
+  ```clojure
+  {:solvers {:http-01 (no-op-solver)}}
+  ```"
+  []
+  {:present (fn [_lease _challenge _account-key] nil)
+   :cleanup (fn [_lease _challenge _state] nil)})
+
 (defn wait-for-certificates
   "Wait for certificates to be available for all domains.
 

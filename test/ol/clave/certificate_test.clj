@@ -7,12 +7,10 @@
    [ol.clave.certificate :as certificate]
    [ol.clave.certificate.impl.keygen :as keygen]
    [ol.clave.errors :as errors]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage :as storage]
-   [ol.clave.storage.file :as file-storage])
-  (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]))
+   [ol.clave.storage.file :as file-storage]))
 
 ;; Access private function for testing
 (def select-challenge @#'ol.clave.certificate/select-challenge)
@@ -195,15 +193,9 @@
 
 ;;;; Distributed Challenge Token Storage Tests
 
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-cert-test-" (make-array FileAttribute 0))]
-    (.toString path)))
-
 (deftest lookup-challenge-token-returns-stored-data
   (testing "lookup-challenge-token can retrieve stored challenge data"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           issuer-key "test-issuer"
           identifier "example.com"
@@ -227,7 +219,7 @@
 
 (deftest wrap-solver-stores-and-cleans-up-tokens
   (testing "Wrapped solver stores token on present and cleans up on cleanup"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           issuer-key "test-issuer"
           identifier "test.example.com"
@@ -276,7 +268,7 @@
 
 (deftest wrap-solvers-for-distributed-wraps-all-solvers
   (testing "wrap-solvers-for-distributed wraps all solvers in map"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           issuer-key "test-issuer"
           http-solver {:present (fn [_ _ _] {:http "state"})

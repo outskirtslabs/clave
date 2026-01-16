@@ -9,22 +9,15 @@
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.acme.impl.http.impl :as http]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent TimeUnit]))
 
 ;; Pre-configured EAB credentials from pebble-config.json
 (def eab-kid "test-kid-1")
 (def eab-mac-key "zWNDZM6eQGHWpSRTPal5eIUYFTu7EajVIoguysqZ9wG44nMEtx3MUAsUDkMTQ12W")
-
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-issuer-test-" (make-array FileAttribute 0))]
-    (.toString path)))
 
 (defn- wait-for-pebble-at
   "Wait until Pebble responds at a specific URL.
@@ -79,7 +72,7 @@
           (is (wait-for-pebble-at url-a {}) "Pebble A should start")
           (is (wait-for-pebble-at url-b {}) "Pebble B should start"))
         ;; Step 3: Configure automation with issuers [Pebble A, Pebble B]
-        (let [storage-dir (temp-storage-dir)
+        (let [storage-dir (test-util/temp-storage-dir)
               storage-impl (file-storage/file-storage storage-dir)
               _issuer-key-a (config/issuer-key-from-url
                              (str "https://localhost:" (:listen-port ports-a) "/dir"))
@@ -182,7 +175,7 @@
         (binding [pebble/*pebble-ports* ports]
           (is (pebble/wait-for-pebble) "Pebble should start"))
         ;; Configure automation with EAB credentials
-        (let [storage-dir (temp-storage-dir)
+        (let [storage-dir (test-util/temp-storage-dir)
               storage-impl (file-storage/file-storage storage-dir)
               directory-url (str "https://localhost:" (:listen-port ports) "/dir")
               ;; Create solver that uses challenge test server

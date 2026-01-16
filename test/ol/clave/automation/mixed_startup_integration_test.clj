@@ -12,20 +12,12 @@
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.time Instant]
    [java.time.temporal ChronoUnit]
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
 (use-fixtures :each pebble/pebble-challenge-fixture)
-
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-mixed-test-" (make-array FileAttribute 0))]
-    (.toString path)))
 
 (defn- store-test-certificate!
   "Store a test certificate in the automation storage format.
@@ -59,7 +51,7 @@
 
 (deftest system-startup-with-mixed-certificate-states
   (testing "System correctly handles multiple certificates in different states on startup"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           issuer-key (config/issuer-key-from-url (pebble/uri))
           now (Instant/now)

@@ -10,22 +10,15 @@
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.crypto.impl.core :as crypto]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
 (use-fixtures :each pebble/pebble-challenge-fixture)
-
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-account-test-" (make-array FileAttribute 0))]
-    (.toString path)))
 
 (defn- store-account-keypair!
   "Store an account keypair to storage in the automation format."
@@ -39,7 +32,7 @@
 
 (deftest account-auto-recreated-when-ca-reset
   (testing "Account is automatically recreated when CA no longer has the account"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))

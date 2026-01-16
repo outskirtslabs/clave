@@ -8,21 +8,14 @@
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.time Instant]
    [java.util.concurrent TimeUnit]))
 
 (use-fixtures :each pebble/pebble-challenge-fixture)
-
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-ari-lifecycle-" (make-array FileAttribute 0))]
-    (.toString path)))
 
 (defn- create-http01-solver
   "Create an HTTP-01 solver that works with Pebble's challenge test server."
@@ -38,7 +31,7 @@
 
 (deftest ari-guided-renewal-full-lifecycle
   (testing "ARI data persists across system restarts and guides renewal timing"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (create-http01-solver)]
@@ -173,7 +166,7 @@
 
 (deftest ari-selected-time-persistence-across-restarts
   (testing "The exact same selected-time is preserved across multiple restarts"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (create-http01-solver)

@@ -7,26 +7,19 @@
    [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
 ;; This prevents authorization state accumulation across tests.
 (use-fixtures :each pebble/pebble-challenge-fixture)
 
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-test-" (make-array FileAttribute 0))]
-    (.toString path)))
-
 (deftest private-key-type-respects-configuration
   (testing "Certificate private key type matches :key-type configuration"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver {:present (fn [_lease chall account-key]
@@ -70,7 +63,7 @@
 
 (deftest new-private-key-generated-for-each-certificate-by-default
   (testing "Renewal generates new private key (key-reuse false by default)"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver {:present (fn [_lease chall account-key]
@@ -121,7 +114,7 @@
 
 (deftest private-key-reused-on-renewal-when-configured
   (testing "Renewal reuses private key when :key-reuse is true"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver {:present (fn [_lease chall account-key]

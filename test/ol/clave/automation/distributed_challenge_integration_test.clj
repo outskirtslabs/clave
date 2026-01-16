@@ -8,24 +8,16 @@
    [ol.clave.automation.impl.config :as config]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage :as storage]
-   [ol.clave.storage.file :as file-storage])
-  (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]))
-
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-dist-test-" (make-array FileAttribute 0))]
-    (.toString path)))
+   [ol.clave.storage.file :as file-storage]))
 
 (use-fixtures :each pebble/pebble-challenge-fixture)
 
 (deftest ^:integration challenge-token-stored-during-obtain
   (testing "Challenge token is stored in shared storage during certificate obtain"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
@@ -70,7 +62,7 @@
 
 (deftest ^:integration challenge-token-cleaned-up-after-completion
   (testing "Challenge token is removed from storage after certificate obtained"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))

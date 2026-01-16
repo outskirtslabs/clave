@@ -6,23 +6,16 @@
    [ol.clave.automation :as automation]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.security.interfaces ECPrivateKey RSAPrivateKey]
    [java.security.spec ECParameterSpec]
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
 (use-fixtures :each pebble/pebble-challenge-fixture)
-
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-key-type-test-" (make-array FileAttribute 0))]
-    (.toString path)))
 
 (defn- create-solver
   "Creates an HTTP-01 solver for pebble challenge test server."
@@ -52,7 +45,7 @@
   "Obtains a certificate with the specified key type and returns the bundle.
   Returns the certificate bundle or nil if the operation failed."
   [key-type domain-suffix]
-  (let [storage-dir (temp-storage-dir)
+  (let [storage-dir (test-util/temp-storage-dir)
         storage-impl (file-storage/file-storage storage-dir)
         ;; Use a unique domain for each key type to avoid conflicts
         domain (str "keytype-" (name key-type) "-" domain-suffix ".localhost")

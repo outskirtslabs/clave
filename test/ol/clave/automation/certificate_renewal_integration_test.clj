@@ -3,30 +3,23 @@
   Tests run against Pebble ACME test server."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
+   [ol.clave.acme.challenge :as challenge]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.decisions :as decisions]
-   [ol.clave.acme.challenge :as challenge]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
 ;; This prevents authorization state accumulation across tests.
 (use-fixtures :each pebble/pebble-challenge-fixture)
 
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-test-" (make-array FileAttribute 0))]
-    (.toString path)))
-
 (deftest certificate-renewal-happens-before-expiration
   (testing "Certificate renewal is triggered when threshold is reached"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           ;; Create an HTTP-01 solver that works with pebble's challenge test server
@@ -92,7 +85,7 @@
 
 (deftest renew-managed-forces-renewal-of-all-certificates
   (testing "renew-managed forces renewal of all certificates"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           ;; Use unique domains to avoid conflicts with other tests using "localhost"
           domains ["renew-test-a.localhost" "renew-test-b.localhost"]

@@ -7,27 +7,20 @@
    [ol.clave.automation.impl.config :as config]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
 ;; This prevents authorization state accumulation across tests.
 (use-fixtures :each pebble/pebble-challenge-fixture)
 
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-test-" (make-array FileAttribute 0))]
-    (.toString path)))
-
 (deftest manage-domains-triggers-immediate-certificate-obtain
   (testing "manage-domains triggers immediate certificate obtain"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
@@ -125,7 +118,7 @@
 
 (deftest manage-domains-with-tls-alpn01-solver
   (testing "manage-domains triggers immediate certificate obtain with TLS-ALPN-01"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
@@ -209,7 +202,7 @@
 
 (deftest unmanage-domains-removes-domain-from-management
   (testing "unmanage-domains removes domain from cache and emits event"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
@@ -269,7 +262,7 @@
 
 (deftest list-domains-returns-all-managed-domains-with-status
   (testing "list-domains returns all managed domains with correct status"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain1 "localhost"
           ;; Create an HTTP-01 solver that works with pebble's challenge test server
@@ -316,7 +309,7 @@
 
 (deftest get-domain-status-returns-detailed-certificate-info
   (testing "get-domain-status returns detailed certificate info"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           ;; Create an HTTP-01 solver that works with pebble's challenge test server
@@ -361,7 +354,7 @@
 
 (deftest has-valid-cert-returns-true-for-valid-certificate
   (testing "has-valid-cert? returns true for valid certificate"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           ;; Create an HTTP-01 solver that works with pebble's challenge test server
@@ -395,7 +388,7 @@
 
 (deftest has-valid-cert-returns-false-for-unknown-domain
   (testing "has-valid-cert? returns false for unknown domain"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           ;; Use a no-op solver since we don't need actual certificates
           solver {:present (fn [_lease _chall _account-key] nil)

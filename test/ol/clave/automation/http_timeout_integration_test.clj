@@ -6,11 +6,10 @@
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.storage.file :as file-storage])
   (:import
    [java.net ServerSocket]
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent TimeUnit]))
 
 (defn- pebble-no-challtestsrv-fixture
@@ -19,12 +18,6 @@
   (pebble/with-pebble {:env {"PEBBLE_VA_NOSLEEP" "1"}} f))
 
 (use-fixtures :each pebble-no-challtestsrv-fixture)
-
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-timeout-test-" (make-array FileAttribute 0))]
-    (.toString path)))
 
 (defn- start-slow-server
   "Starts a server that accepts connections but delays responses.
@@ -83,7 +76,7 @@
 
 (deftest http-client-timeout-triggers-certificate-failed-event
   (testing "HTTP client timeout during certificate obtain triggers failure event"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           ;; Start a slow server on the HTTP challenge port

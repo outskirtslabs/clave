@@ -4,12 +4,12 @@
   with the automation system using event queue consumption and certificate lookup.
   Tests run against Pebble ACME test server."
   (:require
-   [babashka.fs :as fs]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage.file :as file-storage])
   (:import
@@ -17,17 +17,6 @@
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
 (use-fixtures :each pebble/pebble-challenge-fixture)
-
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests with shutdown hook cleanup."
-  []
-  (let [path (fs/create-temp-dir {:prefix "clave-adapter-test-"})
-        path-str (str path)]
-    (.addShutdownHook (Runtime/getRuntime)
-                      (Thread. (fn []
-                                 (when (fs/exists? path-str)
-                                   (fs/delete-tree path-str)))))
-    path-str))
 
 (defn- make-http01-solver
   "Create an HTTP-01 solver that uses the pebble challenge test server."
@@ -55,7 +44,7 @@
 
 (deftest adapter-integration-pattern-with-certificate-lookup-and-events
   (testing "Adapter consumes events and uses lookup-cert for TLS handshakes"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (make-http01-solver)

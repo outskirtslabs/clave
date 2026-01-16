@@ -8,21 +8,14 @@
    [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.time Instant]
    [java.util.concurrent TimeUnit]))
 
 (use-fixtures :each pebble/pebble-challenge-fixture)
-
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-ari-test-" (make-array FileAttribute 0))]
-    (.toString path)))
 
 (defn- create-http01-solver
   "Create an HTTP-01 solver that works with Pebble's challenge test server."
@@ -38,7 +31,7 @@
 
 (deftest ari-suggested-renewal-window-is-respected
   (testing "ARI data is fetched and stored after certificate obtain"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (create-http01-solver)
@@ -91,7 +84,7 @@
 
 (deftest ari-triggers-renewal-at-selected-time
   (testing "Renewal is triggered when ARI selected-time is reached"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (create-http01-solver)
@@ -139,7 +132,7 @@
 
 (deftest ari-retry-after-header-is-respected
   (testing "ARI retry-after is stored and can be used for scheduling"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (create-http01-solver)
@@ -179,7 +172,7 @@
 
 (deftest emergency-renewal-overrides-ari-when-time-critical
   (testing "Emergency renewal is triggered even when ARI selected-time is in future"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (create-http01-solver)
@@ -233,7 +226,7 @@
 
 (deftest ari-fetch-failure-falls-back-to-standard-renewal-timing
   (testing "ARI fetch failure emits :ari-failed event and certificate uses standard timing"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (create-http01-solver)

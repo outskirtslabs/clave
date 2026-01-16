@@ -9,21 +9,14 @@
    [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.impl.ocsp-harness :as ocsp-harness]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent TimeUnit]))
 
 (use-fixtures :each ocsp-harness/ocsp-and-pebble-fixture)
-
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-ocsp-test-" (make-array FileAttribute 0))]
-    (.toString path)))
 
 (defn- collect-events
   "Collect events from queue until timeout or max count reached."
@@ -51,7 +44,7 @@
 
 (deftest ocsp-fetched-automatically-after-certificate-obtain
   (testing "OCSP staple is fetched automatically after certificate obtain"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (make-http01-solver)
@@ -98,7 +91,7 @@
 
 (deftest ocsp-staple-refreshed-before-expiration
   (testing "OCSP staple is refreshed when validity is past threshold"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (make-http01-solver)
@@ -144,7 +137,7 @@
 
 (deftest ocsp-staple-persisted-to-storage
   (testing "OCSP staple is persisted to storage and loaded on restart"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (make-http01-solver)
@@ -202,7 +195,7 @@
 
 (deftest ocsp-revocation-triggers-automatic-certificate-renewal
   (testing "OCSP revocation status triggers automatic certificate renewal"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (make-http01-solver)
@@ -268,7 +261,7 @@
 
 (deftest key-compromise-revocation-generates-new-private-key
   (testing "Key compromise revocation archives old key and generates new private key"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (make-http01-solver)

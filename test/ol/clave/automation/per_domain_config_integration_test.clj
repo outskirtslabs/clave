@@ -6,25 +6,18 @@
    [ol.clave.automation :as automation]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.security.interfaces ECPrivateKey RSAPrivateKey]
    [java.util.concurrent TimeUnit]))
 
 (use-fixtures :each pebble/pebble-challenge-fixture)
 
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-config-test-" (make-array FileAttribute 0))]
-    (.toString path)))
-
 (deftest per-domain-config-fn-selects-different-key-types
   (testing "config-fn returns different key types per domain"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           ;; Two domains - each will get a different key type via config-fn
           domain-a "localhost"

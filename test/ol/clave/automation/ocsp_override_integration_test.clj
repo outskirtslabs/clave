@@ -8,20 +8,13 @@
    [ol.clave.automation :as automation]
    [ol.clave.impl.ocsp-harness :as ocsp-harness]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent TimeUnit]))
 
 (use-fixtures :each ocsp-harness/ocsp-override-test-fixture)
-
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-ocsp-override-test-" (make-array FileAttribute 0))]
-    (.toString path)))
 
 (defn- collect-events
   "Collect events from queue until timeout or max count reached."
@@ -49,7 +42,7 @@
 
 (deftest ocsp-responder-override-routes-to-custom-responder
   (testing "OCSP requests are routed to custom responder via responder-overrides"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (make-http01-solver)
@@ -107,7 +100,7 @@
 
 (deftest ocsp-responder-override-without-mapping-fails
   (testing "OCSP fetch fails when certificate has unreachable URL and no override"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver (make-http01-solver)

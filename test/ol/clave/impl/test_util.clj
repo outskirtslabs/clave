@@ -1,5 +1,6 @@
 (ns ol.clave.impl.test-util
   (:require
+   [babashka.fs :as fs]
    [clojure.test :as t :refer [do-report]]
    [ol.clave.acme.account :as account]
    [ol.clave.acme.challenge :as challenge]
@@ -22,6 +23,20 @@
    [java.util Date]))
 
 ((requiring-resolve 'hashp.install/install!))
+
+(defn temp-storage-dir
+  "Creates a temporary directory for storage tests with JVM shutdown hook cleanup.
+
+  Returns the directory path as a string.
+  The directory is automatically deleted when the JVM exits."
+  []
+  (let [path (fs/create-temp-dir {:prefix "clave-test-"})
+        path-str (str path)]
+    (.addShutdownHook (Runtime/getRuntime)
+                      (Thread. (fn []
+                                 (when (fs/exists? path-str)
+                                   (fs/delete-tree path-str)))))
+    path-str))
 
 ;; handy function that lets us test the :type inside (ex-data e) that
 ;; are thrown in test

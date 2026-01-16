@@ -11,8 +11,6 @@
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.time Instant]
    [java.time.temporal ChronoUnit]
    [java.util.concurrent TimeUnit]))
@@ -20,15 +18,9 @@
 ;; Use :each to give each test a fresh Pebble instance with clean state.
 (use-fixtures :each pebble/pebble-challenge-fixture)
 
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-test-" (make-array FileAttribute 0))]
-    (.toString path)))
-
 (deftest short-lived-certificate-skips-ocsp-fetch
   (testing "OCSP fetch is not triggered for short-lived certificates"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "shortlived.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
@@ -93,7 +85,7 @@
 
 (deftest six-day-certificate-skips-ocsp-fetch
   (testing "OCSP fetch is skipped for 6-day certificate (under 7-day threshold)"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "sixday.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
@@ -146,7 +138,7 @@
 
 (deftest normal-certificate-with-ocsp-disabled-skips-fetch
   (testing "Normal certificate with OCSP disabled does not trigger OCSP fetch"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "noocsp.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))

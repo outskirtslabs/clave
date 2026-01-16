@@ -17,8 +17,6 @@
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.security.cert X509Certificate]
    [java.time Instant]
    [java.time.temporal ChronoUnit]
@@ -28,15 +26,9 @@
 ;; This prevents authorization state accumulation across tests.
 (use-fixtures :each pebble/pebble-challenge-fixture)
 
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-test-" (make-array FileAttribute 0))]
-    (.toString path)))
-
 (deftest maintenance-loop-runs-at-configured-interval
   (testing "Maintenance loop runs automatically at the configured interval"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
@@ -107,7 +99,7 @@
 
 (deftest maintenance-loop-continues-when-one-domain-fails
   (testing "Maintenance loop continues processing other domains when one throws"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           ;; Three domains: A, B, C - B will fail
           domains ["a.localhost" "b.localhost" "c.localhost"]
@@ -191,7 +183,7 @@
 
 (deftest config-fn-timeout-skips-domain-without-crash
   (testing "Maintenance loop skips domain when config-fn times out"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           ;; Two domains: X will timeout, Y will succeed
           domain-x "timeout.localhost"
@@ -286,7 +278,7 @@
 
 (deftest config-fn-exception-skips-domain-without-crash
   (testing "Maintenance loop skips domain when config-fn throws exception"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           ;; Two domains: X will throw, Y will succeed
           domain-x "throwing.localhost"

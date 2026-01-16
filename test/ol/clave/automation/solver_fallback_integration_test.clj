@@ -7,20 +7,13 @@
    [ol.clave.automation.impl.config :as config]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
 (use-fixtures :each pebble/pebble-challenge-fixture)
-
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-solver-fallback-test-" (make-array FileAttribute 0))]
-    (.toString path)))
 
 (deftest multiple-solver-fallback-when-first-fails
   ;; Test #118: Multiple solver fallback when first fails
@@ -34,7 +27,7 @@
   ;; 7. Verify certificate is issued via TLS-ALPN-01
   ;; 8. Clean up
   (testing "System falls back to TLS-ALPN-01 when HTTP-01 solver fails"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))

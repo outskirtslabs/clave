@@ -8,6 +8,7 @@
    [ol.clave.automation.impl.cache :as cache]
    [ol.clave.automation.impl.config :as config]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
@@ -19,12 +20,6 @@
 ;; Use :each to give each test a fresh Pebble instance with clean state.
 ;; This prevents authorization state accumulation across tests.
 (use-fixtures :each pebble/pebble-challenge-fixture)
-
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-test-" (make-array FileAttribute 0))]
-    (.toString path)))
 
 (defn- posix-supported?
   "Check if POSIX file permissions are supported on this system."
@@ -43,7 +38,7 @@
   (testing "Private key and certificate files have 0600 permissions"
     (if-not (posix-supported?)
       (println "Skipping file permissions test - POSIX not supported on this platform")
-      (let [storage-dir (temp-storage-dir)
+      (let [storage-dir (test-util/temp-storage-dir)
             storage-impl (file-storage/file-storage storage-dir)
             domain "localhost"
             issuer-key (config/issuer-key-from-url (pebble/uri))
@@ -94,7 +89,7 @@
 
 (deftest storage-fallback-only-when-cache-nearly-full
   (testing "Storage fallback only triggers when cache is at 90%+ capacity"
-    (let [storage-dir  (temp-storage-dir)
+    (let [storage-dir  (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain       "localhost"
           issuer-key   (config/issuer-key-from-url (pebble/uri))

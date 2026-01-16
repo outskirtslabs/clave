@@ -14,8 +14,6 @@
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.security.cert X509Certificate]
    [java.util.concurrent TimeUnit]))
 
@@ -23,15 +21,9 @@
 ;; This prevents authorization state accumulation across tests.
 (use-fixtures :each pebble/pebble-challenge-fixture)
 
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-test-" (make-array FileAttribute 0))]
-    (.toString path)))
-
 (deftest system-starts-successfully-with-default-configuration
   (testing "System starts and stops cleanly with minimal config"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage (file-storage/file-storage storage-dir)
           config {:storage storage
                   :issuers [{:directory-url (pebble/uri)}]
@@ -47,7 +39,7 @@
 
 (deftest system-validates-storage-on-startup
   (testing "System performs write/read/delete validation on storage"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage (file-storage/file-storage storage-dir)
           config {:storage storage
                   :issuers [{:directory-url (pebble/uri)}]
@@ -85,7 +77,7 @@
 
 (deftest system-loads-certificates-from-storage-on-startup
   (testing "Certificates stored from previous session are loaded on startup"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
@@ -126,7 +118,7 @@
 
 (deftest system-graceful-shutdown-waits-for-in-flight-operations
   (testing "System stop waits for in-flight certificate operations to complete"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           ;; Create an HTTP-01 solver with a delay to simulate slow operations

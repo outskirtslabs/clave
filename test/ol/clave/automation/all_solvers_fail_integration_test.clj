@@ -11,19 +11,12 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.automation :as automation]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent TimeUnit]))
 
 (use-fixtures :each pebble/pebble-challenge-fixture)
-
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-all-solvers-fail-test-" (make-array FileAttribute 0))]
-    (.toString path)))
 
 (deftest all-challenge-types-failing-emits-comprehensive-error
   ;; Test #139: All challenge types failing emits comprehensive error
@@ -36,7 +29,7 @@
   ;; 6. Verify error details include each challenge failure
   ;; 7. Clean up
   (testing "All solvers failing emits comprehensive error event"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           ;; Track which solvers are attempted

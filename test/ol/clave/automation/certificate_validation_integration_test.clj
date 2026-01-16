@@ -14,8 +14,6 @@
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.security.cert X509Certificate]
    [java.time Instant]
    [java.time.temporal ChronoUnit]
@@ -25,15 +23,9 @@
 ;; This prevents authorization state accumulation across tests.
 (use-fixtures :each pebble/pebble-challenge-fixture)
 
-(defn- temp-storage-dir
-  "Creates a temporary directory for storage tests."
-  []
-  (let [path (Files/createTempDirectory "clave-test-" (make-array FileAttribute 0))]
-    (.toString path)))
-
 (deftest certificate-chain-is-complete-with-intermediates
   (testing "Certificate chain includes leaf and intermediate certificates"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           solver {:present (fn [_lease chall account-key]
@@ -100,7 +92,7 @@
 
 (deftest certificate-validation-rejects-expired-certs
   (testing "System loads expired cert and attempts immediate renewal"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "expired.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
@@ -179,7 +171,7 @@
 
 (deftest certificate-validation-warns-about-not-yet-valid-certs
   (testing "System loads future-dated cert but doesn't attempt renewal"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "future.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
@@ -244,7 +236,7 @@
 
 (deftest expired-certificate-continues-serving-while-retrying-renewal
   (testing "Expired certificate remains available while system retries renewal"
-    (let [storage-dir (temp-storage-dir)
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           domain "expired-serving.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))

@@ -39,10 +39,10 @@
   (let [cert-key (config/cert-storage-key issuer-key domain)
         key-key (config/key-storage-key issuer-key domain)
         meta-key (config/meta-storage-key issuer-key domain)
-        meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")]
+        meta-edn (pr-str {:names [domain] :issuer issuer-key})]
     (storage/store-string! storage nil cert-key (:certificate-pem test-cert))
     (storage/store-string! storage nil key-key (:private-key-pem test-cert))
-    (storage/store-string! storage nil meta-key meta-json)))
+    (storage/store-string! storage nil meta-key meta-edn)))
 
 (defn- collect-events
   "Collect all available events from queue within timeout.

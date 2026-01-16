@@ -98,7 +98,7 @@
           ;; Convert to PEM format using keygen/pem-encode
           cert-pem (keygen/pem-encode "CERTIFICATE" (.getEncoded cert))
           key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
-          meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+          meta-edn (pr-str {:names [domain] :issuer issuer-key})
           ;; Store using expected key format
           cert-key (config/cert-storage-key issuer-key domain)
           key-key (config/key-storage-key issuer-key domain)
@@ -106,7 +106,7 @@
       ;; Store the certificate manually (simulating what obtain does)
       (storage/store-string! storage-impl nil cert-key cert-pem)
       (storage/store-string! storage-impl nil key-key key-pem)
-      (storage/store-string! storage-impl nil meta-key meta-json)
+      (storage/store-string! storage-impl nil meta-key meta-edn)
       ;; Start a new system with storage containing the certificate
       (let [system (automation/start initial-config)]
         (try

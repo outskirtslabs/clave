@@ -112,7 +112,7 @@
                         (.minus now 1 java.time.temporal.ChronoUnit/DAYS))
           cert-pem (:certificate-pem expired-cert)
           key-pem (:private-key-pem expired-cert)
-          meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+          meta-edn (pr-str {:names [domain] :issuer issuer-key :managed true})
           ;; Storage keys
           cert-key (config/cert-storage-key issuer-key domain)
           key-key (config/key-storage-key issuer-key domain)
@@ -129,7 +129,7 @@
       ;; Store expired certificate
       (storage/store-string! storage-impl nil cert-key cert-pem)
       (storage/store-string! storage-impl nil key-key key-pem)
-      (storage/store-string! storage-impl nil meta-key meta-json)
+      (storage/store-string! storage-impl nil meta-key meta-edn)
       ;; Start automation system - it should load the expired cert
       (let [config {:storage storage-impl
                     :issuers [{:directory-url (pebble/uri)}]
@@ -191,7 +191,7 @@
                        (.plus now 90 java.time.temporal.ChronoUnit/DAYS))
           cert-pem (:certificate-pem future-cert)
           key-pem (:private-key-pem future-cert)
-          meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+          meta-edn (pr-str {:names [domain] :issuer issuer-key})
           ;; Storage keys
           cert-key (config/cert-storage-key issuer-key domain)
           key-key (config/key-storage-key issuer-key domain)
@@ -199,7 +199,7 @@
       ;; Store not-yet-valid certificate
       (storage/store-string! storage-impl nil cert-key cert-pem)
       (storage/store-string! storage-impl nil key-key key-pem)
-      (storage/store-string! storage-impl nil meta-key meta-json)
+      (storage/store-string! storage-impl nil meta-key meta-edn)
       ;; Start automation system and check behavior
       (let [config {:storage storage-impl
                     :issuers [{:directory-url (pebble/uri)}]
@@ -264,10 +264,10 @@
       (let [cert-key (config/cert-storage-key issuer-key domain)
             key-key (config/key-storage-key issuer-key domain)
             meta-key (config/meta-storage-key issuer-key domain)
-            meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")]
+            meta-edn (pr-str {:names [domain] :issuer issuer-key :managed true})]
         (storage/store-string! storage-impl nil cert-key cert-pem)
         (storage/store-string! storage-impl nil key-key key-pem)
-        (storage/store-string! storage-impl nil meta-key meta-json))
+        (storage/store-string! storage-impl nil meta-key meta-edn))
       ;; Start system with failing solver
       (let [config {:storage storage-impl
                     :issuers [{:directory-url (pebble/uri)}]

@@ -54,14 +54,14 @@
           [_session ^X509Certificate cert cert-keypair] (test-util/issue-certificate test-session)
           cert-pem (keygen/pem-encode "CERTIFICATE" (.getEncoded cert))
           key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
-          meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+          meta-edn (pr-str {:names [domain] :issuer issuer-key :managed true})
           cert-key (config/cert-storage-key issuer-key domain)
           key-key (config/key-storage-key issuer-key domain)
           meta-key (config/meta-storage-key issuer-key domain)]
       ;; Pre-store certificate in storage
       (storage/store-string! storage-impl nil cert-key cert-pem)
       (storage/store-string! storage-impl nil key-key key-pem)
-      (storage/store-string! storage-impl nil meta-key meta-json)
+      (storage/store-string! storage-impl nil meta-key meta-edn)
       ;; Override timing for fast test execution:
       ;; - Short interval (200ms)
       ;; - Small jitter (50ms)
@@ -130,13 +130,13 @@
         (let [test-cert (test-util/generate-test-certificate domain not-before not-after)
               cert-pem (:certificate-pem test-cert)
               key-pem (:private-key-pem test-cert)
-              meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+              meta-edn (pr-str {:names [domain] :issuer issuer-key :managed true})
               cert-key (config/cert-storage-key issuer-key domain)
               key-key (config/key-storage-key issuer-key domain)
               meta-key (config/meta-storage-key issuer-key domain)]
           (storage/store-string! storage-impl nil cert-key cert-pem)
           (storage/store-string! storage-impl nil key-key key-pem)
-          (storage/store-string! storage-impl nil meta-key meta-json)))
+          (storage/store-string! storage-impl nil meta-key meta-edn)))
       ;; Config-fn that throws for domain B
       (let [failing-config-fn (fn [domain]
                                 (when (= domain "b.localhost")
@@ -215,13 +215,13 @@
         (let [test-cert (test-util/generate-test-certificate domain not-before not-after)
               cert-pem (:certificate-pem test-cert)
               key-pem (:private-key-pem test-cert)
-              meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+              meta-edn (pr-str {:names [domain] :issuer issuer-key :managed true})
               cert-key (config/cert-storage-key issuer-key domain)
               key-key (config/key-storage-key issuer-key domain)
               meta-key (config/meta-storage-key issuer-key domain)]
           (storage/store-string! storage-impl nil cert-key cert-pem)
           (storage/store-string! storage-impl nil key-key key-pem)
-          (storage/store-string! storage-impl nil meta-key meta-json)))
+          (storage/store-string! storage-impl nil meta-key meta-edn)))
       ;; Config-fn that sleeps 60 seconds for domain X (will timeout)
       (let [timeout-config-fn (fn [domain]
                                 (when (= domain domain-x)
@@ -310,13 +310,13 @@
         (let [test-cert (test-util/generate-test-certificate domain not-before not-after)
               cert-pem (:certificate-pem test-cert)
               key-pem (:private-key-pem test-cert)
-              meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+              meta-edn (pr-str {:names [domain] :issuer issuer-key :managed true})
               cert-key (config/cert-storage-key issuer-key domain)
               key-key (config/key-storage-key issuer-key domain)
               meta-key (config/meta-storage-key issuer-key domain)]
           (storage/store-string! storage-impl nil cert-key cert-pem)
           (storage/store-string! storage-impl nil key-key key-pem)
-          (storage/store-string! storage-impl nil meta-key meta-json)))
+          (storage/store-string! storage-impl nil meta-key meta-edn)))
       ;; Config-fn that throws exception for domain X
       (let [throwing-config-fn (fn [domain]
                                  (when (= domain domain-x)

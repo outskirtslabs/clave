@@ -39,7 +39,7 @@
           test-cert (test-util/generate-test-certificate domain not-before not-after)
           cert-pem (:certificate-pem test-cert)
           key-pem (:private-key-pem test-cert)
-          meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+          meta-edn (pr-str {:names [domain] :issuer issuer-key})
           ;; Storage keys
           cert-key (config/cert-storage-key issuer-key domain)
           key-key (config/key-storage-key issuer-key domain)
@@ -47,7 +47,7 @@
       ;; Step 1: Pre-store the short-lived certificate in storage
       (storage/store-string! storage-impl nil cert-key cert-pem)
       (storage/store-string! storage-impl nil key-key key-pem)
-      (storage/store-string! storage-impl nil meta-key meta-json)
+      (storage/store-string! storage-impl nil meta-key meta-edn)
       ;; Step 2: Start automation system with OCSP enabled
       (let [config {:storage storage-impl
                     :issuers [{:directory-url (pebble/uri)}]
@@ -104,7 +104,7 @@
           test-cert (test-util/generate-test-certificate domain not-before not-after)
           cert-pem (:certificate-pem test-cert)
           key-pem (:private-key-pem test-cert)
-          meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+          meta-edn (pr-str {:names [domain] :issuer issuer-key})
           ;; Storage keys
           cert-key (config/cert-storage-key issuer-key domain)
           key-key (config/key-storage-key issuer-key domain)
@@ -112,7 +112,7 @@
       ;; Pre-store the certificate
       (storage/store-string! storage-impl nil cert-key cert-pem)
       (storage/store-string! storage-impl nil key-key key-pem)
-      (storage/store-string! storage-impl nil meta-key meta-json)
+      (storage/store-string! storage-impl nil meta-key meta-edn)
       (let [config {:storage storage-impl
                     :issuers [{:directory-url (pebble/uri)}]
                     :http-client pebble/http-client-opts
@@ -157,7 +157,7 @@
           test-cert (test-util/generate-test-certificate domain not-before not-after)
           cert-pem (:certificate-pem test-cert)
           key-pem (:private-key-pem test-cert)
-          meta-json (str "{\"names\":[\"" domain "\"],\"issuer\":\"" issuer-key "\"}")
+          meta-edn (pr-str {:names [domain] :issuer issuer-key})
           ;; Storage keys
           cert-key (config/cert-storage-key issuer-key domain)
           key-key (config/key-storage-key issuer-key domain)
@@ -165,7 +165,7 @@
       ;; Pre-store the certificate
       (storage/store-string! storage-impl nil cert-key cert-pem)
       (storage/store-string! storage-impl nil key-key key-pem)
-      (storage/store-string! storage-impl nil meta-key meta-json)
+      (storage/store-string! storage-impl nil meta-key meta-edn)
       ;; Start with OCSP disabled
       (let [config {:storage storage-impl
                     :issuers [{:directory-url (pebble/uri)}]

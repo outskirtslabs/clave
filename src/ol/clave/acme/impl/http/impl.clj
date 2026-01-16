@@ -25,7 +25,12 @@
    [java.security KeyStore SecureRandom]
    [java.security.cert X509Certificate]
    [java.time Duration]
-   [java.util.concurrent CancellationException CompletableFuture ExecutionException Executor Executors]
+   [java.util.concurrent
+    CancellationException
+    CompletableFuture
+    ExecutionException
+    Executor
+    Executors]
    [java.util.function Function Supplier]
    [java.util.function Supplier]
    [javax.net.ssl

@@ -6,20 +6,24 @@
    [ol.clave.acme.account :as account]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.acme.commands :as cmd]
+   [ol.clave.acme.order :as order]
    [ol.clave.certificate.impl.csr :as csr]
    [ol.clave.lease :as lease]
-   [ol.clave.acme.order :as order]
    [ol.clave.specs :as specs])
   (:import
    [java.io ByteArrayInputStream FileOutputStream]
    [java.net InetSocketAddress ServerSocket]
    [java.nio.charset StandardCharsets]
    [java.security KeyPairGenerator KeyStore]
-   [java.security.cert CertificateFactory X509Certificate]
+   [java.security.cert CertificateFactory]
    [java.security.spec ECGenParameterSpec]
    [java.util Base64]
    [java.util.concurrent Executors]
-   [javax.net.ssl KeyManagerFactory SSLContext SSLParameters SSLServerSocket]))
+   [javax.net.ssl
+    KeyManagerFactory
+    SSLContext
+    SSLParameters
+    SSLServerSocket]))
 
 (defn- find-free-port []
   (with-open [socket (ServerSocket. 0)]

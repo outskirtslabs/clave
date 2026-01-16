@@ -12,9 +12,9 @@
 
     clj -A:dev -M -m certificate"
   (:require
-   [ol.clave.certificate :as clave]
    [ol.clave.acme.account :as account]
    [ol.clave.acme.commands :as commands]
+   [ol.clave.certificate :as clave]
    [ol.clave.lease :as lease]
    [ol.clave.specs :as specs]))
 

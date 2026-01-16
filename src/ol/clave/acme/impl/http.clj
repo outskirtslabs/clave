@@ -1,11 +1,11 @@
 (ns ^:no-doc ol.clave.acme.impl.http
   (:require
    [clojure.string :as str]
-   [ol.clave.errors :as errors]
    [ol.clave.acme.impl.http.impl :as http]
    [ol.clave.crypto.impl.json :as json]
    [ol.clave.crypto.impl.jws :as jws]
    [ol.clave.crypto.impl.util :as util]
+   [ol.clave.errors :as errors]
    [ol.clave.lease :as lease]
    [ol.clave.specs :as acme])
   (:import

@@ -1,7 +1,7 @@
 (ns ol.clave.crypto.impl.jwk
   (:require
-   [ol.clave.errors :as errors]
-   [ol.clave.crypto.impl.core :as crypto])
+   [ol.clave.crypto.impl.core :as crypto]
+   [ol.clave.errors :as errors])
   (:import
    [java.math BigInteger]
    [java.nio.charset StandardCharsets]

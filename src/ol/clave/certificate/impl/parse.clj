@@ -1,8 +1,8 @@
 (ns ol.clave.certificate.impl.parse
   (:require
    [clojure.string :as str]
-   [ol.clave.errors :as errors]
    [ol.clave.acme.impl.http :as http]
+   [ol.clave.errors :as errors]
    [ol.clave.specs :as acme])
   (:import
    [java.io ByteArrayInputStream]

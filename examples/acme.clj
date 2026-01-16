@@ -12,12 +12,12 @@
 
     clj -A:dev -M -m acme"
   (:require
-   [ol.clave.certificate :as clave]
    [ol.clave.acme.account :as account]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.acme.commands :as cmd]
-   [ol.clave.lease :as lease]
    [ol.clave.acme.order :as order]
+   [ol.clave.certificate :as clave]
+   [ol.clave.lease :as lease]
    [ol.clave.specs :as specs]))
 
 (defn -main [& _]

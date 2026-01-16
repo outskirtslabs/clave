@@ -6,8 +6,8 @@
   - Constructing revocation payloads with base64url-encoded certificates
   - Validating RFC 5280 reason codes for ACME revocation"
   (:require
-   [ol.clave.errors :as errors]
-   [ol.clave.crypto.impl.core :as crypto])
+   [ol.clave.crypto.impl.core :as crypto]
+   [ol.clave.errors :as errors])
   (:import
    [java.security.cert X509Certificate]))
 

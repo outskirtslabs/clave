@@ -2,9 +2,9 @@
   (:require
    [clojure.spec.alpha :as s]
    [clojure.string :as str]
-   [ol.clave.errors :as errors]
    [ol.clave.acme.impl.challenge :as challenge]
    [ol.clave.crypto.impl.util :as util]
+   [ol.clave.errors :as errors]
    [ol.clave.specs :as acme]))
 
 (set! *warn-on-reflection* true)

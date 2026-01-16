@@ -11,8 +11,8 @@
   - Extension encoding for certificate extensions"
   (:require
    [clojure.string :as str]
-   [ol.clave.errors :as errors]
-   [ol.clave.crypto.impl.der :as der])
+   [ol.clave.crypto.impl.der :as der]
+   [ol.clave.errors :as errors])
   (:import
    [java.net IDN]
    [java.nio.charset StandardCharsets]))

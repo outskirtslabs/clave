@@ -1,13 +1,13 @@
 (ns e2e-acme
   (:require
    [clojure.string :as str]
-   [ol.clave.certificate :as clave]
    [ol.clave.acme.account :as account]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.acme.commands :as cmd]
+   [ol.clave.acme.order :as order]
+   [ol.clave.certificate :as clave]
    [ol.clave.example.http01 :as http01]
    [ol.clave.lease :as lease]
-   [ol.clave.acme.order :as order]
    [ol.clave.specs :as specs])
   (:import
    [java.io ByteArrayInputStream FileOutputStream]

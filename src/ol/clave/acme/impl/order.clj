@@ -1,8 +1,8 @@
 (ns ol.clave.acme.impl.order
   (:require
    [clojure.spec.alpha :as s]
-   [ol.clave.errors :as errors]
    [ol.clave.crypto.impl.util :as util]
+   [ol.clave.errors :as errors]
    [ol.clave.specs :as acme])
   (:import
    [java.time Instant]))

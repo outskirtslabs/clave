@@ -12,12 +12,12 @@
 
     clj -A:dev -M -m certificate"
   (:require
-   [ol.clave.certificate :as clave]
    [ol.clave.acme.account :as account]
    [ol.clave.acme.commands :as commands]
+   [ol.clave.acme.solver.http :as http-solver]
+   [ol.clave.certificate :as clave]
    [ol.clave.example.http01 :as http01]
    [ol.clave.lease :as lease]
-   [ol.clave.acme.solver.http :as http-solver]
    [ol.clave.specs :as specs])
   (:import
    [java.nio.charset StandardCharsets]

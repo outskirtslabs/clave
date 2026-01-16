@@ -9,18 +9,9 @@
   (:import
    [java.math BigInteger]
    [java.nio.charset StandardCharsets]
-   [java.security
-    KeyFactory
-    KeyPair
-    Signature]
-   [java.security.spec
-    PKCS8EncodedKeySpec
-    X509EncodedKeySpec]
-   [java.util
-    Arrays
-    Base64
-    Base64$Decoder
-    Base64$Encoder]))
+   [java.security KeyFactory KeyPair Signature]
+   [java.security.spec PKCS8EncodedKeySpec X509EncodedKeySpec]
+   [java.util Arrays Base64 Base64$Decoder Base64$Encoder]))
 
 (set! *warn-on-reflection* true)
 

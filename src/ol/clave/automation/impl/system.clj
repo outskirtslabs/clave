@@ -6,7 +6,6 @@
   (:require
    [clojure.edn :as edn]
    [clojure.string :as str]
-   [ol.clave.storage.file :as file]
    [ol.clave.acme.account :as account]
    [ol.clave.acme.commands :as cmd]
    [ol.clave.automation.impl.cache :as cache]
@@ -21,6 +20,7 @@
    [ol.clave.lease :as lease]
    [ol.clave.specs :as specs]
    [ol.clave.storage :as storage]
+   [ol.clave.storage.file :as file]
    [taoensso.trove :as log])
   (:import
    [java.security KeyFactory]

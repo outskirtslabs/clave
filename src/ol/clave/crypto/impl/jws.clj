@@ -1,9 +1,9 @@
 (ns ol.clave.crypto.impl.jws
   (:require
    [clojure.string :as str]
-   [ol.clave.errors :as errors]
    [ol.clave.crypto.impl.core :as crypto]
-   [ol.clave.crypto.impl.jwk :as jwk])
+   [ol.clave.crypto.impl.jwk :as jwk]
+   [ol.clave.errors :as errors])
   (:import
    [java.nio.charset StandardCharsets]
    [java.security KeyPair MessageDigest Signature]

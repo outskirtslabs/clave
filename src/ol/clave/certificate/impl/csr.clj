@@ -10,11 +10,11 @@
   If you need more features then you will need to use external tools to provide your own CSR."
   (:require
    [clojure.string :as str]
-   [ol.clave.errors :as errors]
+   [ol.clave.certificate.impl.x509 :as x509]
    [ol.clave.crypto.impl.core :as crypto]
    [ol.clave.crypto.impl.der :as der]
    [ol.clave.crypto.impl.parse-ip :as parse-ip]
-   [ol.clave.certificate.impl.x509 :as x509])
+   [ol.clave.errors :as errors])
   (:import
    [java.net InetAddress]
    [java.nio.charset StandardCharsets]

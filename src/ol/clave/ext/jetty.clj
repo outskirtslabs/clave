@@ -14,8 +14,8 @@
    [java.net Socket]
    [java.security SecureRandom]
    [java.security.cert X509Certificate]
-   [javax.net.ssl ExtendedSSLSession KeyManager SNIHostName SNIServerName
-    SSLContext SSLEngine StandardConstants X509ExtendedKeyManager]))
+   [javax.net.ssl ExtendedSSLSession KeyManager SNIHostName SNIServerName SSLContext
+    SSLEngine StandardConstants X509ExtendedKeyManager]))
 
 (defn- extract-sni-hostname
   "Extract the SNI hostname from an SSLEngine's handshake session.

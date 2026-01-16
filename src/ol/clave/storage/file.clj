@@ -91,20 +91,27 @@
   - [[ol.clave.storage]] - Storage protocol and utilities
   - [[ol.clave.lease]] - Cooperative cancellation"
   (:require
-   [taoensso.trove :as t]
    [clojure.string :as str]
    [ol.clave.lease :as lease]
-   [ol.clave.storage :as storage])
+   [ol.clave.storage :as storage]
+   [taoensso.trove :as t])
   (:import
-   (java.io IOException RandomAccessFile)
-   (java.nio ByteBuffer)
-   (java.nio.channels FileChannel)
-   (java.nio.charset StandardCharsets)
-   (java.nio.file AtomicMoveNotSupportedException FileVisitOption
-                  Files LinkOption NoSuchFileException Path Paths
-                  StandardCopyOption StandardOpenOption)
-   (java.nio.file.attribute BasicFileAttributes FileAttribute PosixFilePermissions)
-   (java.time Duration)))
+   [java.io IOException RandomAccessFile]
+   [java.nio ByteBuffer]
+   [java.nio.channels FileChannel]
+   [java.nio.charset StandardCharsets]
+   [java.nio.file
+    AtomicMoveNotSupportedException
+    FileVisitOption
+    Files
+    LinkOption
+    NoSuchFileException
+    Path
+    Paths
+    StandardCopyOption
+    StandardOpenOption]
+   [java.nio.file.attribute BasicFileAttributes FileAttribute PosixFilePermissions]
+   [java.time Duration]))
 
 (set! *warn-on-reflection* true)
 

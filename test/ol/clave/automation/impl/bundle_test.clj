@@ -32,7 +32,7 @@
     (let [certs (parse-pem-chain test-chain-pem)
           keypair (generate-test-keypair)
           issuer-key "test-issuer"
-          bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key)]
+          bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key true)]
       (is (string? (:hash bundle))
           "Hash should be a string")
       (is (= 64 (count (:hash bundle)))
@@ -43,7 +43,7 @@
     (let [certs (parse-pem-chain test-chain-pem)
           keypair (generate-test-keypair)
           issuer-key "test-issuer"
-          bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key)]
+          bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key true)]
       (is (vector? (:names bundle))
           "Names should be a vector")
       (is (some #{"localhost"} (:names bundle))
@@ -56,7 +56,7 @@
     (let [certs (parse-pem-chain test-chain-pem)
           keypair (generate-test-keypair)
           issuer-key "test-issuer"
-          bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key)
+          bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key true)
           ^X509Certificate first-cert (first certs)]
       (is (instance? Instant (:not-before bundle))
           "not-before should be an Instant")
@@ -72,25 +72,28 @@
     (let [certs (parse-pem-chain test-chain-pem)
           keypair (generate-test-keypair)
           issuer-key "acme-v02.api.letsencrypt.org"
-          bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key)]
+          bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key true)]
       (is (= "acme-v02.api.letsencrypt.org" (:issuer-key bundle))
           "issuer-key should be preserved"))))
 
-(deftest create-bundle-sets-managed-true
-  (testing "Bundle has :managed true by default"
+(deftest create-bundle-sets-managed-flag
+  (testing "Bundle :managed reflects the passed value"
     (let [certs (parse-pem-chain test-chain-pem)
           keypair (generate-test-keypair)
-          issuer-key "test-issuer"
-          bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key)]
-      (is (true? (:managed bundle))
-          "managed should be true"))))
+          issuer-key "test-issuer"]
+      (let [bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key true)]
+        (is (true? (:managed bundle))
+            "managed should be true when passed true"))
+      (let [bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key false)]
+        (is (false? (:managed bundle))
+            "managed should be false when passed false")))))
 
 (deftest create-bundle-includes-certificate-chain
   (testing "Bundle has :certificate containing full chain"
     (let [certs (parse-pem-chain test-chain-pem)
           keypair (generate-test-keypair)
           issuer-key "test-issuer"
-          bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key)]
+          bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key true)]
       (is (= certs (:certificate bundle))
           "certificate should contain full chain"))))
 
@@ -99,6 +102,6 @@
     (let [certs (parse-pem-chain test-chain-pem)
           keypair (generate-test-keypair)
           issuer-key "test-issuer"
-          bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key)]
+          bundle (cache/create-bundle certs (.getPrivate keypair) issuer-key true)]
       (is (= (.getPrivate keypair) (:private-key bundle))
           "private-key should be set"))))

@@ -42,8 +42,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :key-type :rsa2048
-                  :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                  :http-client pebble/http-client-opts}
           system (automation/start config)]
       (try
         (let [queue (automation/get-event-queue system)]
@@ -85,8 +84,7 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
-                  :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                  :http-client pebble/http-client-opts}
           system (automation/start config)]
       (try
         (let [queue (automation/get-event-queue system)]
@@ -138,8 +136,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :key-reuse true  ;; Enable key reuse
-                  :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                  :http-client pebble/http-client-opts}
           system (automation/start config)]
       (try
         (let [queue (automation/get-event-queue system)]

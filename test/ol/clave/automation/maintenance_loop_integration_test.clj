@@ -72,8 +72,7 @@
         (let [config {:storage storage-impl
                       :issuers [{:directory-url (pebble/uri)}]
                       :solvers {:http-01 solver}
-                      :http-client pebble/http-client-opts
-                      :skip-domain-validation true}
+                      :http-client pebble/http-client-opts}
               ;; Track start time for timing verification
               start-time (System/currentTimeMillis)
               system (automation/start config)]
@@ -150,7 +149,6 @@
                         :issuers [{:directory-url (pebble/uri)}]
                         :solvers {:http-01 solver}
                         :http-client pebble/http-client-opts
-                        :skip-domain-validation true
                         :config-fn failing-config-fn}
                 system (automation/start config)]
             (try
@@ -241,7 +239,6 @@
                             :issuers [{:directory-url (pebble/uri)}]
                             :solvers {:http-01 solver}
                             :http-client pebble/http-client-opts
-                            :skip-domain-validation true
                             :config-fn timeout-config-fn}
                     system (automation/start config)]
                 (try
@@ -336,7 +333,6 @@
                             :issuers [{:directory-url (pebble/uri)}]
                             :solvers {:http-01 solver}
                             :http-client pebble/http-client-opts
-                            :skip-domain-validation true
                             :config-fn throwing-config-fn}
                     system (automation/start config)]
                 (try

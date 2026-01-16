@@ -68,8 +68,7 @@
 
           base-config {:issuers [{:directory-url (pebble/uri)}]
                        :solvers {:http-01 tracking-solver}
-                       :http-client pebble/http-client-opts
-                       :skip-domain-validation true}
+                       :http-client pebble/http-client-opts}
 
           ;; Create two separate system instances sharing the same storage
           config1 (assoc base-config :storage storage-impl)

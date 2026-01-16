@@ -62,8 +62,7 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
-                  :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                  :http-client pebble/http-client-opts}
           system (automation/start config)]
       (try
         ;; Step 3: Get event queue for adapter consumption

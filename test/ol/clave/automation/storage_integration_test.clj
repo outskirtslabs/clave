@@ -57,8 +57,7 @@
             config {:storage storage-impl
                     :issuers [{:directory-url (pebble/uri)}]
                     :solvers {:http-01 solver}
-                    :http-client pebble/http-client-opts
-                    :skip-domain-validation true}
+                    :http-client pebble/http-client-opts}
             system (automation/start config)]
         (try
           (let [queue (automation/get-event-queue system)]
@@ -110,8 +109,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
-                  :cache-capacity 2
-                  :skip-domain-validation true}
+                  :cache-capacity 2}
           system (automation/start config)]
       (try
         (let [queue (automation/get-event-queue system)]

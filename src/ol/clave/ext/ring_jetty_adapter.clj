@@ -86,29 +86,31 @@
   (stop server)
   ```"
   [handler {::keys [config] :as opts}]
-  (let [{:keys [domains redirect-http?]} (validate! config)
-        ssl-port                         (get opts :ssl-port 443)
-        http-solver-registry             (atom {})
-        solver                           (http-solver/solver http-solver-registry)
-        auto-config                      (-> config
-                                             (dissoc :domain :redirect-http? :key-password)
-                                             (assoc :solvers {:http-01 solver}))
-        system                           (auto/start auto-config)
-        ;; Create SSL context with SNI-based certificate selection
-        ;; Certificates are looked up fresh on each TLS handshake
-        ssl-context                      (jetty-ext/sni-ssl-context
-                                          (fn [hostname]
-                                            (auto/lookup-cert system hostname)))
-        wrapped-handler                  (cond-> handler
-                                           redirect-http? (common/wrap-redirect-https {:ssl-port ssl-port})
-                                           true           (http-solver/wrap-acme-challenge http-solver-registry))
-        jetty-opts                       (-> opts
-                                             (dissoc ::config)
-                                             (assoc :ssl? true
-                                                    :ssl-context ssl-context
-                                                    :join? false))]
-    (auto/manage-domains system domains)
-    (common/wait-for-certificates system domains)
+  (let [{:keys [domains]}    (validate! config)
+        ssl-port             (get opts :ssl-port 443)
+        http-solver-registry (atom {})
+        solver               (http-solver/solver http-solver-registry)
+        auto-config          (-> config
+                                 (dissoc :domain :redirect-http? :key-password)
+                                 (assoc :solvers {:http-01 solver}))
+        system               (auto/start auto-config)
+        ssl-context          (jetty-ext/sni-ssl-context
+                              (fn [hostname]
+                                (auto/lookup-cert system hostname)))
+        wrapped-handler      (cond-> handler
+                               (:redirect-http? config) (common/wrap-redirect-https {:ssl-port ssl-port})
+                               true                     (http-solver/wrap-acme-challenge http-solver-registry))
+        jetty-opts           (-> opts
+                                 (dissoc ::config)
+                                 (assoc :ssl? true
+                                        :ssl-context ssl-context
+                                        :join? false))]
+    (try
+      (auto/manage-domains system domains)
+      (common/wait-for-certificates system domains)
+      (catch Exception e
+        (auto/stop system)
+        (throw e)))
     {:server (jetty/run-jetty wrapped-handler jetty-opts)
      :system system}))
 

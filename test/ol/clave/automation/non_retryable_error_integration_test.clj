@@ -48,8 +48,7 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 tracking-solver}
-                  :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                  :http-client pebble/http-client-opts}
           system (automation/start config)]
       (try
         (let [queue (automation/get-event-queue system)

@@ -62,7 +62,6 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :http-client pebble/http-client-opts
-                  :skip-domain-validation true
                   :solvers {:http-01 solver}
                   ;; OCSP enabled - Pebble already configured to embed our mock OCSP URL
                   :ocsp {:enabled true}}
@@ -108,7 +107,6 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :http-client pebble/http-client-opts
-                  :skip-domain-validation true
                   :solvers {:http-01 solver}
                   :ocsp {:enabled true}}
           system (automation/start config)]
@@ -155,7 +153,6 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :http-client pebble/http-client-opts
-                  :skip-domain-validation true
                   :solvers {:http-01 solver}
                   :ocsp {:enabled true}}
           ;; Start first system and obtain certificate
@@ -215,7 +212,6 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :http-client pebble/http-client-opts
-                  :skip-domain-validation true
                   :solvers {:http-01 solver}
                   :ocsp {:enabled true}}
           system (automation/start config)]
@@ -281,7 +277,6 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :http-client pebble/http-client-opts
-                  :skip-domain-validation true
                   :solvers {:http-01 solver}
                   :ocsp {:enabled true}}
           system (automation/start config)]

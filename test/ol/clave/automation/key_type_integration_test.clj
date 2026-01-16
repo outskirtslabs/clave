@@ -61,7 +61,6 @@
                 :issuers [{:directory-url (pebble/uri)}]
                 :solvers {:http-01 solver}
                 :http-client pebble/http-client-opts
-                :skip-domain-validation true
                 :key-type key-type}
         system (automation/start config)]
     (try

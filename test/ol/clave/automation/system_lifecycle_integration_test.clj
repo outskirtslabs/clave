@@ -35,8 +35,7 @@
           storage (file-storage/file-storage storage-dir)
           config {:storage storage
                   :issuers [{:directory-url (pebble/uri)}]
-                  :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                  :http-client pebble/http-client-opts}
           system (automation/start config)]
       (try
         ;; Verify system handle is returned immediately
@@ -52,8 +51,7 @@
           storage (file-storage/file-storage storage-dir)
           config {:storage storage
                   :issuers [{:directory-url (pebble/uri)}]
-                  :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                  :http-client pebble/http-client-opts}
           system (automation/start config)]
       (try
         (is (automation/started? system) "System should start successfully")
@@ -80,8 +78,7 @@
                            (unlock! [_ _ _] nil))
           config {:storage broken-storage
                   :issuers [{:directory-url (pebble/uri)}]
-                  :http-client pebble/http-client-opts
-                  :skip-domain-validation true}]
+                  :http-client pebble/http-client-opts}]
       (is (thrown-with-msg? Exception #"[Ss]torage"
                             (automation/start config))
           "Startup should fail with storage error"))))
@@ -94,8 +91,7 @@
           issuer-key (config/issuer-key-from-url (pebble/uri))
           initial-config {:storage storage-impl
                           :issuers [{:directory-url (pebble/uri)}]
-                          :http-client pebble/http-client-opts
-                          :skip-domain-validation true}
+                          :http-client pebble/http-client-opts}
           ;; Get a real certificate from Pebble via test utilities
           test-session (test-util/fresh-session)
           [_session ^X509Certificate cert cert-keypair] (test-util/issue-certificate test-session)
@@ -150,8 +146,7 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
-                  :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                  :http-client pebble/http-client-opts}
           system (automation/start config)
           queue (automation/get-event-queue system)]
       ;; Step 2: Start a certificate obtain operation (async)

@@ -62,8 +62,7 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
-                  :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                  :http-client pebble/http-client-opts}
           ;; Start automation system - will load the pre-existing key and auto-create account
           system (automation/start config)]
       (try

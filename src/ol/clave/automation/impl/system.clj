@@ -208,7 +208,8 @@
                      :data  {:domain domain}
                      :error e})
           (throw e)))
-      (let [bundle      (cache/create-bundle certs private-key issuer-key)
+      ;; certs loaded from storage are not managed until explicitly requested via manage-domains (which validates them)
+      (let [bundle      (cache/create-bundle certs private-key issuer-key false)
             ocsp-staple (load-ocsp-staple storage issuer-key domain)
             ari-data    (load-ari-data storage issuer-key domain)]
         (cond-> bundle
@@ -235,13 +236,15 @@
       nil)))
 
 (defn- load-all-certificates!
-  "Load all existing certificates from storage.
+  "Load all existing certificates from storage into cache.
+
+  Certs are cached (available for TLS) but NOT managed (not renewed).
+  Use `manage-domains` to make domains managed after validation.
 
   Returns a sequence of loaded bundles."
   [system]
   (let [storage (:storage system)
         issuers (get-in system [:config :issuers])
-        managed-domains-atom (:managed-domains system)
         loaded-bundles (atom [])]
     (doseq [issuer issuers]
       (let [issuer-key (or (:issuer-key issuer)
@@ -249,10 +252,7 @@
         (when-let [domains (list-stored-domains storage issuer-key)]
           (doseq [domain domains]
             (when-let [bundle (load-certificate-bundle storage issuer-key domain)]
-              ;; Add to cache
               (cache/cache-certificate (:cache system) bundle)
-              ;; Track as managed domain
-              (swap! managed-domains-atom conj domain)
               (swap! loaded-bundles conj bundle))))))
     @loaded-bundles))
 
@@ -482,6 +482,7 @@
                          :hash     (:hash bundle)}})
       bundle)
     ;; Fallback: try to load from storage, but only for managed domains
+    ;; this ensures evicted certs can be reloaded, but unmanage-domains works
     (if-not (contains? @(:managed-domains system) hostname)
       (do
         (log/log! {:level :trace
@@ -491,17 +492,18 @@
         nil)
       (if-let [bundle (load-cert-from-storage-for-domain system hostname)]
         (do
-          (log/log! {:level :debug
+          (log/log! {:level :trace
                      :id    ::lookup-cert-storage-load
                      :data  {:hostname hostname
                              :subjects (:names bundle)
                              :managed  (:managed bundle)
                              :hash     (:hash bundle)}})
-          ;; Add to cache (this may evict another cert, which is fine)
+          ;; Add to cache and mark as managed (this may evict another cert)
           (cache/cache-certificate (:cache system) bundle)
+          (cache/mark-managed (:cache system) (:hash bundle))
           bundle)
         (do
-          (log/log! {:level :debug
+          (log/log! {:level :trace
                      :id    ::lookup-cert-miss
                      :data  {:hostname hostname
                              :reason   :not-in-storage}})
@@ -646,7 +648,7 @@
         key-pem (certificate/private-key->pem (.getPrivate cert-keypair))
         parsed (cert-parse/parse-pem-chain chain-pem)
         certs (::specs/certificates parsed)
-        bundle (cache/create-bundle certs (.getPrivate cert-keypair) issuer-key)]
+        bundle (cache/create-bundle certs (.getPrivate cert-keypair) issuer-key true)]
     (store-certificate! system domain issuer-key chain-pem key-pem [domain])
     {:status :success :bundle bundle}))
 
@@ -1161,15 +1163,12 @@
   "See [[ol.clave.automation/manage-domains]]"
   [system domains]
   (let [config (:config system)
-        skip-validation? (:skip-domain-validation config)
-        ;; Validate all domains first, before making any changes (unless skipped)
-        validation-results (if skip-validation?
-                             (map (fn [d] [d nil]) domains)
-                             (map (fn [d] [d (domain/validate-domain d config)]) domains))
+        ;; Validate all domains first, before making any changes
+        validation-results (map (fn [d] [d (domain/validate-domain d config)]) domains)
         errors (keep (fn [[_ err]] err) validation-results)]
     (if (seq errors)
-      ;; Return errors immediately - don't add any domains
-      {:errors (vec errors)}
+      ;; Throw exception - don't add any domains
+      (throw (ex-info "Invalid domains" {:errors (vec errors)}))
       ;; All domains are valid - proceed with adding them
       (do
         (doseq [d domains]
@@ -1177,10 +1176,14 @@
           (swap! (:managed-domains system) conj d)
           ;; Emit domain-added event
           (emit-event! system (create-domain-added-event d))
-          ;; Submit obtain-certificate command
-          (submit-command! system {:command :obtain-certificate
-                                   :domain d
-                                   :identifiers [d]}))
+          ;; Check if cert already cached (loaded from storage on startup)
+          (if-let [bundle (cache/lookup-cert (:cache system) d)]
+            ;; Cert exists - mark it as managed, skip obtain
+            (cache/mark-managed (:cache system) (:hash bundle))
+            ;; No cert - submit obtain-certificate command
+            (submit-command! system {:command :obtain-certificate
+                                     :domain d
+                                     :identifiers [d]})))
         nil))))
 
 (defn unmanage-domains
@@ -1190,19 +1193,16 @@
         managed-domains-atom (:managed-domains system)
         ^ConcurrentHashMap in-flight (:in-flight system)]
     (doseq [domain domains]
-      ;; Find the certificate bundle for this domain
+      ;; remove from cache
       (when-let [bundle (cache/lookup-cert cache-atom domain)]
-        ;; Remove from cache
         (cache/remove-certificate cache-atom bundle))
-      ;; Remove from managed domains set
+      ;; remove from managed domains set
       (swap! managed-domains-atom disj domain)
-      ;; Cancel any in-flight commands for this domain
-      ;; Commands are keyed by [command-type domain]
+      ;; cancel any in-flight commands for this domain
       (.remove in-flight [:obtain-certificate domain])
       (.remove in-flight [:renew-certificate domain])
       (.remove in-flight [:fetch-ocsp domain])
       (.remove in-flight [:check-ari domain])
-      ;; Emit domain-removed event
       (emit-event! system (create-domain-removed-event domain)))))
 
 (defn list-domains

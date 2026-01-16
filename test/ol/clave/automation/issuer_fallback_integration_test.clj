@@ -101,8 +101,7 @@
                                            {:directory-url (str "https://localhost:" (:listen-port ports-b) "/dir")}]
                                  :issuer-selection :in-order
                                  :solvers {:http-01 solver}
-                                 :http-client pebble/http-client-opts
-                                 :skip-domain-validation true}
+                                 :http-client pebble/http-client-opts}
               system (automation/start automation-config)]
           (try
             (let [queue (automation/get-event-queue system)]
@@ -203,8 +202,7 @@
                                             :external-account {:kid eab-kid
                                                                :mac-key eab-mac-key}}]
                                  :solvers {:http-01 solver}
-                                 :http-client pebble/http-client-opts
-                                 :skip-domain-validation true}
+                                 :http-client pebble/http-client-opts}
               system (automation/start automation-config)]
           (try
             (let [queue (automation/get-event-queue system)]

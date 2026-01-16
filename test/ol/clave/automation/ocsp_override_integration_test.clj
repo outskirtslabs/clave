@@ -63,7 +63,6 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :http-client pebble/http-client-opts
-                  :skip-domain-validation true
                   :solvers {:http-01 solver}
                   :ocsp {:enabled true
                          ;; Map fake URL to our mock responder
@@ -119,7 +118,6 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :http-client pebble/http-client-opts
-                  :skip-domain-validation true
                   :solvers {:http-01 solver}
                   :ocsp {:enabled true
                          ;; No override - will try to reach fake-ocsp-url which doesn't exist

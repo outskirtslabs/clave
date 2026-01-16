@@ -62,8 +62,7 @@
                             :tls-alpn-01 working-tls-alpn01-solver}
                   ;; Force HTTP-01 to be tried first via preferred-challenges
                   :preferred-challenges [:http-01 :tls-alpn-01]
-                  :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                  :http-client pebble/http-client-opts}
           system (automation/start config)]
       (try
         (let [queue (automation/get-event-queue system)]

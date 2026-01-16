@@ -8,31 +8,45 @@
    [java.nio.file Files]
    [java.nio.file.attribute FileAttribute]))
 
+(def ^:private public-ca-config
+  "Config with a public CA (Let's Encrypt) for testing public CA validations."
+  {:issuers [{:directory-url "https://acme-v02.api.letsencrypt.org/directory"}]})
+
+(def ^:private private-ca-config
+  "Config with a non-public CA (Pebble) for testing private CA behavior."
+  {:issuers [{:directory-url "https://localhost:14000/dir"}]})
+
 (deftest validate-domain-reserved-tlds-test
-  (testing "localhost rejected"
-    (let [r (domain/validate-domain "localhost" {})]
+  (testing "localhost rejected with public CA"
+    (let [r (domain/validate-domain "localhost" public-ca-config)]
       (is (= :invalid-domain (:error r)))
       (is (re-find #"localhost" (:message r)))))
 
-  (testing ".local rejected"
-    (is (= :invalid-domain (:error (domain/validate-domain "test.local" {}))))
-    (is (= :invalid-domain (:error (domain/validate-domain "app.my.local" {})))))
+  (testing "localhost accepted with private CA"
+    (is (nil? (domain/validate-domain "localhost" private-ca-config))))
 
-  (testing ".internal rejected"
-    (is (= :invalid-domain (:error (domain/validate-domain "app.internal" {}))))
-    (is (= :invalid-domain (:error (domain/validate-domain "service.foo.internal" {})))))
+  (testing ".local rejected with public CA"
+    (is (= :invalid-domain (:error (domain/validate-domain "test.local" public-ca-config))))
+    (is (= :invalid-domain (:error (domain/validate-domain "app.my.local" public-ca-config)))))
 
-  (testing ".test rejected"
-    (is (= :invalid-domain (:error (domain/validate-domain "example.test" {}))))
-    (is (= :invalid-domain (:error (domain/validate-domain "foo.bar.test" {})))))
+  (testing ".local accepted with private CA"
+    (is (nil? (domain/validate-domain "test.local" private-ca-config))))
 
-  (testing ".localhost rejected"
-    (is (= :invalid-domain (:error (domain/validate-domain "foo.localhost" {}))))
-    (is (= :invalid-domain (:error (domain/validate-domain "bar.baz.localhost" {})))))
+  (testing ".internal rejected with public CA"
+    (is (= :invalid-domain (:error (domain/validate-domain "app.internal" public-ca-config))))
+    (is (= :invalid-domain (:error (domain/validate-domain "service.foo.internal" public-ca-config)))))
 
-  (testing ".home.arpa rejected"
-    (is (= :invalid-domain (:error (domain/validate-domain "myhost.home.arpa" {}))))
-    (is (= :invalid-domain (:error (domain/validate-domain "printer.lan.home.arpa" {})))))
+  (testing ".test rejected with public CA"
+    (is (= :invalid-domain (:error (domain/validate-domain "example.test" public-ca-config))))
+    (is (= :invalid-domain (:error (domain/validate-domain "foo.bar.test" public-ca-config)))))
+
+  (testing ".localhost rejected with public CA"
+    (is (= :invalid-domain (:error (domain/validate-domain "foo.localhost" public-ca-config))))
+    (is (= :invalid-domain (:error (domain/validate-domain "bar.baz.localhost" public-ca-config)))))
+
+  (testing ".home.arpa rejected with public CA"
+    (is (= :invalid-domain (:error (domain/validate-domain "myhost.home.arpa" public-ca-config))))
+    (is (= :invalid-domain (:error (domain/validate-domain "printer.lan.home.arpa" public-ca-config)))))
 
   (testing "valid public domains accepted"
     (is (nil? (domain/validate-domain "example.com" {})))
@@ -75,19 +89,28 @@
       (is (= :invalid-domain (:error r)))
       (is (re-find #"HTTP-01 or TLS-ALPN-01" (:message r)))))
 
-  (testing "private IPv4 always rejected"
-    (let [cfg {:solvers {:http-01 {:some :solver}}}]
+  (testing "private IPv4 rejected with public CA"
+    (let [cfg (merge public-ca-config {:solvers {:http-01 {:some :solver}}})]
       (is (= :invalid-domain (:error (domain/validate-domain "192.168.1.1" cfg))))
       (is (= :invalid-domain (:error (domain/validate-domain "10.0.0.1" cfg))))
       (is (= :invalid-domain (:error (domain/validate-domain "172.16.0.1" cfg))))
       (is (= :invalid-domain (:error (domain/validate-domain "127.0.0.1" cfg))))
       (is (= :invalid-domain (:error (domain/validate-domain "169.254.1.1" cfg))))))
 
-  (testing "private IPv6 always rejected"
-    (let [cfg {:solvers {:http-01 {:some :solver}}}]
+  (testing "private IPv4 accepted with private CA"
+    (let [cfg (merge private-ca-config {:solvers {:http-01 {:some :solver}}})]
+      (is (nil? (domain/validate-domain "192.168.1.1" cfg)))
+      (is (nil? (domain/validate-domain "127.0.0.1" cfg)))))
+
+  (testing "private IPv6 rejected with public CA"
+    (let [cfg (merge public-ca-config {:solvers {:http-01 {:some :solver}}})]
       (is (= :invalid-domain (:error (domain/validate-domain "::1" cfg))))
       (is (= :invalid-domain (:error (domain/validate-domain "fe80::1" cfg))))
       (is (= :invalid-domain (:error (domain/validate-domain "fc00::1" cfg))))))
+
+  (testing "private IPv6 accepted with private CA"
+    (let [cfg (merge private-ca-config {:solvers {:http-01 {:some :solver}}})]
+      (is (nil? (domain/validate-domain "::1" cfg)))))
 
   (testing "public IPv6 accepted with http-01 solver"
     (let [cfg {:solvers {:http-01 {:some :solver}}}]
@@ -161,8 +184,12 @@
   (testing "rejects localhost"
     (let [sys (automation/start (test-config (temp-dir)))]
       (try
-        (let [r (automation/manage-domains sys ["localhost"])
-              err (first (:errors r))]
+        (let [ex (try
+                   (automation/manage-domains sys ["localhost"])
+                   nil
+                   (catch clojure.lang.ExceptionInfo e e))
+              err (first (:errors (ex-data ex)))]
+          (is (some? ex) "Expected exception to be thrown")
           (is (= :invalid-domain (:error err)))
           (is (re-find #"localhost" (:message err))))
         (finally
@@ -171,8 +198,12 @@
   (testing "rejects .local domains"
     (let [sys (automation/start (test-config (temp-dir)))]
       (try
-        (let [r (automation/manage-domains sys ["test.local"])]
-          (is (= :invalid-domain (:error (first (:errors r))))))
+        (let [ex (try
+                   (automation/manage-domains sys ["test.local"])
+                   nil
+                   (catch clojure.lang.ExceptionInfo e e))]
+          (is (some? ex) "Expected exception to be thrown")
+          (is (= :invalid-domain (:error (first (:errors (ex-data ex)))))))
         (finally
           (automation/stop sys)))))
 
@@ -186,8 +217,12 @@
   (testing "rejects wildcards without dns-01"
     (let [sys (automation/start (test-config (temp-dir)))]
       (try
-        (let [r (automation/manage-domains sys ["*.example.com"])
-              err (first (:errors r))]
+        (let [ex (try
+                   (automation/manage-domains sys ["*.example.com"])
+                   nil
+                   (catch clojure.lang.ExceptionInfo e e))
+              err (first (:errors (ex-data ex)))]
+          (is (some? ex) "Expected exception to be thrown")
           (is (= :invalid-domain (:error err)))
           (is (re-find #"DNS-01" (:message err))))
         (finally
@@ -196,8 +231,12 @@
   (testing "rejects directory traversal"
     (let [sys (automation/start (test-config (temp-dir)))]
       (try
-        (let [r (automation/manage-domains sys ["../../../etc/passwd"])
-              err (first (:errors r))]
+        (let [ex (try
+                   (automation/manage-domains sys ["../../../etc/passwd"])
+                   nil
+                   (catch clojure.lang.ExceptionInfo e e))
+              err (first (:errors (ex-data ex)))]
+          (is (some? ex) "Expected exception to be thrown")
           (is (= :invalid-domain (:error err)))
           (is (re-find #"directory traversal" (:message err))))
         (finally

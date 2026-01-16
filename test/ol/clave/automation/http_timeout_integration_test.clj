@@ -99,8 +99,7 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
-                  :http-client http-opts
-                  :skip-domain-validation true}
+                  :http-client http-opts}
           system (automation/start config)]
       (try
         (let [queue (automation/get-event-queue system)]

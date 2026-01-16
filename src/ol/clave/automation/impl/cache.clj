@@ -142,6 +142,23 @@
              (assoc-in cache [:certs hash :ari-data] ari-data)
              cache))))
 
+(defn mark-managed
+  "Set the :managed flag on a cached bundle.
+
+  Used when a previously-cached (unmanaged) certificate becomes managed
+  via `manage-domains` after passing validation.
+
+  | key      | description                           |
+  |----------|---------------------------------------|
+  | `cache_` | Atom containing {:certs {} :index {}} |
+  | `hash`   | Hash of the certificate to update     |"
+  [cache_ hash]
+  (swap! cache_
+         (fn [cache]
+           (if (get-in cache [:certs hash])
+             (assoc-in cache [:certs hash :managed] true)
+             cache))))
+
 (defn newer-than-cache?
   "Check if a stored certificate is newer than the cached version.
 
@@ -208,8 +225,9 @@
   |---------------|-----------------------------------------------------|
   | `certs`       | Vector of X509Certificate objects (chain)           |
   | `private-key` | Private key for the certificate                     |
-  | `issuer-key`  | Identifier for the issuer (e.g., CA directory host) |"
-  [certs private-key issuer-key]
+  | `issuer-key`  | Identifier for the issuer (e.g., CA directory host) |
+  | `managed?`    | Whether cert is actively managed for renewal        |"
+  [certs private-key issuer-key managed?]
   (let [^X509Certificate leaf-cert (first certs)
         names (extract-sans leaf-cert)
         cert-bytes (mapv #(.getEncoded ^X509Certificate %) certs)
@@ -223,7 +241,7 @@
      :not-before not-before
      :not-after not-after
      :issuer-key issuer-key
-     :managed true}))
+     :managed managed?}))
 
 (defn handle-command-result
   "Update cache based on command result.

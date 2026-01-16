@@ -71,7 +71,6 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
-                  :skip-domain-validation true
                   :ocsp {:enabled false}
                   :ari {:enabled false}}
           system (automation/start config)

@@ -52,7 +52,6 @@
       (let [config {:storage storage-impl
                     :issuers [{:directory-url (pebble/uri)}]
                     :http-client pebble/http-client-opts
-                    :skip-domain-validation true
                     :ocsp {:enabled true}}  ; OCSP explicitly enabled
             system (automation/start config)]
         (try
@@ -117,7 +116,6 @@
       (let [config {:storage storage-impl
                     :issuers [{:directory-url (pebble/uri)}]
                     :http-client pebble/http-client-opts
-                    :skip-domain-validation true
                     :ocsp {:enabled true}}
             system (automation/start config)]
         (try
@@ -172,7 +170,6 @@
       (let [config {:storage storage-impl
                     :issuers [{:directory-url (pebble/uri)}]
                     :http-client pebble/http-client-opts
-                    :skip-domain-validation true
                     :ocsp {:enabled false}}  ; OCSP explicitly disabled
             system (automation/start config)]
         (try

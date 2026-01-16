@@ -44,8 +44,7 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
-                  :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                  :http-client pebble/http-client-opts}
           system (automation/start config)]
       (try
         (let [queue (automation/get-event-queue system)]
@@ -87,8 +86,7 @@
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
-                  :http-client pebble/http-client-opts
-                  :skip-domain-validation true}]
+                  :http-client pebble/http-client-opts}]
       ;; First run: obtain certificate (creates account)
       (let [system1 (automation/start config)
             queue1 (automation/get-event-queue system1)]
@@ -145,8 +143,7 @@
                   :issuers [{:directory-url (pebble/uri)
                              :email "test@example.com"}]
                   :solvers {:http-01 solver}
-                  :http-client pebble/http-client-opts
-                  :skip-domain-validation true}
+                  :http-client pebble/http-client-opts}
           system (automation/start config)]
       (try
         (let [queue (automation/get-event-queue system)]

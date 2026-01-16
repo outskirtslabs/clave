@@ -87,25 +87,12 @@
 (defn manage-domains
   "Adds domains to management, triggering immediate certificate obtain.
 
-  Validates each domain before adding. Invalid domains are rejected
-  immediately with a clear error.
+  Returns `nil` on success.
+  Throws with `:errors` in ex-data if any domain is invalid.
 
-  Returns:
-  - `nil` if all domains are valid and were queued for certificate obtain
-  - Error map with `:errors` vector if any domains are invalid
-
-  Invalid domains include:
-  - localhost
-  - .local, .internal, .test TLDs
-  - IP addresses without HTTP-01 or TLS-ALPN-01 solver
-  - Wildcard domains without DNS-01 solver
-
-  Validation can be bypassed by setting `:skip-domain-validation true`
-  in the automation config (testing only).
-
-  | key | description |
-  |-----|-------------|
-  | `system` | System handle from `start` |
+  | key       | description                      |
+  |-----------|----------------------------------|
+  | `system`  | System handle from `start`       |
   | `domains` | Vector of domain names to manage |"
   [system domains]
   (system/manage-domains system domains))
@@ -116,9 +103,9 @@
   Stops renewal and maintenance for these domains.
   Certificates remain in storage but are no longer actively managed.
 
-  | key | description |
-  |-----|-------------|
-  | `system` | System handle from `start` |
+  | key       | description                        |
+  |-----------|------------------------------------|
+  | `system`  | System handle from `start`         |
   | `domains` | Vector of domain names to unmanage |"
   [system domains]
   (system/unmanage-domains system domains))
@@ -129,10 +116,10 @@
   Tries exact match first, then wildcard match.
   Returns the certificate bundle or nil if not found.
 
-  | key | description |
-  |-----|-------------|
-  | `system` | System handle from `start` |
-  | `hostname` | Hostname to look up |"
+  | key        | description                |
+  |------------|----------------------------|
+  | `system`   | System handle from `start` |
+  | `hostname` | Hostname to look up        |"
   [system hostname]
   (system/lookup-cert system hostname))
 

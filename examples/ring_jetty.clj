@@ -1,5 +1,5 @@
 (ns ring-jetty
-  "Using clave automation with ring-jetty-adapter for auto-renewing TLS.
+  "Use clave with ring-jetty-adapter for auto-renewing HTTPS.
 
   This example demonstrates:
   1. Starting Jetty with clave automation for auto-renewing certificates
@@ -18,8 +18,8 @@
 
   Test the servers:
 
-    curl http://localhost:8081
-    curl -k https://localhost:8443
+    curl -vk http://localhost:8081
+    curl -vk https://localhost:8443
 
   Check the certificate:
 
@@ -42,14 +42,14 @@
 (defn -main
   "Main entry point for the example."
   [& _args]
-  (println "Starting clave + Jetty...")
+  (println "Starting Jetty w/ clave")
   (let [ctx (clave-jetty/run-jetty
              hello-handler
-             {;; these are stnadard jetty adapter run-jetty optiosn
+             {;; these are standard jetty adapter run-jetty options
               :port                8081
               :ssl-port            8443
               ::clave-jetty/config {:domains      ["localhost"]
-                                    ;; in prod the remaining config keys are not necessary, they are only for this demo env
+                                    ;; in prod the remaining config keys are not necessary, they are only for this demo environment
                                     :storage     (file-storage/file-storage "/tmp/clave-ring-jetty-example")
                                     :issuers     [{:directory-url "https://localhost:14000/dir"
                                                    :email         "admin@example.com"}]

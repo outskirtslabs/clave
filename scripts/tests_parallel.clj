@@ -13,12 +13,13 @@
   (edn/read-string (slurp timings-file)))
 
 (defn list-test-ids
-  "Returns seq of keywords, one for each test namespace"
+  "Returns seq of keywords, one for each test namespace ending in -test"
   []
   (->> (kr/test-plan)
        (kt/test-seq)
        (filter #(= :kaocha.type/ns (:kaocha.testable/type %)))
        (map :kaocha.testable/id)
+       (filter #(re-find #"-test$" (name %)))
        sort))
 
 (defn split-into-buckets

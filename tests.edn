@@ -10,5 +10,9 @@
             :kaocha.plugin/timing-edn
             :kaocha.plugin/print-invocations]
   :tests
-  [{:id         :clave
+  [{:id         :unit
+    :kaocha/ns-patterns   ["^(?!.*-integration-test$)"]
+    :test-paths ["test"]}
+   {:id         :integration
+    :kaocha/ns-patterns   ["-integration-test$"]
     :test-paths ["test"]}]}

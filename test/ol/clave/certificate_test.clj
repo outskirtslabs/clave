@@ -1,8 +1,10 @@
 (ns ol.clave.certificate-test
-  "Unit tests for ol.clave.certificate - challenge selection, solver validation,
-  and distributed challenge token storage."
   (:require
+   [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
+   [ol.clave.acme.account :as account]
+   [ol.clave.acme.impl.stats :as stats]
+   [ol.clave.acme.solver.http :as http-solver]
    [ol.clave.automation.impl.config :as config]
    [ol.clave.certificate :as certificate]
    [ol.clave.certificate.impl.keygen :as keygen]
@@ -12,7 +14,6 @@
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage]))
 
-;; Access private function for testing
 (def select-challenge @#'ol.clave.certificate/select-challenge)
 
 (deftest no-compatible-solver-fails-with-clear-error
@@ -289,3 +290,107 @@
       (is (not= (get-in solvers [:http-01 :present])
                 (get-in wrapped [:http-01 :present]))
           "HTTP-01 should be wrapped (different fn)"))))
+
+(deftest validate-solvers-test
+  (testing "accepts valid solver with :present and :cleanup"
+    (let [solver {:present (fn [_lease _challenge _account-key] {:token "abc"})
+                  :cleanup (fn [_lease _challenge _state] nil)}]
+      (is (nil? (certificate/validate-solvers {:http-01 solver})))))
+
+  (testing "rejects solver missing :present"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"missing.*:present"
+                          (certificate/validate-solvers {:http-01 {:cleanup (fn [_ _ _] nil)}}))))
+
+  (testing "rejects solver missing :cleanup"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"missing.*:cleanup"
+                          (certificate/validate-solvers {:http-01 {:present (fn [_ _ _] nil)}}))))
+
+  (testing "accepts optional :wait and :payload functions"
+    (let [solver {:present (fn [_ _ _] nil)
+                  :cleanup (fn [_ _ _] nil)
+                  :wait (fn [_ _ _] nil)
+                  :payload (fn [_ _] {})}]
+      (is (nil? (certificate/validate-solvers {:dns-01 solver})))))
+
+  (testing "ignores unknown keys"
+    (let [solver {:present (fn [_ _ _] nil)
+                  :cleanup (fn [_ _ _] nil)
+                  :user-metadata {:description "custom"}}]
+      (is (nil? (certificate/validate-solvers {:http-01 solver}))))))
+
+(deftest challenge-stats-test
+  (testing "untried challenge types return success ratio 1.0"
+    (stats/reset-all!)
+    (is (= 1.0 (stats/success-ratio :http-01))))
+
+  (testing "records successes and failures correctly"
+    (stats/reset-all!)
+    (stats/record! :http-01 true)
+    (is (= {:attempts 1 :successes 1} (stats/get-stats :http-01)))
+
+    (stats/record! :http-01 false)
+    (is (= {:attempts 2 :successes 1} (stats/get-stats :http-01))))
+
+  (testing "computes ratio correctly"
+    (stats/reset-all!)
+    (stats/record! :dns-01 true)
+    (stats/record! :dns-01 true)
+    (stats/record! :dns-01 false)
+    (stats/record! :dns-01 false)
+    (is (= 0.5 (stats/success-ratio :dns-01)))))
+
+(deftest http01-solver-test
+  (testing "present adds token to registry"
+    (let [solver (http-solver/solver)
+          registry (:registry solver)
+          state ((:present solver) nil {:ol.clave.specs/token "tok-123"} (account/generate-keypair))]
+      (is (= "tok-123" (:token state)))
+      (is (str/starts-with? (get @registry "tok-123") "tok-123."))))
+
+  (testing "cleanup removes token from registry"
+    (let [solver (http-solver/solver)
+          registry (:registry solver)
+          _ (reset! registry {"tok-123" "key-auth"})]
+      ((:cleanup solver) nil {:ol.clave.specs/token "tok-123"} {:token "tok-123"})
+      (is (empty? @registry)))))
+
+(deftest wrap-acme-challenge-test
+  (testing "serves key-authorization for registered token"
+    (let [solver (http-solver/solver)
+          _ (reset! (:registry solver) {"test-token" "test-token.key-auth"})
+          handler (http-solver/wrap-acme-challenge (fn [_] {:status 200 :body "app"}) solver)
+          response (handler {:uri "/.well-known/acme-challenge/test-token"})]
+      (is (= 200 (:status response)))
+      (is (= "test-token.key-auth" (:body response)))))
+
+  (testing "returns 404 for unknown token"
+    (let [solver (http-solver/solver)
+          handler (http-solver/wrap-acme-challenge (fn [_] {:status 200 :body "app"}) solver)
+          response (handler {:uri "/.well-known/acme-challenge/unknown-token"})]
+      (is (= 404 (:status response)))))
+
+  (testing "passes through non-challenge requests"
+    (let [solver (http-solver/solver)
+          handler (http-solver/wrap-acme-challenge (fn [_] {:status 200 :body "app"}) solver)
+          response (handler {:uri "/other-path"})]
+      (is (= 200 (:status response)))
+      (is (= "app" (:body response))))))
+
+(deftest identifiers-from-sans-test
+  (testing "detects DNS names"
+    (is (= [{:type "dns" :value "example.com"}]
+           (certificate/identifiers-from-sans ["example.com"]))))
+
+  (testing "detects IPv4 addresses"
+    (is (= [{:type "ip" :value "192.168.1.1"}]
+           (certificate/identifiers-from-sans ["192.168.1.1"]))))
+
+  (testing "detects IPv6 addresses"
+    (is (= [{:type "ip" :value "2001:db8::1"}]
+           (certificate/identifiers-from-sans ["2001:db8::1"]))))
+
+  (testing "handles mixed SANs"
+    (is (= [{:type "dns" :value "example.com"}
+            {:type "ip" :value "10.0.0.1"}
+            {:type "dns" :value "www.example.com"}]
+           (certificate/identifiers-from-sans ["example.com" "10.0.0.1" "www.example.com"])))))

@@ -91,6 +91,7 @@
   - [[ol.clave.storage]] - Storage protocol and utilities
   - [[ol.clave.lease]] - Cooperative cancellation"
   (:require
+   [taoensso.trove :as t]
    [clojure.string :as str]
    [ol.clave.lease :as lease]
    [ol.clave.storage :as storage])
@@ -403,25 +404,6 @@
   Object
   (toString [_] (str "FileStorage:" root)))
 
-(defn file-storage
-  "Creates a [[FileStorage]] rooted at `root`.
-
-  `root` may be a string or [[java.nio.file.Path]].
-  The directory is created if it does not exist.
-  Returns a record implementing [[ol.clave.storage/Storage]] and
-  [[ol.clave.storage/TryLocker]].
-
-  ```clojure
-  (def storage (file-storage \"/var/lib/acme\"))
-  (def storage (file-storage (java.nio.file.Paths/get \"/var/lib/acme\")))
-  ```"
-  [root]
-  (let [^Path p (if (instance? Path root)
-                  root
-                  (Paths/get (str root) (make-array String 0)))]
-    (create-dirs! p)
-    (->FileStorage (.normalize p))))
-
 ;;;; Directory helpers
 ;;
 ;; These helpers follow the XDG Base Directory Specification and integrate
@@ -661,3 +643,22 @@
      systemd-dir
      (when-let [base (data-dir)]
        (str base "/" app-name)))))
+
+(defn file-storage
+  "Creates a [[FileStorage]] rooted at `root. 
+
+  `root` may be a string or [[java.nio.file.Path]].
+  The directory is created if it does not exist.
+  
+  Default: \"ol.clave\" subdir inside [[data-dir]]
+
+  Returns a record implementing [[ol.clave.storage/Storage]] and [[ol.clave.storage/TryLocker]]."
+  ([]
+   (file-storage (data-dir "ol.clave")))
+  ([root]
+   (let [^Path p (if (instance? Path root)
+                   root
+                   (Paths/get (str root) (make-array String 0)))]
+     (create-dirs! p)
+     (t/log! {:level :info :id ::initialized :data {:path (str p)}})
+     (->FileStorage (.normalize p)))))

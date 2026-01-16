@@ -6,6 +6,7 @@
   (:require
    [clojure.edn :as edn]
    [clojure.string :as str]
+   [ol.clave.storage.file :as file]
    [ol.clave.acme.account :as account]
    [ol.clave.acme.commands :as cmd]
    [ol.clave.automation.impl.cache :as cache]
@@ -87,12 +88,6 @@
                       {:type :storage-error
                        :cause e}
                       e)))))
-
-(defn- merge-with-defaults
-  "Merges user config with default configuration."
-  [user-config]
-  (let [defaults (config/default-config)]
-    (merge defaults user-config)))
 
 (defn- create-system-state
   "Creates the initial system state map."
@@ -416,26 +411,23 @@
 (defn start
   "See [[ol.clave.automation/start]]"
   [config]
-  (when-not (:storage config)
-    (throw (ex-info "Storage is required" {:type :config-error})))
-  ;; Validate storage first
-  (validate-storage! (:storage config))
-  ;; Merge with defaults
-  (let [merged-config (merge-with-defaults config)
-        system (create-system-state merged-config)
-        ;; Initialize event queue before loading certificates
-        ;; so events can be emitted during loading
-        _ (reset! (:event-queue system) (LinkedBlockingQueue.))
-        ;; Load existing certificates from storage
-        loaded-bundles (load-all-certificates! system)]
-    ;; Emit certificate-loaded events for each bundle
-    (doseq [bundle loaded-bundles]
-      (emit-event! system (decisions/create-certificate-loaded-event bundle)))
-    ;; Start maintenance loop
-    (start-maintenance-loop! system)
-    ;; Mark as started
-    (reset! (:started? system) true)
-    system))
+  (let [storage (:storage config (file/file-storage))]
+    (validate-storage! storage)
+    (let [merged-config  (merge (config/default-config) (assoc config :storage storage))
+          system (create-system-state merged-config)
+          ;; Initialize event queue before loading certificates
+          ;; so events can be emitted during loading
+          _              (reset! (:event-queue system) (LinkedBlockingQueue.))
+          ;; Load existing certificates from storage
+          loaded-bundles (load-all-certificates! system)]
+      ;; Emit certificate-loaded events for each bundle
+      (doseq [bundle loaded-bundles]
+        (emit-event! system (decisions/create-certificate-loaded-event bundle)))
+      ;; Start maintenance loop
+      (start-maintenance-loop! system)
+      ;; Mark as started
+      (reset! (:started? system) true)
+      system)))
 
 (defn stop
   "See [[ol.clave.automation/stop]]"
@@ -480,13 +472,40 @@
 (defn lookup-cert
   "See [[ol.clave.automation/lookup-cert]]"
   [system hostname]
-  (or (cache/lookup-cert (:cache system) hostname)
-      ;; Fallback: try to load from storage, but only for managed domains
-      (when (contains? @(:managed-domains system) hostname)
-        (when-let [bundle (load-cert-from-storage-for-domain system hostname)]
+  (if-let [bundle (cache/lookup-cert (:cache system) hostname)]
+    (do
+      (log/log! {:level :trace
+                 :id    ::lookup-cert-cache-hit
+                 :data  {:hostname hostname
+                         :subjects (:names bundle)
+                         :managed  (:managed bundle)
+                         :hash     (:hash bundle)}})
+      bundle)
+    ;; Fallback: try to load from storage, but only for managed domains
+    (if-not (contains? @(:managed-domains system) hostname)
+      (do
+        (log/log! {:level :trace
+                   :id    ::lookup-cert-miss
+                   :data  {:hostname hostname
+                           :reason   :not-managed}})
+        nil)
+      (if-let [bundle (load-cert-from-storage-for-domain system hostname)]
+        (do
+          (log/log! {:level :debug
+                     :id    ::lookup-cert-storage-load
+                     :data  {:hostname hostname
+                             :subjects (:names bundle)
+                             :managed  (:managed bundle)
+                             :hash     (:hash bundle)}})
           ;; Add to cache (this may evict another cert, which is fine)
           (cache/cache-certificate (:cache system) bundle)
-          bundle))))
+          bundle)
+        (do
+          (log/log! {:level :debug
+                     :id    ::lookup-cert-miss
+                     :data  {:hostname hostname
+                             :reason   :not-in-storage}})
+          nil)))))
 
 ;;; Certificate Obtain Workflow
 

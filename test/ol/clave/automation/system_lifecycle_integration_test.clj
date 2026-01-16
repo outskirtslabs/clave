@@ -1,6 +1,5 @@
 (ns ol.clave.automation.system-lifecycle-integration-test
-  "Integration tests for automation system startup, shutdown, and storage initialization.
-  Tests run against Pebble ACME test server."
+  "Integration tests for automation system startup, shutdown, and storage initialization"
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.challenge :as challenge]
@@ -25,8 +24,8 @@
   (testing "starts and stops cleanly with minimal config"
     (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
           system (automation/create-started! {:storage storage
-                                             :issuers [{:directory-url (pebble/uri)}]
-                                             :http-client pebble/http-client-opts})]
+                                              :issuers [{:directory-url (pebble/uri)}]
+                                              :http-client pebble/http-client-opts})]
       (try
         (is (automation/started? system))
         (finally
@@ -45,8 +44,8 @@
                            (unlock! [_ _ _] nil))]
       (is (thrown-with-msg? Exception #"[Ss]torage"
                             (automation/create-started! {:storage broken-storage
-                                                        :issuers [{:directory-url (pebble/uri)}]
-                                                        :http-client pebble/http-client-opts}))))))
+                                                         :issuers [{:directory-url (pebble/uri)}]
+                                                         :http-client pebble/http-client-opts}))))))
 
 (deftest system-loads-certificates-test
   (testing "certificates stored from previous session are loaded on startup"
@@ -62,8 +61,8 @@
       (storage/store-string! storage nil (config/meta-storage-key issuer-key domain)
                              (pr-str {:names [domain] :issuer issuer-key}))
       (let [system (automation/create-started! {:storage storage
-                                               :issuers [{:directory-url (pebble/uri)}]
-                                               :http-client pebble/http-client-opts})]
+                                                :issuers [{:directory-url (pebble/uri)}]
+                                                :http-client pebble/http-client-opts})]
         (try
           (is (= {:names [domain] :issuer-key issuer-key}
                  (select-keys (automation/lookup-cert system domain) [:names :issuer-key])))
@@ -86,9 +85,9 @@
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
           system (automation/create-started! {:storage storage
-                                             :issuers [{:directory-url (pebble/uri)}]
-                                             :solvers {:http-01 solver}
-                                             :http-client pebble/http-client-opts})
+                                              :issuers [{:directory-url (pebble/uri)}]
+                                              :solvers {:http-01 solver}
+                                              :http-client pebble/http-client-opts})
           queue (automation/get-event-queue system)]
       ;; Start async certificate obtain
       (automation/manage-domains system [domain])

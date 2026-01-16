@@ -10,7 +10,6 @@
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
-   [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
    [java.time Instant]
@@ -29,22 +28,6 @@
               (pebble/challtestsrv-del-http01 (:token state))
               nil)})
 
-(defn- store-cert! [storage issuer-key domain test-cert]
-  (storage/store-string! storage nil (config/cert-storage-key issuer-key domain)
-                         (:certificate-pem test-cert))
-  (storage/store-string! storage nil (config/key-storage-key issuer-key domain)
-                         (:private-key-pem test-cert))
-  (storage/store-string! storage nil (config/meta-storage-key issuer-key domain)
-                         (pr-str {:names [domain] :issuer issuer-key :managed true})))
-
-(defn- collect-events [queue max-attempts poll-ms]
-  (loop [events [] attempts 0]
-    (if (>= attempts max-attempts)
-      events
-      (if-let [evt (.poll queue poll-ms TimeUnit/MILLISECONDS)]
-        (recur (conj events evt) (inc attempts))
-        events))))
-
 (defn- wait-for-renewal [queue domain timeout-ms]
   (loop [deadline (+ (System/currentTimeMillis) timeout-ms)
          renewed #{}]
@@ -61,11 +44,11 @@
           domain "interval.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           now (Instant/now)]
-      ;; Store a certificate that's past the renewal threshold (89 days old of 90 day lifetime)
-      (store-cert! storage issuer-key domain
-                   (test-util/generate-test-certificate domain
-                                                        (.minus now 89 ChronoUnit/DAYS)
-                                                        (.plus now 1 ChronoUnit/DAYS)))
+      (test-util/store-test-cert! storage issuer-key domain
+                                  (test-util/generate-test-certificate domain
+                                                                       (.minus now 89 ChronoUnit/DAYS)
+                                                                       (.plus now 1 ChronoUnit/DAYS))
+                                  {:managed true})
       (binding [system/*maintenance-interval-ms* 100
                 system/*maintenance-jitter-ms* 50]
         (let [t0 (System/currentTimeMillis)
@@ -94,10 +77,11 @@
           issuer-key (config/issuer-key-from-url (pebble/uri))
           now (Instant/now)]
       (doseq [domain domains]
-        (store-cert! storage issuer-key domain
-                     (test-util/generate-test-certificate domain
-                                                          (.minus now 1 ChronoUnit/DAYS)
-                                                          (.plus now 89 ChronoUnit/DAYS))))
+        (test-util/store-test-cert! storage issuer-key domain
+                                    (test-util/generate-test-certificate domain
+                                                                         (.minus now 1 ChronoUnit/DAYS)
+                                                                         (.plus now 89 ChronoUnit/DAYS))
+                                    {:managed true}))
       (let [config-fn (fn [domain]
                         (when (= domain "cont-b.localhost")
                           (throw (ex-info "Simulated failure" {:domain domain})))
@@ -111,7 +95,7 @@
             (try
               (let [queue (automation/get-event-queue system)]
                 (automation/trigger-maintenance! system)
-                (let [events (collect-events queue 15 500)
+                (let [events (test-util/collect-events queue 15 500)
                       renewed (->> events
                                    (filter #(= :certificate-renewed (:type %)))
                                    (map #(get-in % [:data :domain]))
@@ -133,10 +117,11 @@
           domain-y "timeout-ok.localhost"
           config-fn (fn [d] (when (= d domain-x) (Thread/sleep 60000)) nil)]
       (doseq [d [domain-x domain-y]]
-        (store-cert! storage issuer-key d
-                     (test-util/generate-test-certificate d
-                                                          (.minus now 1 ChronoUnit/DAYS)
-                                                          (.plus now 89 ChronoUnit/DAYS))))
+        (test-util/store-test-cert! storage issuer-key d
+                                    (test-util/generate-test-certificate d
+                                                                         (.minus now 1 ChronoUnit/DAYS)
+                                                                         (.plus now 89 ChronoUnit/DAYS))
+                                    {:managed true}))
       (binding [system/*config-fn-timeout-ms* 100
                 decisions/*renewal-threshold* 1.01]
         (let [system (automation/create-started! {:storage storage
@@ -147,7 +132,7 @@
           (try
             (let [queue (automation/get-event-queue system)]
               (automation/trigger-maintenance! system)
-              (let [events (collect-events queue 15 500)]
+              (let [events (test-util/collect-events queue 15 500)]
                 (is (some #(= domain-y (get-in % [:data :domain])) events))
                 (is (not (some #(and (= :certificate-renewed (:type %))
                                      (= domain-x (get-in % [:data :domain])))
@@ -163,10 +148,11 @@
           domain-y "throwing-ok.localhost"
           config-fn (fn [d] (when (= d domain-x) (throw (ex-info "Test" {:d d}))) nil)]
       (doseq [d [domain-x domain-y]]
-        (store-cert! storage issuer-key d
-                     (test-util/generate-test-certificate d
-                                                          (.minus now 1 ChronoUnit/DAYS)
-                                                          (.plus now 89 ChronoUnit/DAYS))))
+        (test-util/store-test-cert! storage issuer-key d
+                                    (test-util/generate-test-certificate d
+                                                                         (.minus now 1 ChronoUnit/DAYS)
+                                                                         (.plus now 89 ChronoUnit/DAYS))
+                                    {:managed true}))
       (binding [decisions/*renewal-threshold* 1.01]
         (let [system (automation/create-started! {:storage storage
                                                   :issuers [{:directory-url (pebble/uri)}]
@@ -176,7 +162,7 @@
           (try
             (let [queue (automation/get-event-queue system)]
               (automation/trigger-maintenance! system)
-              (let [events (collect-events queue 15 500)]
+              (let [events (test-util/collect-events queue 15 500)]
                 (is (some #(= domain-y (get-in % [:data :domain])) events))
                 (is (not (some #(and (= :certificate-renewed (:type %))
                                      (= domain-x (get-in % [:data :domain])))
@@ -193,18 +179,21 @@
           d-valid "valid.localhost"
           d-expired "expired.localhost"
           d-renewal "renewal.localhost"]
-      (store-cert! storage issuer-key d-valid
-                   (test-util/generate-test-certificate d-valid
-                                                        (.minus now 30 ChronoUnit/DAYS)
-                                                        (.plus now 60 ChronoUnit/DAYS)))
-      (store-cert! storage issuer-key d-expired
-                   (test-util/generate-test-certificate d-expired
-                                                        (.minus now 90 ChronoUnit/DAYS)
-                                                        (.minus now 1 ChronoUnit/DAYS)))
-      (store-cert! storage issuer-key d-renewal
-                   (test-util/generate-test-certificate d-renewal
-                                                        (.minus now 80 ChronoUnit/DAYS)
-                                                        (.plus now 10 ChronoUnit/DAYS)))
+      (test-util/store-test-cert! storage issuer-key d-valid
+                                  (test-util/generate-test-certificate d-valid
+                                                                       (.minus now 30 ChronoUnit/DAYS)
+                                                                       (.plus now 60 ChronoUnit/DAYS))
+                                  {:managed true})
+      (test-util/store-test-cert! storage issuer-key d-expired
+                                  (test-util/generate-test-certificate d-expired
+                                                                       (.minus now 90 ChronoUnit/DAYS)
+                                                                       (.minus now 1 ChronoUnit/DAYS))
+                                  {:managed true})
+      (test-util/store-test-cert! storage issuer-key d-renewal
+                                  (test-util/generate-test-certificate d-renewal
+                                                                       (.minus now 80 ChronoUnit/DAYS)
+                                                                       (.plus now 10 ChronoUnit/DAYS))
+                                  {:managed true})
       (let [system (automation/create-started! {:storage storage
                                                 :issuers [{:directory-url (pebble/uri)}]
                                                 :solvers {:http-01 (make-solver)}

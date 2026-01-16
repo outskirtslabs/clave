@@ -15,4 +15,7 @@
     :test-paths ["test"]}
    {:id         :integration
     :kaocha/ns-patterns   ["-integration-test$"]
+    :test-paths ["test"]}
+   {:id         :ocsp
+    :kaocha/ns-patterns   ["ocsp"]
     :test-paths ["test"]}]}

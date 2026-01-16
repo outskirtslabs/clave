@@ -6,6 +6,7 @@
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.acme.commands :as commands]
    [ol.clave.acme.order :as order]
+   [ol.clave.automation.impl.config :as config]
    [ol.clave.certificate.impl.csr :as csr]
    [ol.clave.certificate.impl.keygen :as kg]
    [ol.clave.certificate.impl.x509 :as x509]
@@ -13,14 +14,16 @@
    [ol.clave.crypto.impl.der :as der]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.lease :as lease]
-   [ol.clave.specs :as specs])
+   [ol.clave.specs :as specs]
+   [ol.clave.storage :as storage])
   (:import
    [java.io ByteArrayInputStream]
    [java.security KeyPairGenerator SecureRandom Signature]
    [java.security.cert CertificateFactory]
    [java.security.spec ECGenParameterSpec]
    [java.time Instant]
-   [java.util Date]))
+   [java.util Date]
+   [java.util.concurrent TimeUnit]))
 
 ((requiring-resolve 'hashp.install/install!))
 
@@ -284,3 +287,69 @@
      :private-key private-key
      :private-key-pem private-key-pem
      :keypair keypair}))
+
+(defn store-test-cert!
+  "Store a test certificate in storage for automation tests.
+
+  Arguments:
+  - storage: Storage implementation
+  - issuer-key: Issuer key string (e.g., from config/issuer-key-from-url)
+  - domain: Domain name for the certificate
+  - test-cert: Certificate map from generate-test-certificate
+  - opts: Optional map with :managed (default false)
+
+  Stores certificate PEM, private key PEM, and metadata."
+  ([storage issuer-key domain test-cert]
+   (store-test-cert! storage issuer-key domain test-cert {}))
+  ([storage issuer-key domain test-cert {:keys [managed] :or {managed false}}]
+   (storage/store-string! storage nil (config/cert-storage-key issuer-key domain)
+                          (:certificate-pem test-cert))
+   (storage/store-string! storage nil (config/key-storage-key issuer-key domain)
+                          (:private-key-pem test-cert))
+   (storage/store-string! storage nil (config/meta-storage-key issuer-key domain)
+                          (pr-str (cond-> {:names [domain] :issuer issuer-key}
+                                    managed (assoc :managed true))))))
+
+(defn collect-events
+  "Collect events from a queue until max-attempts reached or queue is empty.
+  Returns early on first nil (no event within timeout).
+
+  Arguments:
+  - queue: LinkedBlockingQueue from automation/get-event-queue
+  - max-attempts: Maximum number of poll attempts
+  - poll-ms: Timeout per poll in milliseconds (default 100)
+
+  Returns vector of collected events."
+  ([queue max-attempts]
+   (collect-events queue max-attempts 100))
+  ([queue max-attempts poll-ms]
+   (loop [events [] n 0]
+     (if (>= n max-attempts)
+       events
+       (if-let [evt (.poll ^java.util.concurrent.LinkedBlockingQueue queue
+                           poll-ms TimeUnit/MILLISECONDS)]
+         (recur (conj events evt) (inc n))
+         events)))))
+
+(defn collect-events-async
+  "Collect events from a queue, polling all max-count attempts even on nil.
+  Use for async tests where events may arrive with gaps.
+
+  Arguments:
+  - queue: LinkedBlockingQueue from automation/get-event-queue
+  - max-count: Number of poll iterations (continues on nil)
+  - poll-ms: Timeout per poll in milliseconds
+
+  Total wait time = max-count * poll-ms.
+  Example: (collect-events-async queue 10 200) = 2s max wait.
+
+  Returns vector of collected events."
+  [queue max-count poll-ms]
+  (loop [events [] n 0]
+    (if (>= n max-count)
+      events
+      (let [evt (.poll ^java.util.concurrent.LinkedBlockingQueue queue
+                       poll-ms TimeUnit/MILLISECONDS)]
+        (if evt
+          (recur (conj events evt) (inc n))
+          (recur events (inc n)))))))

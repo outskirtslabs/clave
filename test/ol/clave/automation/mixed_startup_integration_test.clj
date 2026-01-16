@@ -39,7 +39,7 @@
   (let [cert-key (config/cert-storage-key issuer-key domain)
         key-key (config/key-storage-key issuer-key domain)
         meta-key (config/meta-storage-key issuer-key domain)
-        meta-edn (pr-str {:names [domain] :issuer issuer-key})]
+        meta-edn (pr-str {:names [domain] :issuer issuer-key :managed true})]
     (storage/store-string! storage nil cert-key (:certificate-pem test-cert))
     (storage/store-string! storage nil key-key (:private-key-pem test-cert))
     (storage/store-string! storage nil meta-key meta-edn)))

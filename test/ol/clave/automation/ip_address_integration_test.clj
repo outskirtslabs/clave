@@ -33,7 +33,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start-created! config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 3: Call manage-domains with IP address

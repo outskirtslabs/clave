@@ -93,7 +93,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client http-opts}
-          system (automation/start-created! config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Trigger certificate obtain

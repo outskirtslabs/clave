@@ -15,7 +15,7 @@
   (catch Throwable _))
 
 (comment
-  (clj-reload/reload)
+  (clj-reload/reload {:only :all})
 
   (require '[ol.clave.storage.file :as sf])
   (sf/home-dir)

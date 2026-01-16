@@ -24,7 +24,7 @@
 (deftest system-startup-test
   (testing "starts and stops cleanly with minimal config"
     (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
-          system (automation/start-created! {:storage storage
+          system (automation/create-started! {:storage storage
                                              :issuers [{:directory-url (pebble/uri)}]
                                              :http-client pebble/http-client-opts})]
       (try
@@ -44,7 +44,7 @@
                            (lock! [_ _ _] nil)
                            (unlock! [_ _ _] nil))]
       (is (thrown-with-msg? Exception #"[Ss]torage"
-                            (automation/start-created! {:storage broken-storage
+                            (automation/create-started! {:storage broken-storage
                                                         :issuers [{:directory-url (pebble/uri)}]
                                                         :http-client pebble/http-client-opts}))))))
 
@@ -61,7 +61,7 @@
                              (certificate/private-key->pem (.getPrivate kp)))
       (storage/store-string! storage nil (config/meta-storage-key issuer-key domain)
                              (pr-str {:names [domain] :issuer issuer-key}))
-      (let [system (automation/start-created! {:storage storage
+      (let [system (automation/create-started! {:storage storage
                                                :issuers [{:directory-url (pebble/uri)}]
                                                :http-client pebble/http-client-opts})]
         (try
@@ -85,7 +85,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          system (automation/start-created! {:storage storage
+          system (automation/create-started! {:storage storage
                                              :issuers [{:directory-url (pebble/uri)}]
                                              :solvers {:http-01 solver}
                                              :http-client pebble/http-client-opts})

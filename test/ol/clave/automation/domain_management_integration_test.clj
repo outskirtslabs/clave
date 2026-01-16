@@ -36,7 +36,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start-created! config)]
+          system (automation/create-started! config)]
       (try
         ;; Get event queue before calling manage-domains
         (let [queue (automation/get-event-queue system)]
@@ -133,7 +133,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:tls-alpn-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start-created! config)]
+          system (automation/create-started! config)]
       (try
         ;; Get event queue before calling manage-domains
         (let [queue (automation/get-event-queue system)]
@@ -218,7 +218,7 @@
                   :http-client pebble/http-client-opts
                   ;; Disable OCSP for this test - it's about domain management, not OCSP
                   :ocsp {:enabled false}}
-          system (automation/start-created! config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 1-2: Obtain certificate for domain
@@ -274,7 +274,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start-created! config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Obtain certificate for domain
@@ -320,7 +320,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start-created! config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Obtain certificate for domain
@@ -364,7 +364,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start-created! config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Obtain certificate for domain
@@ -391,7 +391,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start-created! config)]
+          system (automation/create-started! config)]
       (try
         ;; Step 2-3: Call has-valid-cert? for unknown domain
         (is (false? (automation/has-valid-cert? system "unknown.example.com"))

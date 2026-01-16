@@ -3,12 +3,13 @@
   Tests run against Pebble ACME test server."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
+   [ol.clave.acme.challenge :as challenge]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.cache :as cache]
    [ol.clave.automation.impl.config :as config]
-   [ol.clave.acme.challenge :as challenge]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.specs :as specs]
+   [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage])
   (:import
    [java.nio.file Files Paths]
@@ -91,65 +92,44 @@
           (finally
             (automation/stop system)))))))
 
-(deftest evicted-certificate-loaded-from-storage-on-demand
-  (testing "Certificate evicted from cache is loaded from storage when requested"
-    (let [storage-dir (temp-storage-dir)
+(deftest storage-fallback-only-when-cache-nearly-full
+  (testing "Storage fallback only triggers when cache is at 90%+ capacity"
+    (let [storage-dir  (temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
-          solver {:present (fn [_lease chall account-key]
-                             (let [token (::specs/token chall)
-                                   key-auth (challenge/key-authorization chall account-key)]
-                               (pebble/challtestsrv-add-http01 token key-auth)
-                               {:token token}))
-                  :cleanup (fn [_lease _chall state]
-                             (pebble/challtestsrv-del-http01 (:token state))
-                             nil)}
-          ;; Use cache-capacity 2 to allow eviction scenario
-          config {:storage storage-impl
-                  :issuers [{:directory-url (pebble/uri)}]
-                  :solvers {:http-01 solver}
-                  :http-client pebble/http-client-opts
-                  :cache-capacity 2}
-          system (automation/start config)]
+          domain       "localhost"
+          issuer-key   (config/issuer-key-from-url (pebble/uri))
+          solver       {:present (fn [_lease chall account-key]
+                                   (let [token    (::specs/token chall)
+                                         key-auth (challenge/key-authorization chall account-key)]
+                                     (pebble/challtestsrv-add-http01 token key-auth)
+                                     {:token token}))
+                        :cleanup (fn [_lease _chall state]
+                                   (pebble/challtestsrv-del-http01 (:token state))
+                                   nil)}
+          config       {:storage        storage-impl
+                        :issuers        [{:directory-url (pebble/uri)}]
+                        :solvers        {:http-01 solver}
+                        :http-client    pebble/http-client-opts
+                        :cache-capacity 10}
+          system       (automation/start config)]
       (try
         (let [queue (automation/get-event-queue system)]
-          ;; Step 1-2: Obtain certificate via manage-domains
           (automation/manage-domains system [domain])
-          ;; Consume domain-added event
           (.poll queue 5 TimeUnit/SECONDS)
-          ;; Wait for certificate obtain
           (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
             (is (= :certificate-obtained (:type cert-event))))
-          ;; Step 3: Verify certificate is in cache
           (let [initial-bundle (automation/lookup-cert system domain)]
             (is (some? initial-bundle) "Certificate should be in cache initially")
             (is (some? (:certificate initial-bundle)) "Bundle should have certificate")
             (is (some? (:private-key initial-bundle)) "Bundle should have private key")
-            (let [initial-hash (:hash initial-bundle)]
-              ;; Step 4: Simulate eviction by manually removing from cache
-              ;; This tests the storage fallback without needing multiple certs
-              (cache/remove-certificate (:cache system) initial-bundle)
-              ;; Verify certificate is no longer in cache
-              (is (nil? (cache/lookup-cert (:cache system) domain))
-                  "Certificate should not be in cache after removal")
-              ;; Step 5: Request certificate via lookup-cert
-              ;; This should load from storage
-              (let [reloaded-bundle (automation/lookup-cert system domain)]
-                ;; Step 6: Verify certificate is loaded from storage
-                (is (some? reloaded-bundle) "Certificate should be loaded from storage")
-                (is (= [domain] (:names reloaded-bundle))
-                    "Loaded certificate should have correct domain")
-                (is (some? (:certificate reloaded-bundle))
-                    "Loaded bundle should have certificate")
-                (is (some? (:private-key reloaded-bundle))
-                    "Loaded bundle should have private key")
-                (is (= initial-hash (:hash reloaded-bundle))
-                    "Reloaded certificate hash should match original")
-                ;; Step 7: Verify certificate is now back in cache
-                (let [cached-bundle (cache/lookup-cert (:cache system) domain)]
-                  (is (some? cached-bundle)
-                      "Certificate should be back in cache after reload")
-                  (is (= initial-hash (:hash cached-bundle))
-                      "Cached certificate should match reloaded certificate"))))))
+            (cache/remove-certificate (:cache system) initial-bundle)
+            (is (nil? (cache/lookup-cert (:cache system) domain))
+                "Certificate should not be in cache after removal")
+            (let [lookup-result (automation/lookup-cert system domain)]
+              (is (nil? lookup-result)
+                  "lookup-cert should return nil when cache is not nearly full"))
+            (let [cert-key (config/cert-storage-key issuer-key domain)]
+              (is (storage/exists? storage-impl nil cert-key)
+                  "Certificate should still exist in storage"))))
         (finally
           (automation/stop system))))))

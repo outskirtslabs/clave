@@ -54,7 +54,7 @@
                     :issuers [{:directory-url (pebble/uri)}]
                     :solvers {:http-01 solver}
                     :http-client pebble/http-client-opts}
-            system (automation/start config)]
+            system (automation/create-started! config)]
         (try
           (let [queue (automation/get-event-queue system)]
             ;; Step 1-2: Obtain certificate
@@ -106,7 +106,7 @@
                         :solvers        {:http-01 solver}
                         :http-client    pebble/http-client-opts
                         :cache-capacity 10}
-          system       (automation/start config)]
+          system       (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           (automation/manage-domains system [domain])

@@ -294,7 +294,7 @@
 ;;; Event Emission
 
 (defn- emit-event!
-  "Emit an event to the event queue."
+  "Emit an event to the event queue if it exists."
   [system event]
   (when-let [^LinkedBlockingQueue queue @(:event-queue system)]
     (.add queue (update event :timestamp #(or % (Instant/now))))))
@@ -407,17 +407,23 @@
     (reset! (:maintenance-thread system) thread)
     thread))
 
-(defn start
-  "See [[ol.clave.automation/start]]"
+(defn create
+  "See [[ol.clave.automation/create]]"
   [config]
   (let [storage (if-let [storage (:storage config)] storage (file/file-storage))]
     (validate-storage! storage)
     (let [merged-config (merge (config/default-config) (assoc config :storage storage))
           system (create-system-state merged-config)]
       (load-all-certificates! system)
-      (start-maintenance-loop! system)
-      (reset! (:started? system) true)
       system)))
+
+(defn start!
+  "See [[ol.clave.automation/start!]]"
+  [system]
+  (when-not @(:started? system)
+    (start-maintenance-loop! system)
+    (reset! (:started? system) true))
+  system)
 
 (defn stop
   "See [[ol.clave.automation/stop]]"

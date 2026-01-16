@@ -43,7 +43,7 @@
                       :solvers {:http-01 solver}
                       :http-client pebble/http-client-opts
                       :ari {:enabled true}}
-              system (automation/start config)]
+              system (automation/create-started! config)]
           (try
             (let [queue (automation/get-event-queue system)]
               ;; Step 3: Obtain certificate
@@ -86,7 +86,7 @@
                       :http-client pebble/http-client-opts
                       :ari {:enabled true}}
               ;; Restart system with same storage
-              system (automation/start config)]
+              system (automation/create-started! config)]
           (try
             ;; Wait for certificates to be loaded from storage
             (Thread/sleep 1000)
@@ -114,7 +114,7 @@
                       :solvers {:http-01 solver}
                       :http-client pebble/http-client-opts
                       :ari {:enabled true}}
-              system (automation/start config)]
+              system (automation/create-started! config)]
           (try
             (let [queue (automation/get-event-queue system)]
               ;; Wait for certificate to load
@@ -178,7 +178,7 @@
           original-selected-time (atom nil)]
 
       ;; First run: obtain certificate and save selected-time
-      (let [system (automation/start config)]
+      (let [system (automation/create-started! config)]
         (try
           (let [queue (automation/get-event-queue system)]
             (automation/manage-domains system [domain])
@@ -195,7 +195,7 @@
             (automation/stop system))))
 
       ;; Second run: verify same selected-time
-      (let [system (automation/start config)]
+      (let [system (automation/create-started! config)]
         (try
           (Thread/sleep 1000)
           (let [bundle (automation/lookup-cert system domain)
@@ -208,7 +208,7 @@
             (automation/stop system))))
 
       ;; Third run: verify still the same selected-time
-      (let [system (automation/start config)]
+      (let [system (automation/create-started! config)]
         (try
           (Thread/sleep 1000)
           (let [bundle (automation/lookup-cert system domain)

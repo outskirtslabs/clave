@@ -36,7 +36,7 @@
                   :solvers {:http-01 solver}
                   :key-type :rsa2048
                   :http-client pebble/http-client-opts}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Obtain a certificate
@@ -78,7 +78,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Obtain initial certificate
@@ -130,7 +130,7 @@
                   :solvers {:http-01 solver}
                   :key-reuse true  ;; Enable key reuse
                   :http-client pebble/http-client-opts}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Obtain initial certificate

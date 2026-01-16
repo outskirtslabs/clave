@@ -40,7 +40,7 @@
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
                   :ari {:enabled true}}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 3: Obtain certificate
@@ -93,7 +93,7 @@
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
                   :ari {:enabled true}}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Obtain certificate
@@ -141,7 +141,7 @@
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
                   :ari {:enabled true}}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 3: Obtain certificate (triggers ARI fetch)
@@ -181,7 +181,7 @@
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
                   :ari {:enabled true}}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 2: Obtain certificate
@@ -237,7 +237,7 @@
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
                   :ari {:enabled true}}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 3: Obtain certificate - this will trigger ARI fetch automatically

@@ -63,7 +63,7 @@
                   :http-client pebble/http-client-opts
                   :ocsp {:enabled false}
                   :ari {:enabled false}}
-          system (automation/start config)
+          system (automation/create-started! config)
           queue (automation/get-event-queue system)]
       (try
         ;; Step 1: Start automation and obtain certificate

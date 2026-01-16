@@ -61,7 +61,7 @@
                          ;; Map fake URL to our mock responder
                          :responder-overrides {ocsp-harness/fake-ocsp-url
                                                (ocsp-harness/ocsp-url)}}}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 1-3: Obtain certificate
@@ -115,7 +115,7 @@
                   :ocsp {:enabled true
                          ;; No override - will try to reach fake-ocsp-url which doesn't exist
                          :responder-overrides {}}}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Obtain certificate

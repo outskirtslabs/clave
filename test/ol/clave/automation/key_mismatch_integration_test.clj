@@ -41,7 +41,7 @@
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
           ;; Step 1: Obtain a valid certificate first
-          system1 (automation/start config)]
+          system1 (automation/create-started! config)]
       (try
         (let [queue1 (automation/get-event-queue system1)]
           (automation/manage-domains system1 [domain])
@@ -65,7 +65,7 @@
         ;; Overwrite the private key file with the wrong key
         (storage/store-string! storage-impl nil key-key wrong-key-pem))
       ;; Step 3-6: Start a new system and verify behavior
-      (let [system2 (automation/start config)
+      (let [system2 (automation/create-started! config)
             queue2 (automation/get-event-queue system2)]
         (try
           ;; Step 3: Verify mismatch is detected on load

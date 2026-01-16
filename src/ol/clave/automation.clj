@@ -13,11 +13,17 @@
   (require '[ol.clave.automation :as auto]
            '[ol.clave.storage.file :as fs])
 
-  ;; Start the automation system
-  (def system (auto/start {:storage (fs/file-storage \"/var/lib/acme\")
-                           :issuers [{:directory-url \"https://acme-v02.api.letsencrypt.org/directory\"
-                                      :email \"admin@example.com\"}]
-                           :solvers {:http-01 my-http-solver}}))
+  ;; Create the automation system
+  (def system (auto/create {:storage (fs/file-storage \"/var/lib/acme\")
+                            :issuers [{:directory-url \"https://acme-v02.api.letsencrypt.org/directory\"
+                                       :email \"admin@example.com\"}]
+                            :solvers {:http-01 my-http-solver}}))
+
+  ;; Optionally get the event queue before starting
+  (def queue (auto/get-event-queue system))
+
+  ;; Start the maintenance loop
+  (auto/start! system)
 
   ;; Add domains to manage
   (auto/manage-domains system [\"example.com\"])
@@ -49,19 +55,33 @@
   (:require
    [ol.clave.automation.impl.system :as system]))
 
-(defn start
-  "Starts the automation system.
+(defn create
+  "Creates the automation system without starting the maintenance loop.
 
-  Validates configuration, initializes storage, and starts the maintenance loop.
-  Returns a system handle immediately.
+  Returns a system handle that is not yet started.
 
   Throws if configuration is invalid or storage cannot be initialized.
 
-  | key | description |
-  |-----|-------------|
-  | `config` | Configuration map (see namespace docs) |"
+  After calling this function you might be interested in [[get-event-queue]] and [[start!]]."
   [config]
-  (system/start config))
+  (system/create config))
+
+(defn start!
+  "Starts the maintenance loop on a created system.
+
+  Call this after [[create]] to begin automatic certificate management.
+  Idempotent: calling on an already-started system is a no-op.
+
+  Returns the system handle.
+
+  See also [[create]]."
+  [system]
+  (system/start! system))
+
+(defn ^:no-doc create-started!
+  "For internal/test use. Prefer [[create]] + [[start!]] for production."
+  [config]
+  (start! (create config)))
 
 (defn stop
   "Stops the automation system.

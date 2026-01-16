@@ -40,7 +40,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 1-2: Obtain certificate
@@ -126,7 +126,7 @@
                     :issuers [{:directory-url (pebble/uri)}]
                     :solvers {:http-01 solver}
                     :http-client pebble/http-client-opts}
-            system (automation/start config)]
+            system (automation/create-started! config)]
         (try
           (let [queue (automation/get-event-queue system)]
             ;; Step 3: Verify expired cert is loaded
@@ -195,7 +195,7 @@
       (let [config {:storage storage-impl
                     :issuers [{:directory-url (pebble/uri)}]
                     :http-client pebble/http-client-opts}
-            system (automation/start config)]
+            system (automation/create-started! config)]
         (try
           (let [queue (automation/get-event-queue system)]
             ;; Step 2: Verify certificate is loaded
@@ -264,7 +264,7 @@
                     :issuers [{:directory-url (pebble/uri)}]
                     :solvers {:http-01 failing-solver}
                     :http-client pebble/http-client-opts}
-            system (automation/start config)]
+            system (automation/create-started! config)]
         (try
           (let [queue (automation/get-event-queue system)]
             ;; Wait for certificate-loaded event

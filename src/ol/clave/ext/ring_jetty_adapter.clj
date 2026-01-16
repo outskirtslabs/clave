@@ -76,7 +76,7 @@
   | `:domains`        | Domains to manage certs for (required)  |           |
   | `:redirect-http?` | Wrap handler with HTTP->HTTPS redirect  | true      |
 
-  Additional automation config keys (e.g., `:issuers`, `:storage` etc.) are passed through to [[ol.clave.automation/start]].
+  Additional automation config keys (e.g., `:issuers`, `:storage` etc.) are passed through to [[ol.clave.automation/create]].
 
   Returns a context map for use with [[stop]].
 
@@ -97,7 +97,7 @@
                               (dissoc :domains :redirect-http?)
                               (assoc :solvers {:http-01     http-solver-inst
                                                :tls-alpn-01 tls-alpn-solver}))
-        system            (auto/start auto-config)
+        system            (auto/create auto-config)
         ssl-context       (jetty-ext/sni-alpn-ssl-context #(auto/lookup-cert system %) tls-alpn-solver)
         wrapped-handler   (cond-> handler
                             (:redirect-http? config) (common/wrap-redirect-https {:ssl-port ssl-port})
@@ -108,6 +108,7 @@
                                      :ssl-context ssl-context
                                      :join? false))]
     (try
+      (auto/start! system)
       (auto/manage-domains system domains)
       (common/wait-for-certificates system domains)
       (catch Exception e

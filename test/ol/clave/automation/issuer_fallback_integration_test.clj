@@ -94,7 +94,7 @@
                                  :issuer-selection :in-order
                                  :solvers {:http-01 solver}
                                  :http-client pebble/http-client-opts}
-              system (automation/start automation-config)]
+              system (automation/start-created! automation-config)]
           (try
             (let [queue (automation/get-event-queue system)]
               ;; Step 4: Call manage-domains with the blocked domain
@@ -194,7 +194,7 @@
                                                                :mac-key eab-mac-key}}]
                                  :solvers {:http-01 solver}
                                  :http-client pebble/http-client-opts}
-              system (automation/start automation-config)]
+              system (automation/start-created! automation-config)]
           (try
             (let [queue (automation/get-event-queue system)]
               ;; Call manage-domains

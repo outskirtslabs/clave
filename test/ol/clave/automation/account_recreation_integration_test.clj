@@ -56,7 +56,7 @@
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
           ;; Start automation system - will load the pre-existing key and auto-create account
-          system (automation/start config)]
+          system (automation/start-created! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 4: Trigger certificate obtain

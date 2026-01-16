@@ -232,13 +232,13 @@
                   :issuers [{:directory-url "https://localhost:14000/dir"}]}]
       (try
         ;; Start first system
-        (let [system1 (automation/start config)]
+        (let [system1 (automation/create-started! config)]
           (try
             ;; Verify first system is started
             (is (automation/started? system1)
                 "First system should be in started state")
             ;; Start second system on same storage - this should succeed
-            (let [system2 (automation/start config)]
+            (let [system2 (automation/create-started! config)]
               (try
                 ;; Both systems should be running
                 (is (automation/started? system1)
@@ -266,12 +266,12 @@
                   :issuers [{:directory-url "https://localhost:14000/dir"}]}]
       (try
         ;; Step 2: Start and stop first system
-        (let [system1 (automation/start config)]
+        (let [system1 (automation/create-started! config)]
           (is (automation/started? system1) "First system should start")
           (automation/stop system1)
           (is (not (automation/started? system1)) "First system should be stopped"))
         ;; Step 3: Start second system after first is stopped
-        (let [system2 (automation/start config)]
+        (let [system2 (automation/create-started! config)]
           (try
             ;; Step 4: Verify second system starts successfully
             (is (automation/started? system2)

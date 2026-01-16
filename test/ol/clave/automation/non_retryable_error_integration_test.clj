@@ -48,7 +48,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 tracking-solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)
               start-time (System/currentTimeMillis)]

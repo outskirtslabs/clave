@@ -45,7 +45,7 @@
                     :issuers [{:directory-url (pebble/uri)}]
                     :http-client pebble/http-client-opts
                     :ocsp {:enabled true}}  ; OCSP explicitly enabled
-            system (automation/start config)]
+            system (automation/start-created! config)]
         (try
           (let [queue (automation/get-event-queue system)]
             ;; Step 3: Verify certificate is loaded
@@ -109,7 +109,7 @@
                     :issuers [{:directory-url (pebble/uri)}]
                     :http-client pebble/http-client-opts
                     :ocsp {:enabled true}}
-            system (automation/start config)]
+            system (automation/create-started! config)]
         (try
           (let [queue (automation/get-event-queue system)]
             ;; Consume loaded event
@@ -163,7 +163,7 @@
                     :issuers [{:directory-url (pebble/uri)}]
                     :http-client pebble/http-client-opts
                     :ocsp {:enabled false}}  ; OCSP explicitly disabled
-            system (automation/start config)]
+            system (automation/create-started! config)]
         (try
           (let [queue (automation/get-event-queue system)]
             ;; Consume loaded event

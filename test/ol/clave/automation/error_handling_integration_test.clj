@@ -41,7 +41,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 throwing-solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 3: Trigger certificate obtain

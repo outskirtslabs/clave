@@ -37,7 +37,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start config)]
+          system (automation/start-created! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 3: Call manage-domains to trigger certificate obtain
@@ -79,7 +79,7 @@
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}]
       ;; First run: obtain certificate (creates account)
-      (let [system1 (automation/start config)
+      (let [system1 (automation/start-created! config)
             queue1 (automation/get-event-queue system1)]
         (try
           (automation/manage-domains system1 [domain])
@@ -94,7 +94,7 @@
       ;; Second run: restart and obtain another certificate
       (let [private-key-key (config/account-private-key-storage-key issuer-key)
             original-key-pem (storage/load-string storage-impl nil private-key-key)
-            system2 (automation/start config)
+            system2 (automation/start-created! config)
             queue2 (automation/get-event-queue system2)]
         (try
             ;; Force renewal to create new certificate (with threshold > 1)
@@ -134,7 +134,7 @@
                              :email "test@example.com"}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start config)]
+          system (automation/start-created! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 3: Trigger account registration via manage-domains

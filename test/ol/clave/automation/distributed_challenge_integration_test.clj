@@ -39,7 +39,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (automation/manage-domains system [domain])
         (let [deadline (+ (System/currentTimeMillis) 30000)]
@@ -78,7 +78,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/start config)]
+          system (automation/create-started! config)]
       (try
         (automation/manage-domains system [domain])
         (let [deadline (+ (System/currentTimeMillis) 30000)]

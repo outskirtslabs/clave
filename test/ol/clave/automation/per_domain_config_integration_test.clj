@@ -43,7 +43,7 @@
                   :config-fn config-fn
                   ;; Default key type if config-fn returns nil
                   :key-type :p384}
-          system (automation/start config)]
+          system (automation/start-created! config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Request certificate for domain A (should use P256)

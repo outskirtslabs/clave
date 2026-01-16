@@ -1218,28 +1218,14 @@
                                      :identifiers [d]})))
         nil))))
 
-(defn- delete-domain-from-all-issuers!
-  "Delete certificate files for a domain from all configured issuers."
-  [system domain]
-  (let [storage (:storage system)
-        issuers (get-in system [:config :issuers])]
-    (doseq [issuer issuers]
-      (let [issuer-key (or (:issuer-key issuer)
-                           (config/issuer-key-from-url (:directory-url issuer)))]
-        (delete-certificate-from-storage! storage issuer-key domain)))))
-
 (defn unmanage-domains
   "See [[ol.clave.automation/unmanage-domains]]"
   [system domains]
-  (let [cache-atom (:cache system)
+  (let [cache-atom                   (:cache system)
         ^ConcurrentHashMap in-flight (:in-flight system)]
     (doseq [domain domains]
-      ;; Remove from cache
       (when-let [bundle (cache/lookup-cert cache-atom domain)]
         (cache/remove-certificate cache-atom bundle))
-      ;; Delete from storage (CertMagic style - gone completely)
-      (delete-domain-from-all-issuers! system domain)
-      ;; Cancel any in-flight commands for this domain
       (.remove in-flight [:obtain-certificate domain])
       (.remove in-flight [:renew-certificate domain])
       (.remove in-flight [:fetch-ocsp domain])

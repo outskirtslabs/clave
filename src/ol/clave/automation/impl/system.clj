@@ -412,19 +412,10 @@
   [config]
   (let [storage (if-let [storage (:storage config)] storage (file/file-storage))]
     (validate-storage! storage)
-    (let [merged-config  (merge (config/default-config) (assoc config :storage storage))
-          system (create-system-state merged-config)
-          ;; Initialize event queue before loading certificates
-          ;; so events can be emitted during loading
-          _              (reset! (:event-queue system) (LinkedBlockingQueue.))
-          ;; Load existing certificates from storage
-          loaded-bundles (load-all-certificates! system)]
-      ;; Emit certificate-loaded events for each bundle
-      (doseq [bundle loaded-bundles]
-        (emit-event! system (decisions/create-certificate-loaded-event bundle)))
-      ;; Start maintenance loop
+    (let [merged-config (merge (config/default-config) (assoc config :storage storage))
+          system (create-system-state merged-config)]
+      (load-all-certificates! system)
       (start-maintenance-loop! system)
-      ;; Mark as started
       (reset! (:started? system) true)
       system)))
 
@@ -432,21 +423,16 @@
   "See [[ol.clave.automation/stop]]"
   [system]
   (when system
-    ;; Signal shutdown
     (reset! (:shutdown? system) true)
     (reset! (:started? system) false)
-    ;; Interrupt maintenance thread
     (when-let [thread @(:maintenance-thread system)]
       (.interrupt ^Thread thread))
-    ;; Shutdown executor and wait for in-flight operations
     (when-let [^java.util.concurrent.ExecutorService executor (:executor system)]
-      ;; Signal no new tasks accepted
       (.shutdown executor)
-      ;; Wait for in-flight operations to complete with timeout
       (.awaitTermination executor *shutdown-timeout-ms* java.util.concurrent.TimeUnit/MILLISECONDS))
-    ;; Close event queue if created
     (when-let [queue @(:event-queue system)]
-      (.offer ^LinkedBlockingQueue queue :ol.clave/shutdown))
+      (.offer ^LinkedBlockingQueue queue :ol.clave/shutdown)
+      (reset! (:event-queue system) nil))
     nil))
 
 (defn started?

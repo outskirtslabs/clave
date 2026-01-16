@@ -8,14 +8,4 @@
             :kaocha.plugin/capture-output
             :kaocha.plugin/profiling
             :kaocha.plugin/timing-edn
-            :kaocha.plugin/print-invocations]
-  :tests
-  [{:id         :unit
-    :kaocha/ns-patterns   ["^(?!.*-integration-test$)"]
-    :test-paths ["test"]}
-   {:id         :integration
-    :kaocha/ns-patterns   ["-integration-test$"]
-    :test-paths ["test"]}
-   {:id         :ocsp
-    :kaocha/ns-patterns   ["ocsp"]
-    :test-paths ["test"]}]}
+            :kaocha.plugin/print-invocations]}

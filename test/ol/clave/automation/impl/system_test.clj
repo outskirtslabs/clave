@@ -154,7 +154,6 @@
                :started? (atom true)
                :maintenance-thread (atom nil)
                :cache (atom {:certs {} :index {}})
-               :managed-domains (atom #{})
                :config {:issuers []}
                :storage nil
                :executor (Executors/newVirtualThreadPerTaskExecutor)
@@ -190,7 +189,6 @@
                :started? (atom true)
                :maintenance-thread (atom nil)
                :cache (atom {:certs {} :index {}})
-               :managed-domains (atom #{})
                :config {:issuers []}
                :storage nil
                :executor (Executors/newVirtualThreadPerTaskExecutor)

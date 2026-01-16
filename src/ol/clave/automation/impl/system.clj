@@ -93,7 +93,6 @@
   "Creates the initial system state map."
   [config]
   {:cache (atom {:certs {} :index {} :capacity (:cache-capacity config)})
-   :managed-domains (atom #{})  ;; Set of actively managed domain names
    :event-queue (atom nil)  ;; Lazily created
    :shutdown? (atom false)
    :started? (atom false)
@@ -182,10 +181,11 @@
           key-key                                        (config/key-storage-key issuer-key domain)
           cert-pem                                       (storage/load-string storage nil cert-key)
           key-pem                                        (storage/load-string storage nil key-key)
-          #_#_meta-key                                       (config/meta-storage-key issuer-key domain)
-          #_#_meta-edn                                       (try
-                                                               (edn/read-string (storage/load-string storage nil meta-key))
-                                                               (catch Exception _ {}))
+          meta-key                                       (config/meta-storage-key issuer-key domain)
+          meta-edn                                       (try
+                                                           (edn/read-string (storage/load-string storage nil meta-key))
+                                                           (catch Exception _ {}))
+          managed?                                       (get meta-edn :managed false)
           parsed-cert                                    (cert-parse/parse-pem-chain cert-pem)
           certs                                          (::specs/certificates parsed-cert)
           ^java.security.cert.X509Certificate first-cert (first certs)
@@ -208,8 +208,7 @@
                      :data  {:domain domain}
                      :error e})
           (throw e)))
-      ;; certs loaded from storage are not managed until explicitly requested via manage-domains (which validates them)
-      (let [bundle      (cache/create-bundle certs private-key issuer-key false)
+      (let [bundle      (cache/create-bundle certs private-key issuer-key managed?)
             ocsp-staple (load-ocsp-staple storage issuer-key domain)
             ari-data    (load-ari-data storage issuer-key domain)]
         (cond-> bundle
@@ -469,6 +468,29 @@
               (load-certificate-bundle storage issuer-key domain)))
           issuers)))
 
+(defn- cache-nearly-full?
+  [cache-atom]
+  (let [{:keys [certs capacity]} @cache-atom]
+    (and capacity (>= (count certs) (* 0.9 capacity)))))
+
+(defn- try-load-from-storage [system hostname]
+  (if-let [bundle (load-cert-from-storage-for-domain system hostname)]
+    (do
+      (log/log! {:level :trace
+                 :id    ::lookup-cert-storage-load
+                 :data  {:hostname hostname
+                         :subjects (:names bundle)
+                         :managed  (:managed bundle)
+                         :hash     (:hash bundle)}})
+      (cache/cache-certificate (:cache system) bundle)
+      bundle)
+    (do
+      (log/log! {:level :trace
+                 :id    ::lookup-cert-miss
+                 :data  {:hostname hostname
+                         :reason   :not-in-storage}})
+      nil)))
+
 (defn lookup-cert
   "See [[ol.clave.automation/lookup-cert]]"
   [system hostname]
@@ -481,33 +503,14 @@
                          :managed  (:managed bundle)
                          :hash     (:hash bundle)}})
       bundle)
-    ;; Fallback: try to load from storage, but only for managed domains
-    ;; this ensures evicted certs can be reloaded, but unmanage-domains works
-    (if-not (contains? @(:managed-domains system) hostname)
+    (if (cache-nearly-full? (:cache system))
+      (try-load-from-storage system hostname)
       (do
         (log/log! {:level :trace
                    :id    ::lookup-cert-miss
                    :data  {:hostname hostname
-                           :reason   :not-managed}})
-        nil)
-      (if-let [bundle (load-cert-from-storage-for-domain system hostname)]
-        (do
-          (log/log! {:level :trace
-                     :id    ::lookup-cert-storage-load
-                     :data  {:hostname hostname
-                             :subjects (:names bundle)
-                             :managed  (:managed bundle)
-                             :hash     (:hash bundle)}})
-          ;; Add to cache and mark as managed (this may evict another cert)
-          (cache/cache-certificate (:cache system) bundle)
-          (cache/mark-managed (:cache system) (:hash bundle))
-          bundle)
-        (do
-          (log/log! {:level :trace
-                     :id    ::lookup-cert-miss
-                     :data  {:hostname hostname
-                             :reason   :not-in-storage}})
-          nil)))))
+                           :reason   :not-in-cache}})
+        nil))))
 
 ;;; Certificate Obtain Workflow
 
@@ -516,11 +519,11 @@
   Returns a java.security.KeyPair or nil if not found."
   [storage issuer-key]
   (let [private-key-key (config/account-private-key-storage-key issuer-key)
-        public-key-key (config/account-public-key-storage-key issuer-key)]
+        public-key-key  (config/account-public-key-storage-key issuer-key)]
     (when (and (storage/exists? storage nil private-key-key)
                (storage/exists? storage nil public-key-key))
       (let [private-pem (storage/load-string storage nil private-key-key)
-            public-pem (storage/load-string storage nil public-key-key)]
+            public-pem  (storage/load-string storage nil public-key-key)]
         (crypto/keypair-from-pems private-pem public-pem)))))
 
 (defn- save-account-keypair!
@@ -616,7 +619,7 @@
         meta-key (config/meta-storage-key issuer-key domain)]
     (storage/store-string! storage nil cert-key cert-pem)
     (storage/store-string! storage nil key-key key-pem)
-    (storage/store-string! storage nil meta-key (pr-str {:names names :issuer issuer-key}))))
+    (storage/store-string! storage nil meta-key (pr-str {:names names :issuer issuer-key :managed true}))))
 
 (defn- try-obtain-from-issuer
   "Try to obtain a certificate from a single issuer.
@@ -878,6 +881,24 @@
     (storage/delete! storage (lease/background) cert-key)
     (storage/delete! storage (lease/background) key-key)
     (storage/delete! storage (lease/background) meta-key)))
+
+(defn- update-managed-flag-in-storage!
+  "Update the managed flag in certificate metadata for a domain.
+
+  Iterates through all configured issuers and updates the metadata file
+  if it exists for that issuer."
+  [system domain managed?]
+  (let [storage (:storage system)
+        issuers (get-in system [:config :issuers])]
+    (doseq [issuer issuers]
+      (let [issuer-key (or (:issuer-key issuer)
+                           (config/issuer-key-from-url (:directory-url issuer)))
+            meta-key (config/meta-storage-key issuer-key domain)]
+        (when (storage/exists? storage nil meta-key)
+          (let [meta-str (storage/load-string storage nil meta-key)
+                metadata (edn/read-string meta-str)
+                updated (assoc metadata :managed managed?)]
+            (storage/store-string! storage nil meta-key (pr-str updated))))))))
 
 (defn- handle-ocsp-revocation!
   "Handle certificate revocation detected via OCSP.
@@ -1172,33 +1193,53 @@
       ;; All domains are valid - proceed with adding them
       (do
         (doseq [d domains]
-          ;; Track as managed domain
-          (swap! (:managed-domains system) conj d)
           ;; Emit domain-added event
           (emit-event! system (create-domain-added-event d))
-          ;; Check if cert already cached (loaded from storage on startup)
-          (if-let [bundle (cache/lookup-cert (:cache system) d)]
-            ;; Cert exists - mark it as managed, skip obtain
-            (cache/mark-managed (:cache system) (:hash bundle))
-            ;; No cert - submit obtain-certificate command
+          (cond
+            ;; Already in cache - mark as managed and update storage
+            (when-let [bundle (cache/lookup-cert (:cache system) d)]
+              (cache/mark-managed (:cache system) (:hash bundle))
+              (update-managed-flag-in-storage! system d true)
+              true)
+            nil
+
+            ;; In storage but not cache - load, mark managed, cache, update storage
+            (when-let [bundle (load-cert-from-storage-for-domain system d)]
+              (let [managed-bundle (assoc bundle :managed true)]
+                (cache/cache-certificate (:cache system) managed-bundle)
+                (update-managed-flag-in-storage! system d true))
+              true)
+            nil
+
+            ;; Not found anywhere - obtain new cert
+            :else
             (submit-command! system {:command :obtain-certificate
                                      :domain d
                                      :identifiers [d]})))
         nil))))
 
+(defn- delete-domain-from-all-issuers!
+  "Delete certificate files for a domain from all configured issuers."
+  [system domain]
+  (let [storage (:storage system)
+        issuers (get-in system [:config :issuers])]
+    (doseq [issuer issuers]
+      (let [issuer-key (or (:issuer-key issuer)
+                           (config/issuer-key-from-url (:directory-url issuer)))]
+        (delete-certificate-from-storage! storage issuer-key domain)))))
+
 (defn unmanage-domains
   "See [[ol.clave.automation/unmanage-domains]]"
   [system domains]
   (let [cache-atom (:cache system)
-        managed-domains-atom (:managed-domains system)
         ^ConcurrentHashMap in-flight (:in-flight system)]
     (doseq [domain domains]
-      ;; remove from cache
+      ;; Remove from cache
       (when-let [bundle (cache/lookup-cert cache-atom domain)]
         (cache/remove-certificate cache-atom bundle))
-      ;; remove from managed domains set
-      (swap! managed-domains-atom disj domain)
-      ;; cancel any in-flight commands for this domain
+      ;; Delete from storage (CertMagic style - gone completely)
+      (delete-domain-from-all-issuers! system domain)
+      ;; Cancel any in-flight commands for this domain
       (.remove in-flight [:obtain-certificate domain])
       (.remove in-flight [:renew-certificate domain])
       (.remove in-flight [:fetch-ocsp domain])
@@ -1288,8 +1329,6 @@
                                                      revoke-opts)]
             ;; Remove from cache
             (cache/remove-certificate (:cache system) bundle)
-            ;; Remove from managed domains
-            (swap! (:managed-domains system) disj domain)
             ;; Optionally remove from storage
             (when (:remove-from-storage opts)
               (delete-certificate-from-storage! (:storage system) issuer-key domain))

@@ -256,10 +256,10 @@
           ;; Step 6: Verify certificate is removed from cache
           (is (nil? (automation/lookup-cert system domain))
               "Certificate should be removed from cache after unmanage")
-          ;; Step 7: Verify certificate remains in storage
+          ;; Step 7: Verify certificate is deleted from storage
           (let [cert-key (config/cert-storage-key issuer-key domain)]
-            (is (storage/exists? storage-impl nil cert-key)
-                "Certificate should remain in storage after unmanage"))
+            (is (not (storage/exists? storage-impl nil cert-key))
+                "Certificate should be deleted from storage after unmanage"))
           ;; Step 8-9: Verify list-domains no longer includes the domain
           (let [managed (automation/list-domains system)]
             (is (not (some #(= domain (:domain %)) managed))

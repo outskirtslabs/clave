@@ -411,7 +411,7 @@
 (defn start
   "See [[ol.clave.automation/start]]"
   [config]
-  (let [storage (:storage config (file/file-storage))]
+  (let [storage (if-let [storage (:storage config)] storage (file/file-storage))]
     (validate-storage! storage)
     (let [merged-config  (merge (config/default-config) (assoc config :storage storage))
           system (create-system-state merged-config)

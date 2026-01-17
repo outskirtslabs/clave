@@ -2,24 +2,18 @@
   (:require
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.lease :as lease]
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file])
   (:import
    [java.nio.charset StandardCharsets]
-   [java.nio.file
-    FileVisitOption
-    Files
-    NoSuchFileException
-    Path]
+   [java.nio.file FileVisitOption Files NoSuchFileException Path]
    [java.nio.file.attribute FileAttribute]
    [java.time Duration]
    [java.util Arrays]))
 
 (set! *warn-on-reflection* true)
-
-(defn- temp-dir ^Path []
-  (Files/createTempDirectory "ol.clave.storage-test-" (make-array FileAttribute 0)))
 
 (defn- delete-recursively! [^Path p]
   (when (Files/exists p (make-array java.nio.file.LinkOption 0))
@@ -75,7 +69,7 @@
     (is (= "cfoo" (storage/safe-key "c/foo")))))
 
 (deftest file-storage-rejects-traversal
-  (let [dir (temp-dir)
+  (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
         fs (file/file-storage dir)
         l (lease/background)]
     (try
@@ -85,7 +79,7 @@
         (delete-recursively! dir)))))
 
 (deftest file-storage-missing-key-errors
-  (let [dir (temp-dir)
+  (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
         fs (file/file-storage dir)
         l (lease/background)]
     (try
@@ -96,7 +90,7 @@
         (delete-recursively! dir)))))
 
 (deftest file-storage-list-semantics
-  (let [dir (temp-dir)
+  (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
         fs (file/file-storage dir)
         l (lease/background)]
     (try
@@ -110,7 +104,7 @@
         (delete-recursively! dir)))))
 
 (deftest file-storage-delete-recursive
-  (let [dir (temp-dir)
+  (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
         fs (file/file-storage dir)
         l (lease/background)]
     (try
@@ -123,7 +117,7 @@
         (delete-recursively! dir)))))
 
 (deftest file-storage-stale-lock-is-reclaimed
-  (let [dir (temp-dir)
+  (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
         fs (file/file-storage dir)
         l (lease/background)
         lock (lock-file dir "stale")
@@ -137,7 +131,7 @@
         (delete-recursively! dir)))))
 
 (deftest file-storage-lock-freshener-updates-meta
-  (let [dir (temp-dir)
+  (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
         fs (file/file-storage dir)
         l (lease/background)
         lock (lock-file dir "fresh")]
@@ -153,7 +147,7 @@
         (delete-recursively! dir)))))
 
 (deftest file-storage-empty-lockfile-is-reclaimed
-  (let [dir (temp-dir)
+  (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
         fs (file/file-storage dir)
         l (lease/background)
         lock (lock-file dir "empty")]
@@ -170,7 +164,7 @@
         (delete-recursively! dir)))))
 
 (deftest file-storage-list-respects-lease-cancellation
-  (let [dir (temp-dir)
+  (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
         fs (file/file-storage dir)
         l (lease/background)
         [cancellable cancel] (lease/with-cancel (lease/background))]
@@ -184,7 +178,7 @@
         (delete-recursively! dir)))))
 
 (deftest file-storage-atomic-write-no-partial-reads
-  (let [dir (temp-dir)
+  (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
         fs (file/file-storage dir)
         l (lease/background)
         size (* 1024 1024)
@@ -214,7 +208,7 @@
         (delete-recursively! dir)))))
 
 (deftest file-storage-store-load
-  (let [dir (temp-dir)
+  (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
         fs (file/file-storage dir)
         l (lease/background)]
     (try
@@ -224,7 +218,7 @@
         (delete-recursively! dir)))))
 
 (deftest file-storage-store-load-race
-  (let [dir (temp-dir)
+  (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
         fs (file/file-storage dir)
         l (lease/background)
         size (* 4096 1024)
@@ -250,7 +244,7 @@
         (delete-recursively! dir)))))
 
 (deftest file-storage-locking
-  (let [dir (temp-dir)
+  (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
         fs (file/file-storage dir)
         l (lease/background)
         [cancelled cancel] (lease/with-cancel (lease/background))]

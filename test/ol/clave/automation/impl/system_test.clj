@@ -4,10 +4,10 @@
    [clojure.test :refer [deftest is testing]]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.system :as system]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.storage.file :as file-storage])
   (:import
    [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.time Instant]
    [java.time.temporal ChronoUnit]
    [java.util.concurrent Executors LinkedBlockingQueue TimeUnit]))
@@ -219,7 +219,7 @@
 (defn- create-temp-dir
   "Create a temporary directory for test storage."
   []
-  (str (Files/createTempDirectory "clave-test-" (into-array FileAttribute []))))
+  (test-util/temp-storage-dir))
 
 (deftest multiple-instances-can-share-storage
   (testing "Multiple system instances can start on the same storage"

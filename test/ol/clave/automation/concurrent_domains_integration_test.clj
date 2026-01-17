@@ -14,11 +14,10 @@
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.automation :as automation]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent CountDownLatch TimeUnit]))
 
 (use-fixtures :each pebble/pebble-challenge-fixture)
@@ -33,9 +32,7 @@
   ;; 2. Tracking concurrent execution count
   ;; 3. Verifying multiple operations can execute simultaneously
   (testing "Multiple manage-domains calls execute concurrently"
-    (let [storage-dir (str (Files/createTempDirectory
-                            "clave-test-"
-                            (into-array FileAttribute [])))
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           ;; Track concurrent operations
           concurrent-count (atom 0)
@@ -95,9 +92,7 @@
   (testing "manage-domains handles multiple domains in single call"
     (let [;; Use localhost which works, and a blocked domain which fails
           domains ["localhost"]
-          storage-dir (str (Files/createTempDirectory
-                            "clave-test-"
-                            (into-array FileAttribute [])))
+          storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
@@ -144,9 +139,7 @@
 (deftest list-domains-returns-correct-status
   ;; Test that list-domains returns proper status for managed certificates
   (testing "list-domains returns valid status for obtained certificates"
-    (let [storage-dir (str (Files/createTempDirectory
-                            "clave-test-"
-                            (into-array FileAttribute [])))
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
@@ -190,9 +183,7 @@
 (deftest has-valid-cert-returns-correct-status
   ;; Test that has-valid-cert? returns correct boolean for domains
   (testing "has-valid-cert? returns correct status"
-    (let [storage-dir (str (Files/createTempDirectory
-                            "clave-test-"
-                            (into-array FileAttribute [])))
+    (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)

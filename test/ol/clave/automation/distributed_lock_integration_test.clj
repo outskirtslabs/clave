@@ -11,11 +11,10 @@
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.automation :as automation]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent CountDownLatch TimeUnit]))
 
 (use-fixtures :each pebble/pebble-challenge-fixture)
@@ -34,9 +33,7 @@
   ;; Step 9: Clean up
   (testing "Distributed lock prevents duplicate certificate work"
     (let [;; Shared storage directory
-          storage-dir (str (Files/createTempDirectory
-                            "clave-dist-lock-test-"
-                            (into-array FileAttribute [])))
+          storage-dir (test-util/temp-storage-dir)
           ;; Both instances use the same storage
           storage-impl (file-storage/file-storage storage-dir)
 

@@ -13,10 +13,9 @@
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent TimeUnit]))
 
 (use-fixtures :each pebble/pebble-challenge-fixture)
@@ -33,9 +32,7 @@
   (testing "ACME rejectedIdentifier error fails immediately without retry"
     (let [;; Use domain from Pebble's domainBlocklist
           blocked-domain "blocked-domain.example"
-          storage-dir (str (Files/createTempDirectory
-                            "clave-test-"
-                            (into-array FileAttribute [])))
+          storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           ;; Track how many times obtain is attempted
           obtain-attempts (atom 0)

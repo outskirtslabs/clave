@@ -14,7 +14,7 @@
    [ol.clave.storage.file :as file-storage])
   (:import
    [java.nio.file Files Paths]
-   [java.nio.file.attribute FileAttribute PosixFilePermissions]
+   [java.nio.file.attribute PosixFilePermissions]
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
@@ -25,7 +25,7 @@
   "Check if POSIX file permissions are supported on this system."
   []
   (try
-    (let [tmp (Files/createTempDirectory "posix-test" (make-array FileAttribute 0))]
+    (let [tmp (Paths/get (test-util/temp-storage-dir) (make-array String 0))]
       (try
         (Files/getPosixFilePermissions tmp (make-array java.nio.file.LinkOption 0))
         true

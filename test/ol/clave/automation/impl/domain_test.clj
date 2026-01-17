@@ -3,10 +3,8 @@
    [clojure.test :refer [deftest is testing]]
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.domain :as domain]
-   [ol.clave.storage.file :as file-storage])
-  (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]))
+   [ol.clave.impl.test-util :as test-util]
+   [ol.clave.storage.file :as file-storage]))
 
 (def ^:private public-ca-config
   "Config with a public CA (Let's Encrypt) for testing public CA validations."
@@ -172,9 +170,6 @@
     (is (= :invalid-domain (:error (domain/validate-domain "<host>.example.com" {}))))
     (is (= :invalid-domain (:error (domain/validate-domain "host@example.com" {}))))))
 
-(defn- temp-dir []
-  (str (Files/createTempDirectory "clave-test" (into-array FileAttribute []))))
-
 (defn- test-config [storage-dir]
   {:storage (file-storage/file-storage storage-dir)
    :issuers [{:directory-url "https://acme-v02.api.letsencrypt.org/directory"}]
@@ -182,7 +177,7 @@
 
 (deftest manage-domains-test
   (testing "rejects localhost"
-    (let [sys (automation/create-started! (test-config (temp-dir)))]
+    (let [sys (automation/create-started! (test-config (test-util/temp-storage-dir)))]
       (try
         (let [ex (try
                    (automation/manage-domains sys ["localhost"])
@@ -196,7 +191,7 @@
           (automation/stop sys)))))
 
   (testing "rejects .local domains"
-    (let [sys (automation/create-started! (test-config (temp-dir)))]
+    (let [sys (automation/create-started! (test-config (test-util/temp-storage-dir)))]
       (try
         (let [ex (try
                    (automation/manage-domains sys ["test.local"])
@@ -208,14 +203,14 @@
           (automation/stop sys)))))
 
   (testing "accepts valid domains"
-    (let [sys (automation/create-started! (test-config (temp-dir)))]
+    (let [sys (automation/create-started! (test-config (test-util/temp-storage-dir)))]
       (try
         (is (nil? (automation/manage-domains sys ["example.com"])))
         (finally
           (automation/stop sys)))))
 
   (testing "rejects wildcards without dns-01"
-    (let [sys (automation/create-started! (test-config (temp-dir)))]
+    (let [sys (automation/create-started! (test-config (test-util/temp-storage-dir)))]
       (try
         (let [ex (try
                    (automation/manage-domains sys ["*.example.com"])
@@ -229,7 +224,7 @@
           (automation/stop sys)))))
 
   (testing "rejects directory traversal"
-    (let [sys (automation/create-started! (test-config (temp-dir)))]
+    (let [sys (automation/create-started! (test-config (test-util/temp-storage-dir)))]
       (try
         (let [ex (try
                    (automation/manage-domains sys ["../../../etc/passwd"])

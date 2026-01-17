@@ -5,10 +5,9 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.automation :as automation]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.test-util :as test-util]
    [ol.clave.storage.file :as file-storage])
   (:import
-   [java.nio.file Files]
-   [java.nio.file.attribute FileAttribute]
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
@@ -26,9 +25,7 @@
   ;; 7. Verify system continues operating for other domains
   (testing "Solver throwing RuntimeException is caught and logged"
     (let [domain1 "localhost"
-          storage-dir (str (Files/createTempDirectory
-                            "clave-test-"
-                            (into-array FileAttribute [])))
+          storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
           exception-message "Simulated solver failure from test"
           ;; We'll test that the system continues working after failure
@@ -79,4 +76,3 @@
               "System should still be running after solver exception"))
         (finally
           (automation/stop system))))))
-

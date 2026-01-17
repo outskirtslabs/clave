@@ -1,6 +1,4 @@
 (ns ol.clave.automation.revocation-integration-test
-  "Integration tests for certificate revocation.
-  Tests both high-level automation API and low-level commands API."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.challenge :as challenge]
@@ -61,49 +59,46 @@
   (some #(= type (:type %)) events))
 
 (deftest automation-revocation-test
-  (let [solver (make-http01-solver)]
+  (let [solver (make-http01-solver)
+        storage (file-storage/file-storage (test-util/temp-storage-dir))
+        system (automation/create-started! (make-config storage solver))
+        queue (automation/get-event-queue system)]
+    (try
+      (testing "revoke sends revocation request to CA"
+        (let [domain "revoke1.localhost"]
+          (automation/manage-domains system [domain])
+          (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
+                                                         :timeout-ms 10000})]
+            (is (has-event? events :certificate-obtained)))
+          (let [bundle (automation/lookup-cert system domain)]
+            (is (some? bundle))
+            (let [result (automation/revoke system domain {})]
+              (is (= :success (:status result)))
+              (is (nil? (automation/lookup-cert system domain)))))))
 
-    (testing "revoke sends revocation request to CA"
-      (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
-            domain "revoke1.localhost"
-            system (automation/create-started! (make-config storage solver))]
-        (try
-          (let [queue (automation/get-event-queue system)]
-            (automation/manage-domains system [domain])
-            (let [events (test-util/collect-events-async queue 60 200)]
-              (is (has-event? events :certificate-obtained)))
-            (let [bundle (automation/lookup-cert system domain)]
-              (is (some? bundle))
-              (let [result (automation/revoke system domain {})]
-                (is (= :success (:status result)))
-                (is (nil? (automation/lookup-cert system domain))))))
-          (finally
-            (automation/stop system)))))
+      (test-util/wait-for-events queue {:timeout-ms 200})
 
-    (testing "revoke with remove-from-storage deletes files"
-      (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
-            domain "revoke2.localhost"
-            system (automation/create-started! (make-config storage solver))]
-        (try
-          (let [queue (automation/get-event-queue system)]
-            (automation/manage-domains system [domain])
-            (let [events (test-util/collect-events-async queue 60 200)]
-              (is (has-event? events :certificate-obtained)))
-            (let [bundle (automation/lookup-cert system domain)
-                  issuer-key (:issuer-key bundle)
-                  cert-path (config/cert-storage-key issuer-key domain)
-                  key-path (config/key-storage-key issuer-key domain)]
-              (is (some? bundle))
-              (is (storage/exists? storage nil cert-path))
-              (is (storage/exists? storage nil key-path))
-              (let [result (automation/revoke system domain {:remove-from-storage true})]
-                (is (= :success (:status result)))
-                (is (not (storage/exists? storage nil cert-path)))
-                (is (not (storage/exists? storage nil key-path)))
-                (is (nil? (automation/lookup-cert system domain)))
-                (is (not (some #(= domain (:domain %)) (automation/list-domains system)))))))
-          (finally
-            (automation/stop system)))))))
+      (testing "revoke with remove-from-storage deletes files"
+        (let [domain "revoke2.localhost"]
+          (automation/manage-domains system [domain])
+          (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
+                                                         :timeout-ms 10000})]
+            (is (has-event? events :certificate-obtained)))
+          (let [bundle (automation/lookup-cert system domain)
+                issuer-key (:issuer-key bundle)
+                cert-path (config/cert-storage-key issuer-key domain)
+                key-path (config/key-storage-key issuer-key domain)]
+            (is (some? bundle))
+            (is (storage/exists? storage nil cert-path))
+            (is (storage/exists? storage nil key-path))
+            (let [result (automation/revoke system domain {:remove-from-storage true})]
+              (is (= :success (:status result)))
+              (is (not (storage/exists? storage nil cert-path)))
+              (is (not (storage/exists? storage nil key-path)))
+              (is (nil? (automation/lookup-cert system domain)))
+              (is (not (some #(= domain (:domain %)) (automation/list-domains system))))))))
+      (finally
+        (automation/stop system)))))
 
 (deftest commands-revocation-test
   (testing "invalid reason code returns badRevocationReason"

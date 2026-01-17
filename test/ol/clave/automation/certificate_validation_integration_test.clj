@@ -48,7 +48,8 @@
       (try
         (let [queue (automation/get-event-queue system)]
           (automation/manage-domains system [domain])
-          (let [events (test-util/collect-events-async queue 100 200)]
+          (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
+                                                         :timeout-ms 10000})]
             (is (has-event? events :certificate-obtained)))
           (let [bundle (automation/lookup-cert system domain)
                 certs (:certificate bundle)]
@@ -85,7 +86,8 @@
         (let [system (automation/create-started! (make-config storage solver))]
           (try
             (let [queue (automation/get-event-queue system)
-                  events (test-util/collect-events-async queue 100 200)]
+                  events (test-util/wait-for-events queue {:expected #{:certificate-renewed}
+                                                           :timeout-ms 10000})]
               ;; Expired managed cert should be renewed automatically
               (is (has-event? events :certificate-renewed)
                   (str "Got: " (mapv :type events)))
@@ -110,7 +112,8 @@
         (let [system (automation/create-started! (make-config storage failing-solver))]
           (try
             (let [queue (automation/get-event-queue system)
-                  events (test-util/collect-events-async queue 100 200)]
+                  events (test-util/wait-for-events queue {:expected #{:certificate-failed}
+                                                           :timeout-ms 10000})]
               ;; Should get failure event when renewal fails
               (is (has-event? events :certificate-failed)
                   (str "Got: " (mapv :type events)))
@@ -143,7 +146,8 @@
           ;; Trigger maintenance - should NOT renew a not-yet-valid cert
           (let [queue (automation/get-event-queue system)]
             (automation/trigger-maintenance! system)
-            (let [events (test-util/collect-events-async queue 5 200)]
+            (let [events (test-util/wait-for-events queue {:forbidden #{:certificate-renewed}
+                                                           :timeout-ms 500})]
               (is (not (has-event? events :certificate-renewed)))))
           (finally
             (automation/stop system)))))))

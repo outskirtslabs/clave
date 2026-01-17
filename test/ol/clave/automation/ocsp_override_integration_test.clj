@@ -46,7 +46,9 @@
         (try
           (let [queue (automation/get-event-queue system)]
             (automation/manage-domains system [domain])
-            (let [events (test-util/collect-events-async queue 100 200)]
+            (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained
+                                                                       :ocsp-stapled}
+                                                           :timeout-ms 10000})]
               (is (has-event? events :certificate-obtained))
               (is (has-event? events :ocsp-stapled) (str "Got: " (mapv :type events)))
               (is (pos? (ocsp-harness/get-request-count)))
@@ -66,10 +68,16 @@
         (try
           (let [queue (automation/get-event-queue system)]
             (automation/manage-domains system [domain])
-            (let [events (test-util/collect-events-async queue 100 200)]
+            (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained
+                                                                       :ocsp-failed}
+                                                           :forbidden #{:ocsp-stapled}
+                                                           :timeout-ms 10000})]
               (is (has-event? events :certificate-obtained))
               (is (not (has-event? events :ocsp-stapled)))
               (is (has-event? events :ocsp-failed) (str "Got: " (mapv :type events)))
+              (let [late (test-util/wait-for-events queue {:forbidden #{:ocsp-stapled}
+                                                           :timeout-ms 200})]
+                (is (not (has-event? late :ocsp-stapled))))
               (is (zero? (ocsp-harness/get-request-count)))
               (is (nil? (:ocsp-staple (automation/lookup-cert system domain))))))
           (finally

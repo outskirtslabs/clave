@@ -113,7 +113,10 @@
       (let [queue (automation/get-event-queue system)]
         (testing "OCSP staple fetched after certificate obtain"
           (automation/manage-domains system [domain])
-          (let [events (test-util/collect-events-async queue 100 200)
+          (let [events (test-util/wait-for-events queue {:expected #{:domain-added
+                                                                     :certificate-obtained
+                                                                     :ocsp-stapled}
+                                                         :timeout-ms 10000})
                 types (mapv :type events)]
             (is (has-event? events :domain-added))
             (is (has-event? events :certificate-obtained))
@@ -122,8 +125,10 @@
 
         (testing "OCSP staple refreshed when past threshold"
           (binding [decisions/*ocsp-refresh-threshold* 0]
+            (test-util/wait-for-events queue {:timeout-ms 200})
             (automation/trigger-maintenance! system)
-            (let [events (test-util/collect-events-async queue 100 200)]
+            (let [events (test-util/wait-for-events queue {:expected #{:ocsp-stapled}
+                                                           :timeout-ms 10000})]
               (is (has-event? events :ocsp-stapled) (str "Got: " (mapv :type events)))
               (is (some? (:ocsp-staple (automation/lookup-cert system domain))))))))
       (finally
@@ -142,10 +147,16 @@
       (testing "OCSP staple persisted to storage"
         (let [queue (automation/get-event-queue system1)]
           (automation/manage-domains system1 [domain])
-          (let [events (test-util/collect-events-async queue 100 200)]
+          (let [events (test-util/wait-for-events queue {:expected #{:ocsp-stapled}
+                                                         :timeout-ms 10000})]
             (is (has-event? events :ocsp-stapled)))
           (let [issuer-key (config/issuer-key-from-url (pebble/uri))
                 ocsp-key (config/ocsp-storage-key issuer-key domain)]
+            (loop [n 0]
+              (when (and (not (storage/exists? storage nil ocsp-key))
+                         (< n 40))
+                (Thread/sleep 50)
+                (recur (inc n))))
             (is (storage/exists? storage nil ocsp-key)))))
       (automation/stop system1)
 
@@ -173,7 +184,8 @@
     (try
       (let [queue (automation/get-event-queue system)]
         (automation/manage-domains system [domain])
-        (test-util/collect-events-async queue 100 200)
+        (test-util/wait-for-events queue {:expected #{:certificate-obtained}
+                                          :timeout-ms 10000})
         (let [old-hash (:hash (automation/lookup-cert system domain))
               old-fp (key-fingerprint (:private-key (automation/lookup-cert system domain)))]
 
@@ -182,7 +194,9 @@
             (ocsp-harness/set-ocsp-response! "*" {:revoked :unspecified})
             (binding [decisions/*ocsp-refresh-threshold* 0]
               (automation/trigger-maintenance! system)
-              (let [events (test-util/collect-events-async queue 100 200)
+              (let [events (test-util/wait-for-events queue {:expected #{:certificate-revoked
+                                                                         :certificate-obtained}
+                                                             :timeout-ms 15000})
                     types (mapv :type events)]
                 (is (has-event? events :certificate-revoked) (str "Got: " types))
                 (is (has-event? events :certificate-obtained) (str "Got: " types))
@@ -193,12 +207,21 @@
             (ocsp-harness/set-ocsp-response! "*" {:revoked :key-compromise})
             (binding [decisions/*ocsp-refresh-threshold* 0]
               (automation/trigger-maintenance! system)
-              (let [events (test-util/collect-events-async queue 100 200)
+              (let [events (test-util/wait-for-events queue {:expected #{:certificate-revoked
+                                                                         :certificate-obtained}
+                                                             :timeout-ms 15000})
                     revoked-evt (first (filter #(= :certificate-revoked (:type %)) events))]
                 (is (= :key-compromise (get-in revoked-evt [:data :reason])))
                 (let [new-fp (key-fingerprint (:private-key (automation/lookup-cert system domain)))]
                   (is (not (java.util.Arrays/equals ^bytes old-fp ^bytes new-fp))))
-                (let [entries (storage/list storage nil "keys/" false)]
+                (let [entries (loop [n 0]
+                                (let [entries (storage/list storage nil "keys/" false)]
+                                  (if (or (some #(re-find #"\.compromised\." %) entries)
+                                          (>= n 40))
+                                    entries
+                                    (do
+                                      (Thread/sleep 50)
+                                      (recur (inc n))))))]
                   (is (some #(re-find #"\.compromised\." %) entries))))))))
       (finally
         (automation/stop system)))))

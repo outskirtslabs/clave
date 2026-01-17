@@ -357,3 +357,41 @@
         (if evt
           (recur (conj events evt) (inc n))
           (recur events (inc n)))))))
+
+(defn wait-for-events
+  "Collect events until `expected` types are observed, a `forbidden` type appears,
+  or the timeout elapses.
+
+  Options:
+
+  | key          | description
+  |--------------|-------------
+  | `:expected`  | Set of event types to wait for (default `{}`)
+  | `:forbidden` | Set of event types to stop on (default `{}`)
+  | `:timeout-ms`| Total timeout in milliseconds (default `2000`)
+  | `:poll-ms`   | Queue poll timeout in milliseconds (default `50`)
+
+  Returns a vector of collected events."
+  [queue {:keys [expected forbidden timeout-ms poll-ms]
+          :or {expected #{}
+               forbidden #{}
+               timeout-ms 2000
+               poll-ms 50}}]
+  (let [deadline (+ (System/currentTimeMillis) timeout-ms)]
+    (loop [events []
+           seen #{}]
+      (let [now (System/currentTimeMillis)]
+        (if (or (>= now deadline)
+                (and (seq expected) (every? seen expected)))
+          events
+          (let [remaining (- deadline now)
+                timeout (min poll-ms remaining)
+                evt (.poll ^java.util.concurrent.LinkedBlockingQueue queue
+                           timeout TimeUnit/MILLISECONDS)]
+            (if evt
+              (let [events' (conj events evt)
+                    seen' (conj seen (:type evt))]
+                (if (and (seq forbidden) (contains? forbidden (:type evt)))
+                  events'
+                  (recur events' seen')))
+              (recur events seen))))))))

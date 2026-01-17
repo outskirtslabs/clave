@@ -1,6 +1,5 @@
 (ns ol.clave.automation.account-integration-test
-  "Integration tests for ACME account management: creation, persistence, ToS acceptance.
-  Tests run against Pebble ACME test server."
+  "Integration tests for ACME account management: creation, persistence, ToS acceptance."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.challenge :as challenge]
@@ -11,19 +10,15 @@
    [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
    [ol.clave.storage :as storage]
-   [ol.clave.storage.file :as file-storage])
-  (:import
-   [java.util.concurrent TimeUnit]))
+   [ol.clave.storage.file :as file-storage]))
 
-;; Use :each to give each test a fresh Pebble instance with clean state.
-;; This prevents authorization state accumulation across tests.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :once pebble/pebble-challenge-fixture)
 
 (deftest account-is-created-automatically-on-first-certificate-request
   (testing "Account is created and persisted on first certificate request"
     (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+          domain "acct-create.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
@@ -40,13 +35,10 @@
           system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
-          ;; Step 3: Call manage-domains to trigger certificate obtain
           (automation/manage-domains system [domain])
-          ;; Consume events until certificate is obtained
-          (loop []
-            (let [event (.poll queue 30 TimeUnit/SECONDS)]
-              (when (and event (not= :certificate-obtained (:type event)))
-                (recur))))
+          (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
+                                                         :timeout-ms 10000})]
+            (is (some #(= :certificate-obtained (:type %)) events)))
           ;; Step 4: Verify account is registered (certificate was issued successfully)
           (let [cert-bundle (automation/lookup-cert system domain)]
             (is (some? cert-bundle) "Certificate should be obtained, proving account was registered"))
@@ -64,7 +56,7 @@
   (testing "Account key is reused after system restart"
     (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+          domain "acct-reuse.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
@@ -83,11 +75,9 @@
             queue1 (automation/get-event-queue system1)]
         (try
           (automation/manage-domains system1 [domain])
-          ;; Wait for certificate
-          (loop []
-            (let [event (.poll queue1 30 TimeUnit/SECONDS)]
-              (when (and event (not= :certificate-obtained (:type event)))
-                (recur))))
+          (let [events (test-util/wait-for-events queue1 {:expected #{:certificate-obtained}
+                                                          :timeout-ms 10000})]
+            (is (some #(= :certificate-obtained (:type %)) events)))
           (finally
             (automation/stop system1))))
       ;; Record the account key fingerprint
@@ -100,12 +90,9 @@
             ;; Force renewal to create new certificate (with threshold > 1)
           (binding [decisions/*renewal-threshold* 1.01]
             (automation/trigger-maintenance! system2)
-              ;; Wait for renewal
-            (loop [attempts 0]
-              (when (< attempts 10)
-                (let [evt (.poll queue2 5 TimeUnit/SECONDS)]
-                  (when-not (= :certificate-renewed (:type evt))
-                    (recur (inc attempts)))))))
+            (let [events (test-util/wait-for-events queue2 {:expected #{:certificate-renewed}
+                                                            :timeout-ms 15000})]
+              (is (some #(= :certificate-renewed (:type %)) events))))
             ;; Verify account key is unchanged
           (let [reloaded-key-pem (storage/load-string storage-impl nil private-key-key)]
             (is (= original-key-pem reloaded-key-pem)
@@ -117,7 +104,7 @@
   (testing "Terms of Service acceptance is implicit when issuer is configured"
     (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+          domain "acct-tos.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
@@ -137,13 +124,10 @@
           system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
-          ;; Step 3: Trigger account registration via manage-domains
           (automation/manage-domains system [domain])
-          ;; Consume domain-added event
-          (.poll queue 5 TimeUnit/SECONDS)
-          ;; Wait for certificate-obtained event (proves full flow worked)
-          (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
-            (is (= :certificate-obtained (:type cert-event))
+          (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
+                                                         :timeout-ms 10000})]
+            (is (some #(= :certificate-obtained (:type %)) events)
                 "Should receive :certificate-obtained event (proves ToS was accepted)"))
           ;; Step 4: Verify ToS acceptance was sent to CA by checking account exists
           ;; Account registration requires ToS acceptance - if this exists, ToS was sent

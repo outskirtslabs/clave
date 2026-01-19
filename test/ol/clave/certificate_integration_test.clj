@@ -18,8 +18,8 @@
 
 (defn- wait-for-order-ready
   [lease session order]
-  (let [timeout-ms 60000
-        interval-ms 250
+  (let [timeout-ms 15000
+        interval-ms 100
         deadline (+ (System/currentTimeMillis) timeout-ms)]
     (loop [session session
            order order]

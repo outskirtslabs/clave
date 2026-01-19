@@ -13,7 +13,7 @@
   (:import
    [java.time Instant]))
 
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :once pebble/pebble-challenge-fixture)
 
 (defn- create-http01-solver
   "Create an HTTP-01 solver that works with Pebble's challenge test server."
@@ -31,7 +31,7 @@
   (testing "ARI data is stored and renewal can be forced"
     (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+          domain "ari-data.localhost"
           solver (create-http01-solver)
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]
@@ -101,7 +101,7 @@
   (testing "ARI fetch failure emits :ari-failed event and certificate uses standard timing"
     (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+          domain "ari-fallback.localhost"
           solver (create-http01-solver)
           config {:storage storage-impl
                   :issuers [{:directory-url (pebble/uri)}]

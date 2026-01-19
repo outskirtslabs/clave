@@ -57,9 +57,9 @@
       (let [queue (automation/get-event-queue system)]
         (automation/manage-domains system [domain])
         ;; consume domain-added event
-        (.poll queue 5 TimeUnit/SECONDS)
+        (.poll queue 2 TimeUnit/SECONDS)
         ;; wait for certificate obtain
-        (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
+        (let [cert-event (.poll queue 10 TimeUnit/SECONDS)]
           (when (= :certificate-obtained (:type cert-event))
             (automation/lookup-cert system domain))))
       (finally

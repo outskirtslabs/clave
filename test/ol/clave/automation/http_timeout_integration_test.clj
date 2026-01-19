@@ -1,6 +1,5 @@
 (ns ol.clave.automation.http-timeout-integration-test
-  "Integration test for HTTP client timeout handling.
-  Verifies that HTTP timeouts are respected and classified as retryable errors."
+  "Integration test for HTTP client timeout handling."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.automation :as automation]
@@ -17,7 +16,7 @@
   [f]
   (pebble/with-pebble {:env {"PEBBLE_VA_NOSLEEP" "1"}} f))
 
-(use-fixtures :each pebble-no-challtestsrv-fixture)
+(use-fixtures :once pebble-no-challtestsrv-fixture)
 
 (defn- start-slow-server
   "Starts a server that accepts connections but delays responses.
@@ -80,8 +79,8 @@
           storage-impl (file-storage/file-storage storage-dir)
           domain "localhost"
           ;; Start a slow server on the HTTP challenge port
-          ;; This will cause Pebble to hang when validating HTTP-01 challenges
-          slow-server (start-slow-server (:http-port pebble/*pebble-ports*) 60000)
+          ;; Delay just needs to exceed HTTP timeout (2s) to trigger timeout
+          slow-server (start-slow-server (:http-port pebble/*pebble-ports*) 10000)
           ;; Use a short timeout to trigger timeout quickly
           ;; The HTTP client will timeout before the slow server responds
           http-opts (assoc pebble/http-client-opts :timeout 2000)
@@ -99,12 +98,12 @@
           ;; Trigger certificate obtain
           (automation/manage-domains system [domain])
           ;; Consume domain-added event
-          (.poll queue 5 TimeUnit/SECONDS)
+          (.poll queue 2 TimeUnit/SECONDS)
           ;; Wait for certificate-failed event (should timeout)
-          ;; The timeout should occur within our configured timeout + buffer
+          ;; HTTP timeout is 2s, so failure should arrive within ~5s
           (let [event (loop [attempts 0]
-                        (when (< attempts 10)
-                          (let [e (.poll queue 5 TimeUnit/SECONDS)]
+                        (when (< attempts 15)
+                          (let [e (.poll queue 1 TimeUnit/SECONDS)]
                             (if (and e (= :certificate-failed (:type e)))
                               e
                               (recur (inc attempts))))))]

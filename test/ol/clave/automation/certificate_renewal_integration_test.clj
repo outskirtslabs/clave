@@ -1,6 +1,5 @@
 (ns ol.clave.automation.certificate-renewal-integration-test
-  "Integration tests for certificate renewal: automatic renewal, force renewal.
-  Tests run against Pebble ACME test server."
+  "Integration tests for certificate renewal: automatic renewal, force renewal."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.challenge :as challenge]
@@ -13,15 +12,13 @@
   (:import
    [java.util.concurrent TimeUnit]))
 
-;; Use :each to give each test a fresh Pebble instance with clean state.
-;; This prevents authorization state accumulation across tests.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :once pebble/pebble-challenge-fixture)
 
 (deftest certificate-renewal-happens-before-expiration
   (testing "Certificate renewal is triggered when threshold is reached"
     (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+          domain "renewal-threshold.localhost"
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -106,14 +103,13 @@
           ;; Step 1: Obtain certificates for multiple domains
           (automation/manage-domains system domains)
           ;; Wait for domain-added and certificate-obtained events
-          ;; Use generous timeout and collect events until we have what we need
           (let [initial-events (loop [collected []
-                                      deadline (+ (System/currentTimeMillis) 120000)]
+                                      deadline (+ (System/currentTimeMillis) 30000)]
                                  (let [obtained-count (count (filter #(= :certificate-obtained (:type %)) collected))]
                                    (if (or (>= obtained-count 2)
                                            (> (System/currentTimeMillis) deadline))
                                      collected
-                                     (if-let [evt (.poll queue 500 TimeUnit/MILLISECONDS)]
+                                     (if-let [evt (.poll queue 200 TimeUnit/MILLISECONDS)]
                                        (recur (conj collected evt) deadline)
                                        (recur collected deadline)))))
                 obtained-events (filter #(= :certificate-obtained (:type %)) initial-events)]
@@ -127,15 +123,14 @@
               ;; Step 3: Call renew-managed
               (let [cnt (automation/renew-managed system)]
                 (is (= 2 cnt) "renew-managed should return count of renewed certs"))
-              ;; Step 4-5: Wait for certificate-renewed events with generous timeout
-              ;; Collect ALL events to help diagnose failures
+              ;; Step 4-5: Wait for certificate-renewed events
               (let [all-renewal-events (loop [collected []
-                                              deadline (+ (System/currentTimeMillis) 120000)]
+                                              deadline (+ (System/currentTimeMillis) 30000)]
                                          (let [renewed-count (count (filter #(= :certificate-renewed (:type %)) collected))]
                                            (if (or (>= renewed-count 2)
                                                    (> (System/currentTimeMillis) deadline))
                                              collected
-                                             (if-let [evt (.poll queue 500 TimeUnit/MILLISECONDS)]
+                                             (if-let [evt (.poll queue 200 TimeUnit/MILLISECONDS)]
                                                (recur (conj collected evt) deadline)
                                                (recur collected deadline)))))
                     renewed-events (filter #(= :certificate-renewed (:type %)) all-renewal-events)

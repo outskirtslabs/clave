@@ -1,6 +1,5 @@
 (ns ol.clave.automation.missing-storage-integration-test
-  "Integration tests for certificate in cache but missing from storage.
-  Tests run against Pebble ACME test server."
+  "Integration tests for certificate in cache but missing from storage."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.challenge :as challenge]
@@ -15,8 +14,7 @@
   (:import
    [java.util.concurrent TimeUnit]))
 
-;; Use :each to give each test a fresh Pebble instance with clean state.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :once pebble/pebble-challenge-fixture)
 
 (defn- make-http01-solver
   "Create an HTTP-01 solver that uses Pebble's challenge test server."
@@ -44,7 +42,7 @@
     (loop []
       (if (> (System/currentTimeMillis) deadline)
         nil
-        (if-let [event (.poll queue 500 TimeUnit/MILLISECONDS)]
+        (if-let [event (.poll queue 200 TimeUnit/MILLISECONDS)]
           (if (= expected-type (:type event))
             event
             (recur))
@@ -71,7 +69,7 @@
         ;; Consume domain-added event
         (.poll queue 5 TimeUnit/SECONDS)
         ;; Wait for certificate obtain
-        (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
+        (let [cert-event (.poll queue 10 TimeUnit/SECONDS)]
           (is (= :certificate-obtained (:type cert-event))
               "Should obtain certificate successfully"))
         ;; Verify certificate is in cache
@@ -100,7 +98,7 @@
         (system/trigger-maintenance! system)
         ;; Step 4-5: Verify system detects missing storage and re-obtain is triggered
         ;; The re-obtain should emit a certificate-obtained event
-        (let [event (poll-until-event-type queue :certificate-obtained 30)]
+        (let [event (poll-until-event-type queue :certificate-obtained 10)]
           (is (some? event)
               "System should re-obtain certificate after detecting missing storage")
           (is (= :certificate-obtained (:type event))

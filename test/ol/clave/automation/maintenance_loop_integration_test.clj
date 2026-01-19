@@ -13,8 +13,7 @@
    [ol.clave.storage.file :as file-storage])
   (:import
    [java.time Instant]
-   [java.time.temporal ChronoUnit]
-   [java.util.concurrent TimeUnit]))
+   [java.time.temporal ChronoUnit]))
 
 (use-fixtures :once pebble/pebble-challenge-fixture)
 
@@ -28,15 +27,19 @@
               (pebble/challtestsrv-del-http01 (:token state))
               nil)})
 
-(defn- wait-for-renewal [queue domain timeout-ms]
-  (loop [deadline (+ (System/currentTimeMillis) timeout-ms)
-         renewed #{}]
-    (if (or (>= (System/currentTimeMillis) deadline) (contains? renewed domain))
-      renewed
-      (let [evt (.poll queue 100 TimeUnit/MILLISECONDS)]
-        (if (and evt (= :certificate-renewed (:type evt)))
-          (recur deadline (conj renewed (get-in evt [:data :domain])))
-          (recur deadline renewed))))))
+(defn- wait-for-renewed-domain [queue domain timeout-ms]
+  (let [deadline (+ (System/currentTimeMillis) timeout-ms)]
+    (loop []
+      (if (>= (System/currentTimeMillis) deadline)
+        nil
+        (let [evt (test-util/wait-for-events queue {:timeout-ms 200})
+              renewed (some #(when (and (= :certificate-renewed (:type %))
+                                        (= domain (get-in % [:data :domain])))
+                               %)
+                            evt)]
+          (if renewed
+            renewed
+            (recur)))))))
 
 (deftest maintenance-loop-interval-test
   (testing "automatic renewal at configured interval"
@@ -59,14 +62,9 @@
               queue (automation/get-event-queue system)]
           (automation/start! system)
           (try
-            ;; Note: maintenance loop runs every 100ms, emitting :certificate-emergency events
-            ;; during the ~8 second ACME workflow. Need high poll count to reach :certificate-renewed.
-            (let [renewed (loop [n 0]
-                            (when (< n 200)
-                              (let [evt (.poll queue 1 TimeUnit/SECONDS)]
-                                (if (= :certificate-renewed (:type evt))
-                                  evt
-                                  (recur (inc n))))))]
+            (let [events (test-util/wait-for-events queue {:expected #{:certificate-renewed}
+                                                           :timeout-ms 8000})
+                  renewed (first (filter #(= :certificate-renewed (:type %)) events))]
               (is (some? renewed) "Should receive certificate-renewed event")
               (is (< (- (System/currentTimeMillis) t0) 30000)))
             (finally
@@ -97,7 +95,7 @@
             (try
               (let [queue (automation/get-event-queue system)]
                 (automation/trigger-maintenance! system)
-                (let [events (test-util/collect-events queue 15 500)
+                (let [events (test-util/wait-for-events queue {:timeout-ms 1000})
                       renewed (->> events
                                    (filter #(= :certificate-renewed (:type %)))
                                    (map #(get-in % [:data :domain]))
@@ -111,14 +109,19 @@
                 (automation/stop system)))))))))
 
 (deftest config-fn-error-handling-test
-  (testing "skips domain when config-fn times out"
+  (testing "skips domains when config-fn times out or throws"
     (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
           issuer-key (config/issuer-key-from-url (pebble/uri))
           now (Instant/now)
-          domain-x "timeout.localhost"
-          domain-y "timeout-ok.localhost"
-          config-fn (fn [d] (when (= d domain-x) (Thread/sleep 60000)) nil)]
-      (doseq [d [domain-x domain-y]]
+          domain-timeout "timeout.localhost"
+          domain-throw "throwing.localhost"
+          domain-ok "config-ok.localhost"
+          config-fn (fn [d]
+                      (cond
+                        (= d domain-timeout) (Thread/sleep 60000)
+                        (= d domain-throw) (throw (ex-info "Test" {:d d}))
+                        :else nil))]
+      (doseq [d [domain-timeout domain-throw domain-ok]]
         (test-util/store-test-cert! storage issuer-key d
                                     (test-util/generate-test-certificate d
                                                                          (.minus now 1 ChronoUnit/DAYS)
@@ -134,40 +137,13 @@
           (try
             (let [queue (automation/get-event-queue system)]
               (automation/trigger-maintenance! system)
-              (let [events (test-util/collect-events queue 15 500)]
-                (is (some #(= domain-y (get-in % [:data :domain])) events))
+              (let [events (test-util/wait-for-events queue {:timeout-ms 1000})]
+                (is (some #(= domain-ok (get-in % [:data :domain])) events))
                 (is (not (some #(and (= :certificate-renewed (:type %))
-                                     (= domain-x (get-in % [:data :domain])))
-                               events)))))
-            (finally
-              (automation/stop system)))))))
-
-  (testing "skips domain when config-fn throws exception"
-    (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
-          issuer-key (config/issuer-key-from-url (pebble/uri))
-          now (Instant/now)
-          domain-x "throwing.localhost"
-          domain-y "throwing-ok.localhost"
-          config-fn (fn [d] (when (= d domain-x) (throw (ex-info "Test" {:d d}))) nil)]
-      (doseq [d [domain-x domain-y]]
-        (test-util/store-test-cert! storage issuer-key d
-                                    (test-util/generate-test-certificate d
-                                                                         (.minus now 1 ChronoUnit/DAYS)
-                                                                         (.plus now 89 ChronoUnit/DAYS))
-                                    {:managed true}))
-      (binding [decisions/*renewal-threshold* 1.01]
-        (let [system (automation/create-started! {:storage storage
-                                                  :issuers [{:directory-url (pebble/uri)}]
-                                                  :solvers {:http-01 (make-solver)}
-                                                  :http-client pebble/http-client-opts
-                                                  :config-fn config-fn})]
-          (try
-            (let [queue (automation/get-event-queue system)]
-              (automation/trigger-maintenance! system)
-              (let [events (test-util/collect-events queue 15 500)]
-                (is (some #(= domain-y (get-in % [:data :domain])) events))
+                                     (= domain-timeout (get-in % [:data :domain])))
+                               events)))
                 (is (not (some #(and (= :certificate-renewed (:type %))
-                                     (= domain-x (get-in % [:data :domain])))
+                                     (= domain-throw (get-in % [:data :domain])))
                                events)))
                 (is (automation/started? system))))
             (finally
@@ -205,8 +181,17 @@
           (is (some? (automation/lookup-cert system d-expired)))
           (is (some? (automation/lookup-cert system d-renewal)))
           (is (.isAfter ^Instant (:not-after (automation/lookup-cert system d-valid)) now))
-          (let [renewed (wait-for-renewal (automation/get-event-queue system) d-expired 90000)]
-            (is (contains? renewed d-expired)))
-          (is (.isAfter ^Instant (:not-after (automation/lookup-cert system d-expired)) now))
+          (let [queue (automation/get-event-queue system)
+                renewed (wait-for-renewed-domain queue d-expired 8000)]
+            (is (some? renewed)))
+          (let [updated? (loop [n 0]
+                           (if (>= n 20)
+                             false
+                             (if (.isAfter ^Instant (:not-after (automation/lookup-cert system d-expired)) now)
+                               true
+                               (do
+                                 (Thread/sleep 50)
+                                 (recur (inc n))))))]
+            (is updated? "Expired cert should be renewed"))
           (finally
             (automation/stop system)))))))

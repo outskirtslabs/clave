@@ -1,6 +1,5 @@
 (ns ol.clave.automation.key-type-integration-test
-  "Integration tests for key type variations in certificate issuance.
-  Tests run against Pebble ACME test server."
+  "Integration tests for key type variations in certificate issuance."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.challenge :as challenge]
@@ -14,8 +13,7 @@
    [java.security.spec ECParameterSpec]
    [java.util.concurrent TimeUnit]))
 
-;; Use :each to give each test a fresh Pebble instance with clean state.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :once pebble/pebble-challenge-fixture)
 
 (defn- create-solver
   "Creates an HTTP-01 solver for pebble challenge test server."
@@ -47,7 +45,6 @@
   [key-type domain-suffix]
   (let [storage-dir (test-util/temp-storage-dir)
         storage-impl (file-storage/file-storage storage-dir)
-        ;; Use a unique domain for each key type to avoid conflicts
         domain (str "keytype-" (name key-type) "-" domain-suffix ".localhost")
         solver (create-solver)
         config {:storage storage-impl
@@ -59,9 +56,9 @@
     (try
       (let [queue (automation/get-event-queue system)]
         (automation/manage-domains system [domain])
-        ;; Consume domain-added event
+        ;; consume domain-added event
         (.poll queue 5 TimeUnit/SECONDS)
-        ;; Wait for certificate obtain
+        ;; wait for certificate obtain
         (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
           (when (= :certificate-obtained (:type cert-event))
             (automation/lookup-cert system domain))))
@@ -115,4 +112,3 @@
               "Private key should be RSA key")
           (is (= 4096 (get-rsa-key-size private-key))
               "RSA key should be 4096 bits"))))))
-

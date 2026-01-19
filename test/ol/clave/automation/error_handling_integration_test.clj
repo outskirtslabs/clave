@@ -6,23 +6,12 @@
    [ol.clave.automation :as automation]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]
-   [ol.clave.storage.file :as file-storage])
-  (:import
-   [java.util.concurrent TimeUnit]))
+   [ol.clave.storage.file :as file-storage]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
 (use-fixtures :each pebble/pebble-challenge-fixture)
 
 (deftest solver-throws-exception-is-caught-and-logged
-  ;; Test #147: Solver throws exception is caught and logged
-  ;; Steps:
-  ;; 1. Create solver that throws RuntimeException
-  ;; 2. Configure automation with broken solver
-  ;; 3. Trigger certificate obtain
-  ;; 4. Verify exception is caught
-  ;; 5. Verify :certificate-failed event is emitted
-  ;; 6. Verify error details include solver exception
-  ;; 7. Verify system continues operating for other domains
   (testing "Solver throwing RuntimeException is caught and logged"
     (let [domain1 "localhost"
           storage-dir (test-util/temp-storage-dir)
@@ -41,37 +30,23 @@
           system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
-          ;; Step 3: Trigger certificate obtain
           (automation/manage-domains system [domain1])
-          ;; Wait for domain-added event
-          (let [added-evt (.poll queue 5 TimeUnit/SECONDS)]
-            (is (some? added-evt) "Should receive domain-added event")
-            (is (= :domain-added (:type added-evt))))
-          ;; Wait for certificate-failed event (solver throws exception)
-          ;; Give enough time for the ACME flow to reach the challenge phase
-          (let [events (loop [collected []
-                              attempts 0]
-                         (if (>= attempts 60)  ;; 30 seconds max
-                           collected
-                           (if-let [evt (.poll queue 500 TimeUnit/MILLISECONDS)]
-                             (recur (conj collected evt) (inc attempts))
-                             (recur collected (inc attempts)))))
-                failure-events (filter #(= :certificate-failed (:type %)) events)]
-            ;; Step 4 & 5: Verify exception is caught and :certificate-failed event emitted
-            (is (seq failure-events)
+          (let [events (test-util/wait-for-events queue {:expected #{:domain-added
+                                                                     :certificate-failed}
+                                                         :timeout-ms 8000})
+                failure-event (first (filter #(= :certificate-failed (:type %)) events))]
+            (is (some? (some #(= :domain-added (:type %)) events))
+                "Should receive domain-added event")
+            (is (some? failure-event)
                 "Should emit :certificate-failed event when solver throws exception")
-            ;; Step 6: Verify error details include solver exception
-            (when (seq failure-events)
-              (let [event-data (:data (first failure-events))]
+            (when failure-event
+              (let [event-data (:data failure-event)]
                 (is (= domain1 (:domain event-data))
                     "Event should reference correct domain")
                 (is (some? (:error event-data))
                     "Event should include error details"))))
-          ;; Step 4 (continued): Verify solver was actually called
           (is (pos? @call-count)
               "Solver should have been called before exception")
-          ;; Step 7: Verify system continues operating
-          ;; The system should still be running and not crashed
           (is (automation/started? system)
               "System should still be running after solver exception"))
         (finally

@@ -9,19 +9,15 @@
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
-   [ol.clave.storage.file :as file-storage])
-  (:import
-   [java.util.concurrent TimeUnit]))
+   [ol.clave.storage.file :as file-storage]))
 
-;; Use :each to give each test a fresh Pebble instance with clean state.
-;; This prevents authorization state accumulation across tests.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :once pebble/pebble-challenge-fixture)
 
 (deftest private-key-type-respects-configuration
   (testing "Certificate private key type matches :key-type configuration"
     (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+          domain "pk-type.localhost"
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -39,13 +35,10 @@
           system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
-          ;; Obtain a certificate
           (automation/manage-domains system [domain])
-          ;; Consume domain-added event
-          (.poll queue 5 TimeUnit/SECONDS)
-          ;; Wait for certificate obtain
-          (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
-            (is (= :certificate-obtained (:type cert-event))
+          (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
+                                                         :timeout-ms 8000})]
+            (is (some #(= :certificate-obtained (:type %)) events)
                 "Should receive :certificate-obtained event"))
           ;; Verify key type is RSA 2048-bit
           (let [bundle (automation/lookup-cert system domain)
@@ -65,7 +58,7 @@
   (testing "Renewal generates new private key (key-reuse false by default)"
     (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+          domain "pk-new.localhost"
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -81,13 +74,10 @@
           system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
-          ;; Obtain initial certificate
           (automation/manage-domains system [domain])
-          ;; Consume domain-added event
-          (.poll queue 5 TimeUnit/SECONDS)
-          ;; Wait for certificate obtain
-          (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
-            (is (= :certificate-obtained (:type cert-event))))
+          (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
+                                                         :timeout-ms 8000})]
+            (is (some #(= :certificate-obtained (:type %)) events)))
           ;; Get initial private key fingerprint
           (let [initial-bundle (automation/lookup-cert system domain)
                 initial-key (:private-key initial-bundle)
@@ -96,12 +86,9 @@
             ;; Force renewal with threshold > 1.0
             (binding [decisions/*renewal-threshold* 1.01]
               (automation/trigger-maintenance! system)
-              ;; Wait for renewal
-              (loop [attempts 0]
-                (when (< attempts 10)
-                  (let [evt (.poll queue 5 TimeUnit/SECONDS)]
-                    (when-not (= :certificate-renewed (:type evt))
-                      (recur (inc attempts)))))))
+              (let [events (test-util/wait-for-events queue {:expected #{:certificate-renewed}
+                                                             :timeout-ms 10000})]
+                (is (some #(= :certificate-renewed (:type %)) events))))
             ;; Verify new private key is different
             (let [new-bundle (automation/lookup-cert system domain)
                   new-key (:private-key new-bundle)
@@ -116,7 +103,7 @@
   (testing "Renewal reuses private key when :key-reuse is true"
     (let [storage-dir (test-util/temp-storage-dir)
           storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+          domain "pk-reuse.localhost"
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -133,13 +120,10 @@
           system (automation/create-started! config)]
       (try
         (let [queue (automation/get-event-queue system)]
-          ;; Obtain initial certificate
           (automation/manage-domains system [domain])
-          ;; Consume domain-added event
-          (.poll queue 5 TimeUnit/SECONDS)
-          ;; Wait for certificate obtain
-          (let [cert-event (.poll queue 30 TimeUnit/SECONDS)]
-            (is (= :certificate-obtained (:type cert-event))))
+          (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
+                                                         :timeout-ms 8000})]
+            (is (some #(= :certificate-obtained (:type %)) events)))
           ;; Get initial private key encoded bytes
           (let [initial-bundle (automation/lookup-cert system domain)
                 ^java.security.PrivateKey initial-key (:private-key initial-bundle)
@@ -148,12 +132,9 @@
             ;; Force renewal with threshold > 1.0
             (binding [decisions/*renewal-threshold* 1.01]
               (automation/trigger-maintenance! system)
-              ;; Wait for renewal
-              (loop [attempts 0]
-                (when (< attempts 10)
-                  (let [evt (.poll queue 5 TimeUnit/SECONDS)]
-                    (when-not (= :certificate-renewed (:type evt))
-                      (recur (inc attempts)))))))
+              (let [events (test-util/wait-for-events queue {:expected #{:certificate-renewed}
+                                                             :timeout-ms 10000})]
+                (is (some #(= :certificate-renewed (:type %)) events))))
             ;; Verify private key is the same
             (let [new-bundle (automation/lookup-cert system domain)
                   ^java.security.PrivateKey new-key (:private-key new-bundle)

@@ -1,0 +1,475 @@
+= ol.clave.acme.impl.commands
+
+[#default-poll-interval-ms]
+== default-poll-interval-ms
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L28-L28[source,window=_blank]
+
+'''
+
+[#default-poll-timeout-ms]
+== default-poll-timeout-ms
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L29-L29[source,window=_blank]
+
+'''
+
+[#new-session]
+== new-session
+
+
+
+
+[source,clojure]
+----
+(new-session directory-url {:keys [http-client account-key account-kid]})
+----
+
+See xref:api/ol-clave-acme-commands.adoc#new-session[`ol.clave.acme.commands/new-session`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L31-L43[source,window=_blank]
+
+'''
+
+[#set-polling]
+== set-polling
+
+
+
+
+[source,clojure]
+----
+(set-polling session {:keys [interval-ms timeout-ms]})
+----
+
+See xref:api/ol-clave-acme-commands.adoc#set-polling[`ol.clave.acme.commands/set-polling`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L45-L50[source,window=_blank]
+
+'''
+
+[#load-directory]
+== load-directory
+
+
+
+
+[source,clojure]
+----
+(load-directory lease session)
+(load-directory lease {::acme/keys [directory-url] :as session} opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#load-directory[`ol.clave.acme.commands/load-directory`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L52-L80[source,window=_blank]
+
+'''
+
+[#create-session]
+== create-session
+
+
+
+
+[source,clojure]
+----
+(create-session lease directory-url opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#create-session[`ol.clave.acme.commands/create-session`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L82-L87[source,window=_blank]
+
+'''
+
+[#compute-eab-binding]
+== compute-eab-binding
+
+
+
+
+[source,clojure]
+----
+(compute-eab-binding eab-opts account-key endpoint)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#compute-eab-binding[`ol.clave.acme.commands/compute-eab-binding`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L89-L104[source,window=_blank]
+
+'''
+
+[#new-account]
+== new-account
+
+
+
+
+[source,clojure]
+----
+(new-account lease session account)
+(new-account lease session account opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#new-account[`ol.clave.acme.commands/new-account`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L106-L145[source,window=_blank]
+
+'''
+
+[#find-account-by-key]
+== find-account-by-key
+
+
+
+
+[source,clojure]
+----
+(find-account-by-key lease session)
+(find-account-by-key lease session _opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#find-account-by-key[`ol.clave.acme.commands/find-account-by-key`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L147-L181[source,window=_blank]
+
+'''
+
+[#get-account]
+== get-account
+
+
+
+
+[source,clojure]
+----
+(get-account lease session account)
+(get-account lease session account _opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#get-account[`ol.clave.acme.commands/get-account`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L242-L252[source,window=_blank]
+
+'''
+
+[#update-account-contact]
+== update-account-contact
+
+
+
+
+[source,clojure]
+----
+(update-account-contact lease session account contacts)
+(update-account-contact lease session account contacts _opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#update-account-contact[`ol.clave.acme.commands/update-account-contact`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L254-L270[source,window=_blank]
+
+'''
+
+[#deactivate-account]
+== deactivate-account
+
+
+
+
+[source,clojure]
+----
+(deactivate-account lease session account)
+(deactivate-account lease session account _opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#deactivate-account[`ol.clave.acme.commands/deactivate-account`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L272-L281[source,window=_blank]
+
+'''
+
+[#rollover-account-key]
+== rollover-account-key
+
+
+
+
+[source,clojure]
+----
+(rollover-account-key lease session account new-account-key)
+(rollover-account-key lease session account new-account-key _opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#rollover-account-key[`ol.clave.acme.commands/rollover-account-key`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L283-L316[source,window=_blank]
+
+'''
+
+[#new-order]
+== new-order
+
+
+
+
+[source,clojure]
+----
+(new-order lease session order)
+(new-order lease session order opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#new-order[`ol.clave.acme.commands/new-order`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L318-L351[source,window=_blank]
+
+'''
+
+[#get-order]
+== get-order
+
+
+
+
+[source,clojure]
+----
+(get-order lease session order-or-url)
+(get-order lease session order-or-url _opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#get-order[`ol.clave.acme.commands/get-order`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L371-L383[source,window=_blank]
+
+'''
+
+[#poll-order]
+== poll-order
+
+
+
+
+[source,clojure]
+----
+(poll-order lease session order-url)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#poll-order[`ol.clave.acme.commands/poll-order`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L385-L432[source,window=_blank]
+
+'''
+
+[#finalize-order]
+== finalize-order
+
+
+
+
+[source,clojure]
+----
+(finalize-order lease session order csr)
+(finalize-order lease session order csr _opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#finalize-order[`ol.clave.acme.commands/finalize-order`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L434-L479[source,window=_blank]
+
+'''
+
+[#get-authorization]
+== get-authorization
+
+
+
+
+[source,clojure]
+----
+(get-authorization lease session authorization-or-url)
+(get-authorization lease session authorization-or-url _opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#get-authorization[`ol.clave.acme.commands/get-authorization`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L499-L509[source,window=_blank]
+
+'''
+
+[#poll-authorization]
+== poll-authorization
+
+
+
+
+[source,clojure]
+----
+(poll-authorization lease session authorization-url)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#poll-authorization[`ol.clave.acme.commands/poll-authorization`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L511-L566[source,window=_blank]
+
+'''
+
+[#deactivate-authorization]
+== deactivate-authorization
+
+
+
+
+[source,clojure]
+----
+(deactivate-authorization lease session authorization-or-url)
+(deactivate-authorization lease session authorization-or-url _opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#deactivate-authorization[`ol.clave.acme.commands/deactivate-authorization`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L568-L591[source,window=_blank]
+
+'''
+
+[#new-authorization]
+== new-authorization
+
+
+
+
+[source,clojure]
+----
+(new-authorization lease session identifier)
+(new-authorization lease session identifier _opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#new-authorization[`ol.clave.acme.commands/new-authorization`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L593-L636[source,window=_blank]
+
+'''
+
+[#respond-challenge]
+== respond-challenge
+
+
+
+
+[source,clojure]
+----
+(respond-challenge lease session challenge)
+(respond-challenge lease session challenge opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#respond-challenge[`ol.clave.acme.commands/respond-challenge`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L638-L659[source,window=_blank]
+
+'''
+
+[#get-certificate]
+== get-certificate
+
+
+
+
+[source,clojure]
+----
+(get-certificate lease session certificate-url)
+(get-certificate lease session certificate-url _opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#get-certificate[`ol.clave.acme.commands/get-certificate`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L661-L689[source,window=_blank]
+
+'''
+
+[#revoke-certificate]
+== revoke-certificate
+
+
+
+
+[source,clojure]
+----
+(revoke-certificate lease session certificate)
+(revoke-certificate lease session certificate opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#revoke-certificate[`ol.clave.acme.commands/revoke-certificate`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L691-L738[source,window=_blank]
+
+'''
+
+[#get-renewal-info]
+== get-renewal-info
+
+
+
+
+[source,clojure]
+----
+(get-renewal-info lease session cert-or-id)
+(get-renewal-info lease session cert-or-id _opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#get-renewal-info[`ol.clave.acme.commands/get-renewal-info`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L755-L792[source,window=_blank]
+
+'''
+
+[#check-terms-of-service]
+== check-terms-of-service
+
+
+
+
+[source,clojure]
+----
+(check-terms-of-service lease session)
+(check-terms-of-service lease session _opts)
+----
+
+See xref:api/ol-clave-acme-commands.adoc#check-terms-of-service[`ol.clave.acme.commands/check-terms-of-service`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/commands.clj#L794-L803[source,window=_blank]

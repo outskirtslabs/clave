@@ -1,0 +1,181 @@
+= ol.clave.crypto.impl.jws
+
+[#jws-alg]
+== jws-alg
+
+
+
+
+
+Return the JWS `alg` header value for a key.
+
+| Key Type | Result    |
+|----------|-----------|
+| P-256    | "ES256" |
+| P-384    | "ES384" |
+| Ed25519  | "EdDSA" |
+| RSA      | "RS256" |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jws.clj#L123-L132[source,window=_blank]
+
+'''
+
+[#sign]
+== sign
+
+
+
+
+
+Sign data bytes, return signature bytes in JWS format.
+
+For ECDSA, returns R||S concatenated (not DER).
+For EdDSA and RSA, returns raw signature bytes.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jws.clj#L148-L153[source,window=_blank]
+
+'''
+
+[#protected-header-json]
+== protected-header-json
+
+
+
+
+[source,clojure]
+----
+(protected-header-json alg kid nonce url jwk-json)
+----
+
+Construct the protected header JSON string with deterministic field order.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jws.clj#L194-L218[source,window=_blank]
+
+'''
+
+[#final-jws-json]
+== final-jws-json
+
+
+
+
+[source,clojure]
+----
+(final-jws-json protected-b64 payload-b64 signature-b64)
+----
+
+Assemble the final JWS JSON object with deterministic ordering.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jws.clj#L220-L225[source,window=_blank]
+
+'''
+
+[#protected-dot-payload-bytes]
+== protected-dot-payload-bytes
+
+
+
+
+[source,clojure]
+----
+(protected-dot-payload-bytes protected-b64 payload-b64)
+----
+
+Return ASCII bytes of '<protected>.<payload>'.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jws.clj#L227-L230[source,window=_blank]
+
+'''
+
+[#encode-payload-b64]
+== encode-payload-b64
+
+
+
+
+[source,clojure]
+----
+(encode-payload-b64 payload-json)
+----
+
+Base64url-encode the payload JSON string or return the empty string when nil.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jws.clj#L232-L239[source,window=_blank]
+
+'''
+
+[#encode-protected-b64]
+== encode-protected-b64
+
+
+
+
+[source,clojure]
+----
+(encode-protected-b64 alg kid nonce url jwk-json)
+----
+
+Construct and base64url-encode the protected header JSON.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jws.clj#L241-L245[source,window=_blank]
+
+'''
+
+[#encode-signature-b64]
+== encode-signature-b64
+
+
+
+
+[source,clojure]
+----
+(encode-signature-b64 alg private-key-or-mac protected-dot-payload)
+----
+
+Compute the signature for the given alg and return base64url-encoded value.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jws.clj#L247-L256[source,window=_blank]
+
+'''
+
+[#jws-encode-json]
+== jws-encode-json
+
+
+
+
+[source,clojure]
+----
+(jws-encode-json payload-json keypair kid nonce url)
+----
+
+Build a JSON-serialized JWS object.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jws.clj#L281-L291[source,window=_blank]
+
+'''
+
+[#jws-encode-eab]
+== jws-encode-eab
+
+
+
+
+[source,clojure]
+----
+(jws-encode-eab account-key-or-keypair mac-key kid url)
+----
+
+Construct an External Account Binding JWS per RFC 8555 section 7.3.4.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jws.clj#L293-L306[source,window=_blank]

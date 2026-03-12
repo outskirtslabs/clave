@@ -1,0 +1,18 @@
+{:manifest/version 1,
+ :project
+ {:id "ol.clave",
+  :coord "com.outskirtslabs/clave",
+  :description
+  "Automatic HTTPS certificate management and renewal via ACME, implemented in pure Clojure with minimal dependencies",
+  :license "EUPL-1.2",
+  :platforms [:clj],
+  :status :experimental,
+  :created "2025-10-28",
+  :version "0.0.0"},
+ :docs
+ {:component "ol.clave",
+  :title "ol.clave",
+  :version "next",
+  :prerelease true,
+  :start-path "doc"},
+ :repo {:url "https://github.com/outskirtslabs/clave"}}

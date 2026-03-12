@@ -1,0 +1,426 @@
+= ol.clave.automation.impl.config
+
+[#resolve-config]
+== resolve-config
+
+
+
+
+[source,clojure]
+----
+(resolve-config system domain)
+----
+
+Merge global config with per-domain overrides.
+
+Returns the resolved configuration for a specific domain by merging
+the global config with any per-domain overrides from config-fn.
+
+If config-fn is nil or returns nil, returns the global config unchanged.
+
+| key      | description                                               |
+|----------|-----------------------------------------------------------|
+| `system` | System map containing `:config` and optional `:config-fn` |
+| `domain` | Domain name to resolve configuration for                  |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L12-L30[source,window=_blank]
+
+'''
+
+[#select-issuer]
+== select-issuer
+
+
+
+
+[source,clojure]
+----
+(select-issuer config)
+----
+
+Select issuers based on the issuer-selection policy.
+
+Returns the issuers in the appropriate order based on `:issuer-selection`:
+- `:in-order` (default) - return issuers in original order
+- `:shuffle` - return issuers in random order
+
+| key      | description                                                    |
+|----------|----------------------------------------------------------------|
+| `config` | Configuration with `:issuers` and optional `:issuer-selection` |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L32-L47[source,window=_blank]
+
+'''
+
+[#lets-encrypt-production-url]
+== lets-encrypt-production-url
+
+
+
+
+
+Let's Encrypt production directory URL.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L49-L51[source,window=_blank]
+
+'''
+
+[#default-config]
+== default-config
+
+
+
+
+[source,clojure]
+----
+(default-config)
+----
+
+Returns the default configuration for the automation layer.
+
+Default values:
+- Issuer: Let's Encrypt production
+- Key type: P256 (ECDSA)
+- OCSP: enabled, must-staple disabled
+- ARI: enabled
+- Key reuse: disabled
+- Cache capacity: unlimited
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L53-L72[source,window=_blank]
+
+'''
+
+[#issuer-key-from-url]
+== issuer-key-from-url
+
+
+
+
+[source,clojure]
+----
+(issuer-key-from-url url)
+----
+
+Extract issuer key from directory URL.
+
+Returns a unique identifier for the issuer based on the URL's host and path.
+
+| key   | description        |
+|-------|--------------------|
+| `url` | ACME directory URL |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L92-L116[source,window=_blank]
+
+'''
+
+[#cert-storage-key]
+== cert-storage-key
+
+
+
+
+[source,clojure]
+----
+(cert-storage-key issuer-key domain)
+----
+
+Generate storage key for a certificate PEM file.
+
+Format: `certificates/{issuer-key}/{domain}/{domain}.crt`
+
+| key          | description                                     |
+|--------------|-------------------------------------------------|
+| `issuer-key` | Issuer identifier (hostname from directory URL) |
+| `domain`     | Primary domain name                             |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L118-L130[source,window=_blank]
+
+'''
+
+[#key-storage-key]
+== key-storage-key
+
+
+
+
+[source,clojure]
+----
+(key-storage-key issuer-key domain)
+----
+
+Generate storage key for a private key PEM file.
+
+Format: `certificates/{issuer-key}/{domain}/{domain}.key`
+
+| key | description |
+|-----|-------------|
+| `issuer-key` | Issuer identifier (hostname from directory URL) |
+| `domain` | Primary domain name |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L132-L144[source,window=_blank]
+
+'''
+
+[#meta-storage-key]
+== meta-storage-key
+
+
+
+
+[source,clojure]
+----
+(meta-storage-key issuer-key domain)
+----
+
+Generate storage key for certificate metadata EDN file.
+
+Format: `certificates/{issuer-key}/{domain}/{domain}.edn`
+
+| key | description |
+|-----|-------------|
+| `issuer-key` | Issuer identifier (hostname from directory URL) |
+| `domain` | Primary domain name |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L146-L158[source,window=_blank]
+
+'''
+
+[#certs-prefix]
+== certs-prefix
+
+
+
+
+[source,clojure]
+----
+(certs-prefix issuer-key)
+----
+
+Generate storage prefix for listing certificates under an issuer.
+
+Format: `certificates/{issuer-key}`
+
+| key          | description                                     |
+|--------------|-------------------------------------------------|
+| `issuer-key` | Issuer identifier (hostname from directory URL) |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L160-L169[source,window=_blank]
+
+'''
+
+[#account-private-key-storage-key]
+== account-private-key-storage-key
+
+
+
+
+[source,clojure]
+----
+(account-private-key-storage-key issuer-key)
+----
+
+Generate storage key for an account private key PEM file.
+
+Format: `accounts/{issuer-key}/account.key`
+
+| key          | description                                     |
+|--------------|-------------------------------------------------|
+| `issuer-key` | Issuer identifier (hostname from directory URL) |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L171-L180[source,window=_blank]
+
+'''
+
+[#account-public-key-storage-key]
+== account-public-key-storage-key
+
+
+
+
+[source,clojure]
+----
+(account-public-key-storage-key issuer-key)
+----
+
+Generate storage key for an account public key PEM file.
+
+| key          | description                                     |
+|--------------|-------------------------------------------------|
+| `issuer-key` | Issuer identifier (hostname from directory URL) |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L182-L189[source,window=_blank]
+
+'''
+
+[#account-registration-storage-key]
+== account-registration-storage-key
+
+
+
+
+[source,clojure]
+----
+(account-registration-storage-key issuer-key)
+----
+
+Generate storage key for account registration EDN.
+
+Format: `accounts/{issuer-key}/registration.edn`
+
+Contains the account KID (URL) returned by the CA after registration,
+allowing subsequent operations to skip the newAccount call.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L191-L199[source,window=_blank]
+
+'''
+
+[#ocsp-storage-key]
+== ocsp-storage-key
+
+
+
+
+[source,clojure]
+----
+(ocsp-storage-key issuer-key domain)
+----
+
+Generate storage key for an OCSP staple file.
+
+Format: `certificates/{issuer-key}/{domain}/{domain}.ocsp`
+
+The OCSP staple is stored as raw DER-encoded bytes.
+
+| key          | description                                     |
+|--------------|-------------------------------------------------|
+| `issuer-key` | Issuer identifier (hostname from directory URL) |
+| `domain`     | Primary domain name                             |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L201-L215[source,window=_blank]
+
+'''
+
+[#compromised-key-storage-key]
+== compromised-key-storage-key
+
+
+
+
+[source,clojure]
+----
+(compromised-key-storage-key domain timestamp)
+----
+
+Generate storage key for archiving a compromised private key.
+
+Format: `keys/{domain}.compromised.{timestamp}`
+
+Compromised keys are archived for audit purposes and never reused.
+
+| key         | description                                        |
+|-------------|----------------------------------------------------|
+| `domain`    | Primary domain name                                |
+| `timestamp` | ISO-8601 timestamp when key was marked compromised |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L217-L231[source,window=_blank]
+
+'''
+
+[#ari-storage-key]
+== ari-storage-key
+
+
+
+
+[source,clojure]
+----
+(ari-storage-key issuer-key domain)
+----
+
+Generate storage key for ARI (ACME Renewal Information) data.
+
+Format: `certificates/{issuer-key}/{domain}/{domain}.ari.edn`
+
+The ARI data is stored as EDN containing suggested-window, selected-time,
+and retry-after.
+
+| key          | description                                     |
+|--------------|-------------------------------------------------|
+| `issuer-key` | Issuer identifier (hostname from directory URL) |
+| `domain`     | Primary domain name                             |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L233-L248[source,window=_blank]
+
+'''
+
+[#challenge-token-storage-key]
+== challenge-token-storage-key
+
+
+
+
+[source,clojure]
+----
+(challenge-token-storage-key issuer-key identifier)
+----
+
+Generate storage key for a challenge token (distributed solving).
+
+Format: `challenge_tokens/{issuer-key}/{identifier}.edn`
+
+Used to store challenge data so any instance in a cluster can serve
+the challenge response for HTTP-01 or TLS-ALPN-01 validation.
+
+| key          | description                                     |
+|--------------|-------------------------------------------------|
+| `issuer-key` | Issuer identifier (hostname from directory URL) |
+| `identifier` | Domain or IP address being validated            |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L250-L265[source,window=_blank]
+
+'''
+
+[#select-chain]
+== select-chain
+
+
+
+
+[source,clojure]
+----
+(select-chain preference chains)
+----
+
+Select a certificate chain based on preference.
+
+Preferences:
+- `:any` (default) - return first chain offered
+- `:shortest` - return chain with fewest certificates
+- `{:root "Root CA Name"}` - return chain with matching root name
+
+Returns nil if chains is empty.
+Falls back to first chain if root name not found.
+
+| key          | description                                                   |
+|--------------|---------------------------------------------------------------|
+| `preference` | Chain preference (`:any`, `:shortest`, or `{:root name}`)     |
+| `chains`     | Sequence of chain maps with `:chain` (certs) and `:root-name` |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L267-L299[source,window=_blank]

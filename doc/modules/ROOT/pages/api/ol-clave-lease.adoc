@@ -1,0 +1,451 @@
+= ol.clave.lease
+
+
+Cooperative cancellation and deadline propagation for concurrent operations.
+
+A `lease` represents a bounded lifetime for work.
+It carries an optional deadline, tracks cancellation state, and provides a
+completion signal that callers can poll or block on.
+
+## Motivation
+
+Individual timeout parameters scattered across function calls lead to
+inconsistent budgets and subtle hangs.
+A `lease` provides one coherent boundary: the caller defines the maximum time
+for an entire operation, and all nested work inherits that constraint.
+
+The `lease` is intentionally minimal and does not prescribe any particulary
+concurrency model.  Virtual threads, core.async go-loops, Java
+StructuredTaskScopes, etc all work equally well with leases.
+
+This design enables leases to serve as common ground between libraries with
+different runtime preferences.  A library using one concurrency model can
+accept the same lease type as a library using another, allowing callers to
+compose them without adapter layers or runtime coupling.
+
+
+## Cooperative Cancellation
+
+Cancellation are  entirely advisory.
+A `lease` does not forcibly terminate anything. It merely records that
+cancellation has been requested and notifies interested parties.
+The lease transitions from `:active` to `:cancelled` or `:timed-out`, but
+running code continues unless it explicitly checks the lease and decides to
+stop.
+
+This cooperative model requires discipline from functions that receive a
+lease: they must periodically consult the lease and honor cancellation
+promptly.
+The tradeoff is predictability.
+Code always controls its own teardown, resources are released in an orderly
+fashion, and there are no surprising interruptions mid-operation.
+
+## Concepts
+
+Lease: A value representing cancellation state (`:active`, `:cancelled`, or
+`:timed-out`), an optional deadline (monotonic nanoTime), and parent-child
+relationships for propagation.
+
+Deadline vs timeout: A timeout is a duration ("at most 2 seconds"); a
+deadline is an absolute monotonic bound ("stop at nanoTime T").
+This library accepts either via <<with-timeout,`with-timeout`>> and <<with-deadline,`with-deadline`>>, but
+internally tracks a single deadline per lease.
+Deadlines use `System/nanoTime` for monotonic timing, immune to wall-clock
+changes (NTP adjustments, manual clock changes, VM suspend/resume).
+
+## Honoring a Lease
+
+When your function receives a lease as an argument, you are accepting
+responsibility to respect it.
+The caller trusts that if they cancel the lease, your function will notice
+and stop work promptly and correctly.
+
+At a minimum, check the lease before starting expensive operations.
+Call <<active-QMARK--BANG-,`active?!`>> at the top of your function and at natural checkpoints: the
+start of each loop iteration, before issuing a network request, or after
+returning from a potentially slow sub-call.
+If the lease has been cancelled, <<active-QMARK--BANG-,`active?!`>> throws an exception containing
+the cancellation cause, which unwinds the stack cleanly.
+
+For non-throwing checks, use <<active-QMARK-,`active?`>> and return early or break out of
+loops when it returns false.
+The choice between throwing and returning depends on your error-handling
+style, but the principle is the same: stop doing new work once the lease is
+no longer active.
+
+When calling other lease-aware functions, pass the lease through so they
+inherit the same cancellation boundary.
+If you need to spawn concurrent work, derive child leases with <<with-cancel,`with-cancel`>>
+or <<with-timeout,`with-timeout`>> and cancel them in a finally block to ensure cleanup.
+
+The goal is prompt, graceful termination without leaking resources.
+A well-behaved function notices cancellation within a reasonable window
+(tens to hundreds of milliseconds for most operations) and exits without
+leaving resources dangling or work half-done.
+
+## Parent-Child Relationships
+
+Derived leases form a tree.
+When a parent cancels, all descendants cancel automatically.
+Children never cancel parents.
+Child deadlines adopt the earliest of the parent deadline and any explicitly
+provided deadline.
+
+## Thread Safety
+
+Leases are safe for concurrent use.
+Multiple threads may read state, register listeners, or attempt cancellation.
+Only the first cancellation wins; subsequent calls are no-ops.
+
+## Usage
+
+[source,clojure]
+----
+(require '[ol.clave.lease :as l])
+
+;; Create a root lease and derive a child with timeout
+(let [[lease cancel] (l/with-timeout (l/background) 5000)]
+  (try
+    (do-work lease)
+    (finally
+      (cancel))))
+
+;; Check cancellation state
+(when (l/active? lease)
+  (continue-work))
+
+;; Block until cancelled
+(deref (l/done-signal lease))
+----
+
+See also: <<with-cancel,`with-cancel`>>, <<with-timeout,`with-timeout`>>, <<with-deadline,`with-deadline`>>, <<active-QMARK--BANG-,`active?!`>>
+
+[#ILease]
+== ILease
+
+Protocol for cooperative cancellation and deadline tracking.
+
+All methods are non-blocking and safe for concurrent use from multiple
+threads.
+The <<done-signal,`done-signal`>> method returns a derefable; blocking occurs only when
+dereferencing that signal.
+
+_protocol_
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/lease.clj#L125-L162[source,window=_blank]
+
+
+[#deadline]
+=== deadline
+
+[source,clojure]
+----
+(deadline lease)
+----
+
+Returns the deadline as a monotonic nanoTime (Long), or `nil` if no deadline.
+
+  The value is from `System/nanoTime` and is only meaningful for comparison
+  with other nanoTime values.
+  Use <<remaining,`remaining`>> to get a human-readable `Duration` until expiry.
+
+'''
+
+[#done-signal]
+=== done-signal
+
+[source,clojure]
+----
+(done-signal lease)
+----
+
+Returns a read-only derefable that yields `true` when `lease` ends.
+
+  Use `deref` with a timeout to wait for cancellation, or
+  `clojure.core/realized?` for a non-blocking check.
+
+  [source,clojure]
+----
+  ;; Block with timeout
+  (deref (done-signal lease) 1000 :still-active)
+
+  ;; Non-blocking check
+  (realized? (done-signal lease))
+----
+
+'''
+
+[#cause]
+=== cause
+
+[source,clojure]
+----
+(cause lease)
+----
+
+Returns the `Throwable` that caused cancellation, or `nil` if `lease` is active.
+
+  The cause contains `:type` in its `ex-data`:
+  - `:lease/cancelled` for explicit cancellation
+  - `:lease/deadline-exceeded` for timeout
+
+'''
+
+[#active-QMARK-]
+=== active?
+
+[source,clojure]
+----
+(active? lease)
+----
+
+Returns `true` when `lease` has not been cancelled or timed out.
+
+'''
+
+[#background]
+== background
+
+
+
+
+[source,clojure]
+----
+(background)
+----
+
+Creates a root lease with no deadline or parent.
+
+The background lease is never cancelled on its own; it serves as the ancestor
+for all derived leases in an operation tree.
+Use <<with-cancel,`with-cancel`>>, <<with-timeout,`with-timeout`>>, or <<with-deadline,`with-deadline`>> to derive child
+leases with cancellation or deadline constraints.
+
+[source,clojure]
+----
+(let [root (background)
+      [child cancel] (with-timeout root 5000)]
+  (try
+    (do-work child)
+    (finally
+      (cancel))))
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/lease.clj#L335-L352[source,window=_blank]
+
+'''
+
+[#with-cancel]
+== with-cancel
+
+
+
+
+[source,clojure]
+----
+(with-cancel parent)
+----
+
+Derives a cancellable child lease from `parent`.
+
+Returns `[child cancel-fn]` where:
+- `child` is the derived lease, inheriting `parent`'s deadline
+- `cancel-fn` cancels `child` and all its descendants
+
+The cancel function accepts an optional cause argument.
+Without arguments, it uses a generic `:lease/cancelled` exception.
+Calling cancel multiple times is safe; only the first call takes effect.
+
+When `parent` cancels, `child` cancels automatically with the same cause.
+
+[source,clojure]
+----
+(let [[lease cancel] (with-cancel parent)]
+  (try
+    (do-work lease)
+    (finally
+      (cancel))))
+
+;; Cancel with custom cause
+(cancel (ex-info "user abort" {:reason :user-request}))
+----
+
+See also: <<with-timeout,`with-timeout`>>, <<with-deadline,`with-deadline`>>, <<background,`background`>>
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/lease.clj#L354-L388[source,window=_blank]
+
+'''
+
+[#with-deadline]
+== with-deadline
+
+
+
+
+[source,clojure]
+----
+(with-deadline parent dl)
+----
+
+Derives a child lease from `parent` with an absolute monotonic deadline.
+
+Returns `[child cancel-fn]` where `child` will automatically cancel with
+`:lease/deadline-exceeded` when the deadline passes.
+
+`dl` is a monotonic nanoTime value from `System/nanoTime`.
+The effective deadline is the earlier of `parent`'s deadline and `dl`.
+If `dl` has already passed, `child` is cancelled immediately.
+
+Most callers should prefer <<with-timeout,`with-timeout`>> which accepts human-friendly
+Duration or milliseconds.
+
+[source,clojure]
+----
+;; 30 second deadline using nanoTime
+(let [dl (+ (System/nanoTime) (* 30 1000000000))
+      [lease cancel] (l/with-deadline parent dl)]
+  (try
+    (do-work lease)
+    (finally
+      (cancel))))
+----
+
+See also: <<with-timeout,`with-timeout`>>, <<with-cancel,`with-cancel`>>, <<deadline,`deadline`>>
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/lease.clj#L390-L424[source,window=_blank]
+
+'''
+
+[#with-timeout]
+== with-timeout
+
+
+
+
+[source,clojure]
+----
+(with-timeout parent timeout)
+----
+
+Derives a child lease from `parent` with a relative timeout.
+
+Returns `[child cancel-fn]` where `child` will automatically cancel with
+`:lease/deadline-exceeded` after `timeout` elapses.
+
+`timeout` may be:
+- `java.time.Duration` for precise control
+- Long/integer for milliseconds
+
+The effective deadline is computed as `(now + timeout)` and combined with
+the parent deadline using earliest-wins semantics.
+A zero or negative timeout cancels the child immediately.
+
+[source,clojure]
+----
+;; 5 second timeout
+(let [[lease cancel] (with-timeout parent 5000)]
+  (try
+    (do-work lease)
+    (finally
+      (cancel))))
+
+;; Using Duration
+(with-timeout parent (Duration/ofSeconds 30))
+----
+
+See also: <<with-deadline,`with-deadline`>>, <<with-cancel,`with-cancel`>>
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/lease.clj#L426-L454[source,window=_blank]
+
+'''
+
+[#active-QMARK--BANG-]
+== active?!
+
+
+
+
+[source,clojure]
+----
+(active?! lease)
+----
+
+Returns `lease` if active, otherwise throws the cancellation cause.
+
+Use this for explicit cancellation checks that should fail fast.
+The thrown exception is the same value returned by <<cause,`cause`>>, containing
+`:type` of either `:lease/cancelled` or `:lease/deadline-exceeded`.
+
+[source,clojure]
+----
+;; Check and continue
+(active?! lease)
+(do-next-step)
+
+;; In a loop
+(loop []
+  (active?! lease)
+  (when (more-work?)
+    (process-item)
+    (recur)))
+----
+
+See also: <<active-QMARK-,`active?`>>, <<cause,`cause`>>
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/lease.clj#L456-L480[source,window=_blank]
+
+'''
+
+[#remaining]
+== remaining
+
+
+
+
+[source,clojure]
+----
+(remaining lease)
+----
+
+Returns the time remaining until `lease` expires as a `java.time.Duration`.
+
+Returns `nil` if the lease has no deadline.
+Returns `Duration/ZERO` if the deadline has already passed.
+
+[source,clojure]
+----
+(when-let [dur (l/remaining lease)]
+  (println "Time left:" (.toMillis dur) "ms"))
+----
+
+See also: <<deadline,`deadline`>>, <<active-QMARK-,`active?`>>
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/lease.clj#L482-L499[source,window=_blank]
+
+'''
+
+[#sleep]
+== sleep
+
+
+
+
+[source,clojure]
+----
+(sleep lease ms)
+----
+
+Cooperatively wait for `ms` milliseconds or until `lease` ends.
+
+Returns `:slept` if the full duration elapsed, or `:lease-ended` if the
+lease was cancelled or timed out during the wait.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/lease.clj#L501-L512[source,window=_blank]

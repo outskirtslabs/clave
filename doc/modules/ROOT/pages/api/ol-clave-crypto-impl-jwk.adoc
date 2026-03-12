@@ -1,0 +1,97 @@
+= ol.clave.crypto.impl.jwk
+
+[#key-algorithm]
+== key-algorithm
+
+
+
+
+[source,clojure]
+----
+(key-algorithm key)
+----
+
+Return :ol.clave.algo/es256 or :ol.clave.algo/ed25519 for supported keys.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jwk.clj#L31-L38[source,window=_blank]
+
+'''
+
+[#public-jwk]
+== public-jwk
+
+
+
+
+
+Return the public key as a JWK map.
+
+| Key Type | JWK kty |
+|----------|---------|
+| EC       | "EC"  |
+| Ed25519  | "OKP" |
+| RSA      | "RSA" |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jwk.clj#L59-L67[source,window=_blank]
+
+'''
+
+[#jwk--GT-canonical-json]
+== jwk->canonical-json
+
+
+
+
+[source,clojure]
+----
+(jwk->canonical-json jwk-map)
+----
+
+Render a public JWK map as canonical JSON for JWS embedding.
+
+Fields are sorted alphabetically per RFC 7638.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jwk.clj#L98-L119[source,window=_blank]
+
+'''
+
+[#jwk-thumbprint-from-jwk]
+== jwk-thumbprint-from-jwk
+
+
+
+
+[source,clojure]
+----
+(jwk-thumbprint-from-jwk jwk-map)
+----
+
+Compute RFC 7638 thumbprint from a JWK map.
+
+Returns base64url-encoded SHA-256 hash of canonical JWK.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jwk.clj#L121-L128[source,window=_blank]
+
+'''
+
+[#jwk-thumbprint]
+== jwk-thumbprint
+
+
+
+
+[source,clojure]
+----
+(jwk-thumbprint public-key)
+----
+
+Compute RFC 7638 thumbprint for a public key.
+
+Returns base64url-encoded SHA-256 hash of canonical JWK.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jwk.clj#L130-L135[source,window=_blank]

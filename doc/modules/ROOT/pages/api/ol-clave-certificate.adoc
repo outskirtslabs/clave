@@ -1,0 +1,395 @@
+= ol.clave.certificate
+
+
+Certificate acquisition and management.
+
+This namespace provides high-level functions for obtaining TLS certificates
+from ACME servers, abstracting away the multi-step protocol workflow.
+
+The main entry point is <<obtain,`obtain`>> which orchestrates the complete ACME
+workflow: creating orders, solving challenges, finalizing with a CSR, and
+downloading the issued certificate.
+
+Solvers are maps containing functions that handle challenge provisioning:
+- `:present` (required) - provisions resources for ACME validation
+- `:cleanup` (required) - removes provisioned resources
+- `:wait` (optional) - waits for slow provisioning (e.g., DNS propagation)
+- `:payload` (optional) - generates custom challenge response payload
+
+See `ol.clave.solver.http` for an HTTP-01 solver with Ring middleware.
+
+See also `ol.clave.commands` for low-level plumbing operations.
+
+[#validate-solvers]
+== validate-solvers
+
+
+
+
+[source,clojure]
+----
+(validate-solvers solvers)
+----
+
+Validate that all solvers have required :present and :cleanup functions.
+
+Solvers are maps that must contain:
+- `:present` - function to provision challenge resources
+- `:cleanup` - function to clean up provisioned resources
+
+Optional keys are allowed (permissive mode):
+- `:wait` - function for slow provisioning operations
+- `:payload` - function to generate custom challenge payload
+- Any other keys (for user metadata)
+
+Returns nil on success, throws on validation failure.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L38-L63[source,window=_blank]
+
+'''
+
+[#wrap-solver-for-distributed]
+== wrap-solver-for-distributed
+
+
+
+
+[source,clojure]
+----
+(wrap-solver-for-distributed storage issuer-key storage-key-fn solver)
+----
+
+Wraps a solver to store/cleanup challenge tokens in shared storage.
+
+This enables distributed challenge solving where multiple instances
+behind a load balancer can serve ACME validation responses.
+
+On `:present`: stores challenge data to storage before calling underlying solver.
+On `:cleanup`: calls underlying solver cleanup, then deletes from storage.
+
+The stored data is a JSON map containing the full challenge plus key-authorization,
+enabling any instance to reconstruct and serve the response.
+
+| key | description |
+|-----|-------------|
+| `storage` | Storage implementation for persisting challenge tokens |
+| `issuer-key` | Issuer identifier for storage key namespacing |
+| `storage-key-fn` | Function `(fn [issuer-key identifier]) -> storage-key` |
+| `solver` | The underlying solver map to wrap |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L67-L118[source,window=_blank]
+
+'''
+
+[#wrap-solvers-for-distributed]
+== wrap-solvers-for-distributed
+
+
+
+
+[source,clojure]
+----
+(wrap-solvers-for-distributed storage issuer-key storage-key-fn solvers)
+----
+
+Wraps all solvers in a map for distributed challenge solving.
+
+| key | description |
+|-----|-------------|
+| `storage` | Storage implementation |
+| `issuer-key` | Issuer identifier |
+| `storage-key-fn` | Function to generate storage keys |
+| `solvers` | Map of challenge-type -> solver |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L120-L134[source,window=_blank]
+
+'''
+
+[#lookup-challenge-token]
+== lookup-challenge-token
+
+
+
+
+[source,clojure]
+----
+(lookup-challenge-token storage issuer-key storage-key-fn identifier)
+----
+
+Lookup a stored challenge token from shared storage.
+
+Returns the challenge data map if found, nil otherwise.
+
+| key | description |
+|-----|-------------|
+| `storage` | Storage implementation |
+| `issuer-key` | Issuer identifier |
+| `storage-key-fn` | Function to generate storage keys |
+| `identifier` | Domain or IP being validated |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L136-L150[source,window=_blank]
+
+'''
+
+[#obtain]
+== obtain
+
+
+
+
+[source,clojure]
+----
+(obtain the-lease session identifiers cert-keypair solvers opts)
+----
+
+Obtain a certificate from an ACME server using configured solvers.
+
+This function automates the complete ACME workflow defined in RFC 8555 Section 7.1:
+creating an order, solving authorization challenges, finalizing with a CSR,
+and downloading the issued certificate.
+
+Parameters:
+
+| name          | description                                                |
+|---------------|------------------------------------------------------------|
+| `the-lease`   | Lease for cancellation and timeout control                 |
+| `session`     | Authenticated ACME session with account key and KID        |
+| `identifiers` | Vector of identifier maps from `order/create-identifier` |
+| `cert-keypair`| KeyPair for the certificate (distinct from account key)    |
+| `solvers`     | Map of challenge type keyword to solver map                |
+| `opts`        | Optional configuration map                                 |
+
+Options map:
+
+| key                     | description                                        |
+|-------------------------|----------------------------------------------------|
+| `:not-before`           | Requested validity start (java.time.Instant)       |
+| `:not-after`            | Requested validity end (java.time.Instant)         |
+| `:profile`              | ACME profile name when CA supports profiles        |
+| `:preferred-challenges` | Vector of challenge types in preference order      |
+| `:poll-interval-ms`     | Polling interval for authorization/order           |
+| `:poll-timeout-ms`      | Polling timeout                                    |
+
+Returns `[updated-session result]` where result is a map:
+
+| key            | description                                              |
+|----------------|----------------------------------------------------------|
+| `:order`       | Final order map with status "valid"                    |
+| `:certificates`| Vector of certificate maps                               |
+| `:attempts`    | Number of order creation attempts made                   |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L285-L443[source,window=_blank]
+
+'''
+
+[#identifiers-from-sans]
+== identifiers-from-sans
+
+
+
+
+[source,clojure]
+----
+(identifiers-from-sans sans)
+----
+
+Convert a sequence of SAN strings to identifier maps.
+
+Automatically detects IP addresses (IPv4 and IPv6) vs DNS names.
+
+Example:
+[source,clojure]
+----
+(identifiers-from-sans ["example.com" "192.168.1.1" "2001:db8::1"])
+;; => [{:type "dns" :value "example.com"}
+;;     {:type "ip" :value "192.168.1.1"}
+;;     {:type "ip" :value "2001:db8::1"}]
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L447-L465[source,window=_blank]
+
+'''
+
+[#obtain-for-sans]
+== obtain-for-sans
+
+
+
+
+[source,clojure]
+----
+(obtain-for-sans the-lease session sans cert-key solvers)
+(obtain-for-sans the-lease session sans cert-key solvers opts)
+----
+
+Simplified certificate acquisition for the common case.
+
+Automatically creates identifiers from SAN strings.
+
+Parameters:
+
+| name         | description                                    |
+|--------------|------------------------------------------------|
+| `the-lease`  | Lease for cancellation/timeout                 |
+| `session`    | Authenticated ACME session                     |
+| `sans`       | Vector of SAN strings (domains, IPs)           |
+| `cert-key`   | KeyPair for certificate                        |
+| `solvers`    | Map of challenge type keyword to solver map    |
+| `opts`       | Optional configuration map (see <<obtain,`obtain`>>)    |
+
+Returns `[updated-session result]` as with `obtain-certificate`.
+
+Example:
+[source,clojure]
+----
+(obtain-certificate-for-sans
+  (lease/background)
+  session
+  ["example.com" "www.example.com"]
+  cert-key
+  {:http-01 http-solver})
+
+;; With options
+(obtain-certificate-for-sans
+  (lease/background)
+  session
+  ["example.com"]
+  cert-key
+  {:http-01 http-solver :tls-alpn-01 tls-solver}
+  {:preferred-challenges [:http-01 :tls-alpn-01]})
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L467-L506[source,window=_blank]
+
+'''
+
+[#csr]
+== csr
+
+
+
+
+[source,clojure]
+----
+(csr keypair sans & [opts])
+----
+
+Generate a PKCS#10 CSR from a KeyPair
+
+SANs (Subject Alternative Names) are automatically processed:
+- Unicode domains are converted to Punycode using IDNA encoding.
+- Wildcard usage is validated per RFC 6125 (DNS names only).
+- IP address format is validated for both IPv4 and IPv6.
+- Values are deduplicated and normalized.
+
+Arguments:
+  key-pair  - java.security.KeyPair (RSA, EC, or EdDSA). Required.
+  sans      - Vector of strings (domain names or IP addresses). Required.
+              Examples: ["example.com" "*.example.com" "192.0.2.1" "2001:db8::1"]
+
+  opts      - Map of options. Optional, defaults to {}.
+              :use-cn? - Boolean. If true, set Subject CN to the first DNS SAN.
+                         Default false. IPs are skipped when searching for CN value.
+                         When false, Subject is empty and all identifiers are in SANs only
+                         (one of three valid options per RFC 8555 Section 7.4).
+
+Returns:
+  {:csr-pem     String  - PEM-encoded CSR
+   :csr-der     bytes   - Raw DER bytes
+   :csr-b64url  String  - Base64URL-encoded DER (no padding) for ACME
+   :algorithm   Keyword - :rsa-2048, :rsa-3072, :rsa-4096, :ec-p256, :ec-p384, or :ed25519
+   :details     Map     - Algorithm OIDs, signature info}
+
+Supports RSA (2048, 3072, 4096), ECDSA (P-256, P-384), and Ed25519.
+Automatically handles IDNA conversion for internationalized domains.
+Validates and normalizes Subject Alternative Names.
+No other extensions or key types are supported.
+If you need more features then you will need to use external tools to provide your own CSR.
+
+Examples:
+  ;; Modern ACME: no CN in subject (use-cn? = false, the default)
+  (create-csr kp ["example.com" "*.example.com"])
+  (create-csr kp ["example.com" "www.example.com"] {})
+
+  ;; Legacy: CN = first DNS SAN (IPs are skipped)
+  (create-csr kp ["example.com" "www.example.com"] {:use-cn? true})
+
+  ;; Mixed DNS and IP SANs (auto-detected)
+  (create-csr kp ["example.com" "192.0.2.1" "2001:db8::1"])
+
+  ;; Unicode domains (auto-converted to Punycode)
+  (create-csr kp ["münchen.example" "www.münchen.example"])
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L508-L555[source,window=_blank]
+
+'''
+
+[#private-key--GT-pem]
+== private-key->pem
+
+
+
+
+[source,clojure]
+----
+(private-key->pem private-key)
+----
+
+Encode a private key as PKCS#8 PEM-formatted string.
+
+[source,clojure]
+----
+(private-key->pem (.getPrivate keypair))
+;; => "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L557-L565[source,window=_blank]
+
+'''
+
+[#keypair]
+== keypair
+
+
+
+
+[source,clojure]
+----
+(keypair)
+(keypair key-type)
+----
+
+Generate a keypair of the specified type.
+
+`key-type` must be one of xref:api/ol-clave-certificate-impl-keygen.adoc#supported-key-types[`supported-key-types`]:
+- `:ed25519` - Ed25519 curve
+- `:p256` - ECDSA P-256 (default, recommended)
+- `:p384` - ECDSA P-384
+- `:rsa2048` - RSA 2048-bit
+- `:rsa4096` - RSA 4096-bit
+- `:rsa8192` - RSA 8192-bit
+
+If you don't know which one to choose, just use the default.
+
+Returns a `java.security.KeyPair`.
+
+[source,clojure]
+----
+(generate :p256)
+;; => #object[java.security.KeyPair ...]
+
+(.getPublic (generate :ed25519))
+;; => #object[sun.security.ec.ed.EdDSAPublicKeyImpl ...]
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L567-L593[source,window=_blank]

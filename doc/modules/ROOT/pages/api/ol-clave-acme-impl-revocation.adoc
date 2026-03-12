@@ -1,0 +1,79 @@
+= ol.clave.acme.impl.revocation
+
+
+Pure helpers for certificate revocation payload construction and validation.
+
+This namespace handles:
+- Extracting DER bytes from X509Certificate or raw bytes
+- Constructing revocation payloads with base64url-encoded certificates
+- Validating RFC 5280 reason codes for ACME revocation
+
+[#valid-reason-QMARK-]
+== valid-reason?
+
+
+
+
+[source,clojure]
+----
+(valid-reason? reason)
+----
+
+Return true if `reason` is a valid RFC 5280 revocation reason code for ACME.
+
+Valid codes are 0-6 and 8-10. Code 7 is unused in RFC 5280.
+Returns false for non-integer values.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/revocation.clj#L21-L28[source,window=_blank]
+
+'''
+
+[#certificate--GT-der]
+== certificate->der
+
+
+
+
+[source,clojure]
+----
+(certificate->der certificate)
+----
+
+Extract DER-encoded bytes from a certificate.
+
+Accepts either:
+- `java.security.cert.X509Certificate` - extracts via `.getEncoded()`
+- `byte[]` - returns as-is
+
+Returns the DER-encoded certificate bytes.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/revocation.clj#L30-L49[source,window=_blank]
+
+'''
+
+[#payload]
+== payload
+
+
+
+
+[source,clojure]
+----
+(payload certificate)
+(payload certificate opts)
+----
+
+Construct a revocation request payload.
+
+Parameters:
+- `certificate` - `X509Certificate` or DER bytes
+- `opts` - optional map with `:reason` (RFC 5280 reason code)
+
+Returns a map with:
+- `:certificate` - base64url-encoded DER
+- `:reason` - reason code (when provided in opts)
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/revocation.clj#L51-L67[source,window=_blank]

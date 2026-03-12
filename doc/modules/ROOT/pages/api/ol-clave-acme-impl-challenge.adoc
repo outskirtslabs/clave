@@ -1,0 +1,90 @@
+= ol.clave.acme.impl.challenge
+
+[#key-authorization]
+== key-authorization
+
+
+
+
+[source,clojure]
+----
+(key-authorization token account-keypair)
+----
+
+See xref:api/ol-clave-acme-challenge.adoc#key-authorization[`ol.clave.acme.challenge/key-authorization`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/challenge.clj#L14-L19[source,window=_blank]
+
+'''
+
+[#dns01-key-authorization]
+== dns01-key-authorization
+
+
+
+
+[source,clojure]
+----
+(dns01-key-authorization key-authorization)
+----
+
+See xref:api/ol-clave-acme-challenge.adoc#dns01-key-authorization[`ol.clave.acme.challenge/dns01-key-authorization`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/challenge.clj#L21-L27[source,window=_blank]
+
+'''
+
+[#http01-resource-path]
+== http01-resource-path
+
+
+
+
+[source,clojure]
+----
+(http01-resource-path token)
+----
+
+See xref:api/ol-clave-acme-challenge.adoc#http01-resource-path[`ol.clave.acme.challenge/http01-resource-path`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/challenge.clj#L29-L32[source,window=_blank]
+
+'''
+
+[#dns01-txt-name]
+== dns01-txt-name
+
+
+
+
+[source,clojure]
+----
+(dns01-txt-name domain)
+----
+
+See xref:api/ol-clave-acme-challenge.adoc#dns01-txt-name[`ol.clave.acme.challenge/dns01-txt-name`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/challenge.clj#L34-L38[source,window=_blank]
+
+'''
+
+[#normalize-challenge]
+== normalize-challenge
+
+
+
+
+[source,clojure]
+----
+(normalize-challenge challenge)
+(normalize-challenge challenge account-key)
+----
+
+Qualify a challenge map and attach computed key authorization when possible.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/challenge.clj#L40-L50[source,window=_blank]

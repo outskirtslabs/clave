@@ -1,0 +1,142 @@
+= ol.clave.acme.solver.http
+
+
+HTTP-01 challenge solver with Ring middleware.
+
+This namespace provides a complete HTTP-01 challenge solution for clojure ring servers.
+
+- <<solver,`solver`>> creates a solver map for use with `ol.clave/obtain-certificate`
+- <<wrap-acme-challenge,`wrap-acme-challenge`>> is Ring middleware that serves challenge responses
+
+Usage:
+[source,clojure]
+----
+(require '[ol.clave.acme.solver.http :as http-solver])
+
+(def my-solver (http-solver/solver))
+
+;; Add middleware to your Ring app
+(def app (-> your-handler
+             (http-solver/wrap-acme-challenge my-solver)))
+
+;; Use solver with obtain-certificate
+(clave/obtain-certificate lease session identifiers cert-key
+                          {:http-01 my-solver} {})
+----
+
+[#solver]
+== solver
+
+
+
+
+[source,clojure]
+----
+(solver)
+----
+
+Create an HTTP-01 solver that registers challenges in a registry.
+
+Creates its own registry atom internally.
+The <<wrap-acme-challenge,`wrap-acme-challenge`>> middleware reads from this registry to serve
+challenge responses.
+
+Returns a solver map with `:present`, `:cleanup`, and `:registry`.
+
+Example:
+[source,clojure]
+----
+(def my-solver (solver))
+
+;; Pass solver to middleware
+(def app (-> handler (wrap-acme-challenge my-solver)))
+
+;; Use with obtain-certificate
+(clave/obtain-certificate lease session identifiers cert-key
+                          {:http-01 my-solver} {})
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/solver/http.clj#L32-L62[source,window=_blank]
+
+'''
+
+[#wrap-acme-challenge]
+== wrap-acme-challenge
+
+
+
+
+[source,clojure]
+----
+(wrap-acme-challenge handler solver)
+----
+
+Ring middleware that serves ACME HTTP-01 challenge responses.
+
+Intercepts requests to `/.well-known/acme-challenge/{token}` and returns
+the key-authorization from the solver's registry.
+Other requests pass through to the wrapped handler.
+
+Parameters:
+
+| name      | description                  |
+|-----------|------------------------------|
+| `handler` | The Ring handler to wrap     |
+| `solver`  | Solver created by <<solver,`solver`>> |
+
+Response behavior:
+- Returns 200 with key-authorization as plain text if token found
+- Returns 404 if token not in registry
+- Passes through to handler for non-challenge paths
+
+Example:
+[source,clojure]
+----
+(def my-solver (solver))
+
+(def app
+  (-> my-handler
+      (wrap-acme-challenge my-solver)))
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/solver/http.clj#L64-L105[source,window=_blank]
+
+'''
+
+[#handler]
+== handler
+
+
+
+
+[source,clojure]
+----
+(handler solver)
+----
+
+Standalone Ring handler for ACME HTTP-01 challenges.
+
+Use this when you want a dedicated server for challenges rather than
+integrating with an existing application.
+
+Parameters:
+
+| name     | description                  |
+|----------|------------------------------|
+| `solver` | Solver created by <<solver,`solver`>> |
+
+Returns a Ring handler function.
+
+Example:
+[source,clojure]
+----
+(def my-solver (solver))
+
+;; Start a dedicated challenge server
+(run-jetty (http-solver/handler my-solver) {:port 80})
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/solver/http.clj#L107-L129[source,window=_blank]

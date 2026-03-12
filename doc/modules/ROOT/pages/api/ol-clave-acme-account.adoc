@@ -1,0 +1,139 @@
+= ol.clave.acme.account
+
+[#validate-account]
+== validate-account
+
+
+
+
+[source,clojure]
+----
+(validate-account account)
+----
+
+Validate and normalize an account map, returning the normalized map or throwing ex-info.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/account.clj#L7-L10[source,window=_blank]
+
+'''
+
+[#get-primary-contact]
+== get-primary-contact
+
+
+
+
+[source,clojure]
+----
+(get-primary-contact account)
+----
+
+Return the primary contact email (without scheme) or nil.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/account.clj#L12-L15[source,window=_blank]
+
+'''
+
+[#account-from-edn]
+== account-from-edn
+
+
+
+
+[source,clojure]
+----
+(account-from-edn registration-edn)
+----
+
+Parse an EDN string representing account registration metadata.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/account.clj#L17-L20[source,window=_blank]
+
+'''
+
+[#serialize]
+== serialize
+
+
+
+
+[source,clojure]
+----
+(serialize account keypair)
+----
+
+Serialize an account map and keypair into a pretty-printed EDN artifact.
+
+`keypair` is a `java.security.KeyPair`.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/account.clj#L22-L27[source,window=_blank]
+
+'''
+
+[#deserialize]
+== deserialize
+
+
+
+
+[source,clojure]
+----
+(deserialize account-edn)
+----
+
+Deserialize an EDN artifact into [account keypair].
+
+Returns a vector of [account keypair] where keypair is a `java.security.KeyPair`.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/account.clj#L29-L34[source,window=_blank]
+
+'''
+
+[#generate-keypair]
+== generate-keypair
+
+
+
+
+[source,clojure]
+----
+(generate-keypair)
+(generate-keypair opts)
+----
+
+Generate a new ACME account keypair.
+
+Options map:
+| key    | description                             | default |
+|--------|-----------------------------------------|---------|
+| :algo  | key algorithm (:p256, :p384, :ed25519)  | :p256   |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/account.clj#L36-L45[source,window=_blank]
+
+'''
+
+[#create]
+== create
+
+
+
+
+[source,clojure]
+----
+(create contact tos-agreed)
+(create contact tos-agreed opts)
+----
+
+Construct an ACME account map suitable for directory interactions.
+
+`contact` may be a single string or any sequential collection of strings; all
+values must be `mailto:` URLs per RFC 8555 Section 7.3.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/account.clj#L47-L55[source,window=_blank]

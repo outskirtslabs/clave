@@ -1,0 +1,880 @@
+= ol.clave.acme.commands
+
+
+Plumbing layer ACME command API for interacting with an ACME server.
+
+Every command takes an immutable ACME session map as its first argument and
+returns a tuple where the first element is the updated session (with refreshed
+nonces, account metadata, etc.). This keeps side effects explicit for callers.
+
+Use this namespace when you need precise control over ACME interactions:
+
+Session management:
+- <<new-session,`new-session`>>, <<create-session,`create-session`>>, <<load-directory,`load-directory`>>, <<set-polling,`set-polling`>>
+
+Account operations:
+- <<new-account,`new-account`>>, <<get-account,`get-account`>>, <<update-account-contact,`update-account-contact`>>
+- <<deactivate-account,`deactivate-account`>>, <<rollover-account-key,`rollover-account-key`>>
+- <<compute-eab-binding,`compute-eab-binding`>>
+
+Order lifecycle:
+- <<new-order,`new-order`>>, <<get-order,`get-order`>>, <<poll-order,`poll-order`>>, <<finalize-order,`finalize-order`>>
+
+Authorization and challenges:
+- <<get-authorization,`get-authorization`>>, <<poll-authorization,`poll-authorization`>>, <<deactivate-authorization,`deactivate-authorization`>>
+- <<respond-challenge,`respond-challenge`>>
+
+Certificate operations:
+- <<get-certificate,`get-certificate`>>, <<revoke-certificate,`revoke-certificate`>>
+
+Renewal information (ARI per RFC 9773):
+- <<get-renewal-info,`get-renewal-info`>>
+
+Terms of Service:
+- <<check-terms-of-service,`check-terms-of-service`>>
+
+Pair these commands with `ol.clave.scope` to enforce timeouts and cancellation
+across long-running workflows such as account setup or certificate issuance.
+
+[#new-session]
+== new-session
+
+
+
+
+[source,clojure]
+----
+(new-session directory-url)
+(new-session directory-url opts)
+----
+
+Create an ACME session value without issuing network requests.
+
+Parameters:
+- `directory-url` — ACME directory URL as a string.
+- `opts` — optional map configuring the session. Recognised keys are
+  summarised below.
+
+| Key            | Type                    | Description                                                              |
+|----------------|-------------------------|--------------------------------------------------------------------------|
+| `:http-client` | map                     | Passed to `ol.clave.impl.http/http-client` to build the transport layer. |
+| `:account-key` | `java.security.KeyPair` | Injects an existing key pair into the session.                           |
+| `:account-kid` | string                  | Stores a known account URL for authenticated calls.                      |
+| `:scope`       | scope token             | Overrides the default cancellation/timeout scope.                        |
+
+Returns `[session nil]`, where `session` is a qualified map of
+`::ol.clave.specs/*` keys suitable for subsequent commands.
+
+Example:
+[source,clojure]
+----
+(require '[ol.clave.commands :as commands])
+
+(let [[session _] (commands/new-session "https://acme.example/dir" {:http-client {}})]
+  (::ol.clave.specs/directory-url session))
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L39-L67[source,window=_blank]
+
+'''
+
+[#load-directory]
+== load-directory
+
+
+
+
+[source,clojure]
+----
+(load-directory lease session)
+(load-directory lease session opts)
+----
+
+Fetch the ACME directory document and attach it to `session`.
+
+Uses a global cache with 12-hour TTL to avoid repeated fetches for
+long-running servers managing multiple domains.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` — session created by <<new-session,`new-session`>> or <<create-session,`create-session`>>.
+- `opts` — optional map with overrides.
+
+Options:
+
+| key       | description                                |
+|-----------|------------------------------------------- |
+| `:force`  | Bypass cache, fetch fresh from CA.         |
+| `:ttl-ms` | Custom cache TTL in milliseconds.          |
+
+Returns `[updated-session directory]`, where `directory` is the qualified map
+described by `::ol.clave.specs/directory` and `updated-session` has the
+directory attached.
+
+When loaded from cache, the session will not have a nonce from this call;
+the first JWS operation will fetch one via HEAD to newNonce.
+
+Example:
+[source,clojure]
+----
+(require '[ol.clave.commands :as commands]
+         '[ol.clave.lease :as lease])
+
+(let [bg (lease/background)
+      [session _] (commands/new-session "https://acme.example/dir" {:http-client {}})]
+  (commands/load-directory bg session))
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L69-L106[source,window=_blank]
+
+'''
+
+[#set-polling]
+== set-polling
+
+
+
+
+[source,clojure]
+----
+(set-polling session opts)
+----
+
+Update default polling parameters in the session.
+
+Parameters:
+- `session` — ACME session map.
+- `opts` — map with optional polling configuration keys.
+
+Options:
+
+| key            | description                                  |
+|----------------|----------------------------------------------|
+| `:interval-ms` | Default poll interval fallback (ms).         |
+| `:timeout-ms`  | Default overall poll timeout (ms).           |
+
+Returns the updated session with new polling defaults.
+
+Example:
+[source,clojure]
+----
+(-> session
+    (commands/set-polling {:interval-ms 2000 :timeout-ms 120000}))
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L108-L130[source,window=_blank]
+
+'''
+
+[#create-session]
+== create-session
+
+
+
+
+[source,clojure]
+----
+(create-session lease directory-url)
+(create-session lease directory-url opts)
+----
+
+Build a session and eagerly download the ACME directory.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `directory-url` — ACME directory URL.
+- `opts` — same options map accepted by <<new-session,`new-session`>>, optionally extended
+  with `:force` to bypass the directory cache, and `:ttl-ms` for custom cache TTL.
+
+Returns `[session directory]` with the directory hydrated and incorporated
+into `session`.
+
+Example:
+[source,clojure]
+----
+(require '[ol.clave.commands :as commands]
+         '[ol.clave.lease :as lease])
+
+(commands/create-session (lease/background) "https://acme.example/dir" {:http-client {}})
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L132-L154[source,window=_blank]
+
+'''
+
+[#compute-eab-binding]
+== compute-eab-binding
+
+
+
+
+[source,clojure]
+----
+(compute-eab-binding eab-opts account-key endpoint)
+----
+
+Produce an External Account Binding structure for account creation.
+
+Parameters:
+- `eab-opts` — map with `:kid` and `:mac-key`, or `nil` to skip the binding.
+- `account-key` — existing account key pair (`java.security.KeyPair`).
+- `endpoint` — directory key identifying the `newAccount` URL.
+
+Returns the binding map described by RFC 8555 §7.3.4 or `nil` when
+`eab-opts` is missing. Invalid base64 encoding raises
+`::ol.clave.errors/invalid-eab`.
+
+Example:
+[source,clojure]
+----
+(require '[ol.clave.commands :as commands])
+
+(commands/compute-eab-binding {:kid "kid-123" :mac-key "q83l..."}
+                              account-key
+                              "https://acme.example/new-account")
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L156-L177[source,window=_blank]
+
+'''
+
+[#new-account]
+== new-account
+
+
+
+
+[source,clojure]
+----
+(new-account lease session account)
+(new-account lease session account opts)
+----
+
+Register a new ACME account at the directory's `newAccount` endpoint.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` — authenticated or unauthenticated ACME session map.
+- `account` — account data using `::ol.clave.specs/*` keys.
+- `opts` — optional map supporting the keys listed below.
+
+| Key | Description |
+| --- | --- |
+| `:external-account` | `{:kid string :mac-key bytes-or-base64}` enabling External Account Binding. |
+
+Returns `[updated-session normalized-account]`. The session gains the account
+KID and the response account is merged onto the supplied `account` map.
+
+Example:
+[source,clojure]
+----
+(require '[ol.clave.commands :as commands]
+         '[ol.clave.account :as account]
+         '[ol.clave.lease :as lease])
+
+(let [[acct key] (account/deserialize (slurp "test/fixtures/test-account.edn"))]
+  (commands/new-account (lease/background) session acct))
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L179-L207[source,window=_blank]
+
+'''
+
+[#find-account-by-key]
+== find-account-by-key
+
+
+
+
+[source,clojure]
+----
+(find-account-by-key lease session)
+(find-account-by-key lease session opts)
+----
+
+Look up an existing ACME account by its public key.
+
+Uses the newAccount endpoint with `onlyReturnExisting: true` to find an
+account without creating one. This is useful for key recovery scenarios
+where you have the account key but lost the account URL.
+
+Parameters:
+- `lease` - A lease for cooperative cancellation.
+- `session` - Session with account key set (via `:account-key` option).
+
+Returns `[updated-session account-kid]` where `account-kid` is the account
+URL string. The session is updated with the account KID.
+
+Throws `::ol.clave.errors/account-not-found` if no account exists for the key.
+Throws `::ol.clave.errors/invalid-account-key` if session has no account key.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L209-L228[source,window=_blank]
+
+'''
+
+[#get-account]
+== get-account
+
+
+
+
+[source,clojure]
+----
+(get-account lease session account)
+(get-account lease session account opts)
+----
+
+Retrieve the current state of an ACME account via POST-as-GET.
+
+Parameters:
+- `lease` - A lease for cooperative cancellation.
+- `session` — session containing `::ol.clave.specs/account-kid` and
+  `::ol.clave.specs/account-key`.
+- `account` — baseline account map that will be merged with the server
+  response.
+
+Returns `[updated-session account-map]` where `account-map` is the merged
+account including the authoritative contact info and account status.
+
+Example:
+[source,clojure]
+----
+(require '[ol.clave.commands :as commands])
+
+(commands/get-account lease session account)
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L230-L252[source,window=_blank]
+
+'''
+
+[#update-account-contact]
+== update-account-contact
+
+
+
+
+[source,clojure]
+----
+(update-account-contact lease session account contacts)
+(update-account-contact lease session account contacts opts)
+----
+
+Replace the contact URIs registered for an ACME account.
+
+Parameters:
+- `lease` - A lease for cooperative cancellation.
+- `session` — authenticated session.
+- `account` — current account map.
+- `contacts` — vector of `mailto:` URIs to set on the account.
+
+Returns `[updated-session updated-account]` with contacts normalised to a
+vector of strings sourced from the server response.
+
+Example:
+[source,clojure]
+----
+(require '[ol.clave.commands :as commands])
+
+(commands/update-account-contact lease session account ["mailto:admin@example.com"])
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L254-L275[source,window=_blank]
+
+'''
+
+[#deactivate-account]
+== deactivate-account
+
+
+
+
+[source,clojure]
+----
+(deactivate-account lease session account)
+(deactivate-account lease session account opts)
+----
+
+Deactivate an ACME account by issuing a status change request.
+
+Parameters:
+- `lease` - A lease for cooperative cancellation.
+- `session` — authenticated session.
+- `account` — account map with identifying information.
+
+Returns `[updated-session deactivated-account]`. Subsequent account
+operations will fail with `::ol.clave.errors/unauthorized-account`.
+
+Example:
+[source,clojure]
+----
+(require '[ol.clave.commands :as commands])
+
+(commands/deactivate-account lease session account)
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L277-L297[source,window=_blank]
+
+'''
+
+[#rollover-account-key]
+== rollover-account-key
+
+
+
+
+[source,clojure]
+----
+(rollover-account-key lease session account new-account-key)
+(rollover-account-key lease session account new-account-key opts)
+----
+
+Replace the account key pair using the directory `keyChange` endpoint.
+
+Parameters:
+- `lease` - A lease for cooperative cancellation.
+- `session` — authenticated session containing the current account key and KID.
+- `account` — account data used to verify the new key.
+- `new-account-key` — `java.security.KeyPair` to install.
+
+Returns `[updated-session verified-account]` with the session updated to store
+`new-account-key`. Verification failures raise
+`::ol.clave.errors/account-key-rollover-verification-failed`.
+
+Example:
+[source,clojure]
+----
+(require '[ol.clave.commands :as commands]
+         '[ol.clave.account :as account])
+
+(let [new-key (account/generate-keypair)]
+  (commands/rollover-account-key lease session account new-key))
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L299-L323[source,window=_blank]
+
+'''
+
+[#new-order]
+== new-order
+
+
+
+
+[source,clojure]
+----
+(new-order lease session order)
+(new-order lease session order opts)
+----
+
+Create a new ACME order for the supplied identifiers.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` — authenticated session with account key and KID.
+- `order` — map containing `::ol.clave.specs/identifiers` and optional
+  `::ol.clave.specs/notBefore` / `::ol.clave.specs/notAfter`.
+- `opts` — optional map with overrides.
+
+Options:
+
+| key        | description |
+|------------|-------------|
+| `:profile` | Optional profile name as a string when the directory advertises `:profiles`. |
+
+Returns `[updated-session order]` where `order` is the normalized order map
+including `::ol.clave.specs/order-location`.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L325-L346[source,window=_blank]
+
+'''
+
+[#get-order]
+== get-order
+
+
+
+
+[source,clojure]
+----
+(get-order lease session order-url)
+(get-order lease session order-url opts)
+----
+
+Retrieve the current state of an order via POST-as-GET.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` — authenticated session.
+- `order-url` — order URL string, or an order map that includes
+  `::ol.clave.specs/order-location`.
+- `opts` — optional map with overrides.
+
+Returns `[updated-session order]` with the latest order data.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L348-L362[source,window=_blank]
+
+'''
+
+[#poll-order]
+== poll-order
+
+
+
+
+[source,clojure]
+----
+(poll-order lease session order-url)
+----
+
+Poll an order URL until it reaches a terminal status.
+
+Timeout is the lesser of session's poll-timeout and the lease's deadline.
+Configure polling defaults via <<set-polling,`set-polling`>>.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` — authenticated session.
+- `order-url` — order URL string.
+
+Returns `[updated-session order]` on success or throws on invalid/timeout.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L364-L377[source,window=_blank]
+
+'''
+
+[#finalize-order]
+== finalize-order
+
+
+
+
+[source,clojure]
+----
+(finalize-order lease session order csr)
+(finalize-order lease session order csr opts)
+----
+
+Finalize an order by submitting a CSR.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` — authenticated session.
+- `order` — normalized order map with `::ol.clave.specs/status` and
+  `::ol.clave.specs/finalize`.
+- `csr` — map containing `:csr-b64url` from xref:api/ol-clave-certificate-impl-csr.adoc#create-csr[`ol.clave.certificate.impl.csr/create-csr`].
+- `opts` — optional map with overrides.
+
+Returns `[updated-session order]` with the updated order state.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L379-L394[source,window=_blank]
+
+'''
+
+[#get-certificate]
+== get-certificate
+
+
+
+
+[source,clojure]
+----
+(get-certificate lease session certificate-url)
+(get-certificate lease session certificate-url opts)
+----
+
+Download a PEM certificate chain from the certificate URL via POST-as-GET.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` — authenticated session carrying HTTP configuration.
+- `certificate-url` — certificate URL from an order.
+- `opts` — optional map with overrides.
+
+Returns `[updated-session result]` where `result` includes `:chains` and
+`:preferred` entries with parsed PEM data.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L396-L410[source,window=_blank]
+
+'''
+
+[#get-authorization]
+== get-authorization
+
+
+
+
+[source,clojure]
+----
+(get-authorization lease session authorization-url)
+(get-authorization lease session authorization-url opts)
+----
+
+Fetch an authorization resource via POST-as-GET.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` — authenticated session.
+- `authorization-url` — authorization URL string, or an authorization map
+  containing `::ol.clave.specs/authorization-location`.
+- `opts` — optional map with overrides.
+
+Returns `[updated-session authorization]`.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L412-L426[source,window=_blank]
+
+'''
+
+[#poll-authorization]
+== poll-authorization
+
+
+
+
+[source,clojure]
+----
+(poll-authorization lease session authorization-url)
+----
+
+Poll an authorization URL until it reaches a terminal status.
+
+Timeout is the lesser of session' poll-timeout and lease's deadline.
+Configure polling defaults via <<set-polling,`set-polling`>>.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` — authenticated session.
+- `authorization-url` — authorization URL string.
+
+Returns `[updated-session authorization]` on success or throws when invalid,
+unusable, or timed out.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L428-L442[source,window=_blank]
+
+'''
+
+[#deactivate-authorization]
+== deactivate-authorization
+
+
+
+
+[source,clojure]
+----
+(deactivate-authorization lease session authorization-url)
+(deactivate-authorization lease session authorization-url opts)
+----
+
+Deactivate an authorization by sending a status update.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` — authenticated session.
+- `authorization-url` — authorization URL string, or authorization map.
+- `opts` — optional map with overrides.
+
+Returns `[updated-session authorization]`.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L444-L457[source,window=_blank]
+
+'''
+
+[#new-authorization]
+== new-authorization
+
+
+
+
+[source,clojure]
+----
+(new-authorization lease session identifier)
+(new-authorization lease session identifier opts)
+----
+
+Create a pre-authorization for an identifier via the newAuthz endpoint.
+
+Pre-authorization (RFC 8555 Section 7.4.1) allows clients to obtain
+authorization proactively, outside the context of a specific order.
+This is useful for hosting providers who want to authorize domains
+before virtual servers are created.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` — authenticated session.
+- `identifier` — map with `:type` and `:value` keys.
+- `opts` — optional map with overrides.
+
+Pre-authorization cannot be used with wildcard identifiers.
+Not all ACME servers support this endpoint.
+
+Returns `[updated-session authorization]`.
+
+Throws:
+- `::ol.clave.errors/pre-authorization-unsupported` if server does not
+  advertise newAuthz endpoint.
+- `::ol.clave.errors/wildcard-identifier-not-allowed` if identifier is
+  a wildcard.
+- `::ol.clave.errors/pre-authorization-failed` if server rejects the request.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L459-L487[source,window=_blank]
+
+'''
+
+[#respond-challenge]
+== respond-challenge
+
+
+
+
+[source,clojure]
+----
+(respond-challenge lease session challenge)
+(respond-challenge lease session challenge opts)
+----
+
+Notify the ACME server that a challenge response is ready.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` — authenticated session.
+- `challenge` — challenge map containing `::ol.clave.specs/url`.
+- `opts` — optional map with overrides.
+
+Options:
+
+| key        | description                          |
+|------------|--------------------------------------|
+| `:payload` | Override the default `{}` payload.   |
+
+Returns `[updated-session challenge]`.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L489-L508[source,window=_blank]
+
+'''
+
+[#revoke-certificate]
+== revoke-certificate
+
+
+
+
+[source,clojure]
+----
+(revoke-certificate lease session certificate)
+(revoke-certificate lease session certificate opts)
+----
+
+Revoke a certificate via the directory's revokeCert endpoint.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` — authenticated session or session with directory loaded.
+- `certificate` — `java.security.cert.X509Certificate` or DER bytes.
+- `opts` — optional map with overrides.
+
+Options:
+
+| key            | description                                              |
+|----------------|----------------------------------------------------------|
+| `:reason`      | RFC 5280 reason code integer (0-6, 8-10).                |
+| `:signing-key` | `java.security.KeyPair` for certificate-key authorization. |
+
+When `:signing-key` is provided, uses certificate-key authorization with
+JWK-embedded JWS. Otherwise uses account-key authorization requiring an
+authenticated session.
+
+Returns `[updated-session nil]` on success.
+
+Example:
+[source,clojure]
+----
+(commands/revoke-certificate lease session cert {:reason 1})
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L510-L539[source,window=_blank]
+
+'''
+
+[#get-renewal-info]
+== get-renewal-info
+
+
+
+
+[source,clojure]
+----
+(get-renewal-info lease session cert-or-id)
+(get-renewal-info lease session cert-or-id opts)
+----
+
+Fetch ACME Renewal Information (ARI) for a certificate per RFC 9773.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` - ACME session with directory loaded.
+- `cert-or-id` - X509Certificate or precomputed renewal identifier string.
+- `opts` - optional map with overrides.
+
+When `cert-or-id` is a certificate, the renewal identifier is derived from
+the Authority Key Identifier extension and serial number.
+
+Returns `[updated-session renewal-info]` where `renewal-info` contains
+`:suggested-window` (map with `:start` and `:end` instants),
+`:retry-after-ms`, and optional `:explanation-url`.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L541-L559[source,window=_blank]
+
+'''
+
+[#check-terms-of-service]
+== check-terms-of-service
+
+
+
+
+[source,clojure]
+----
+(check-terms-of-service lease session)
+(check-terms-of-service lease session opts)
+----
+
+Check for Terms of Service changes by comparing directory meta values.
+
+Parameters:
+- `lease` — lease for cancellation/timeout control.
+- `session` - ACME session with directory already loaded.
+- `opts` - optional map with overrides.
+
+Refreshes the directory from the server and compares the `termsOfService`
+field in the meta section with the previously loaded value.
+
+Returns `[updated-session tos-change]` where `tos-change` contains:
+- `:changed?` - true if termsOfService URL changed
+- `:previous` - previous termsOfService URL or nil
+- `:current` - current termsOfService URL or nil
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L561-L579[source,window=_blank]

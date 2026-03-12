@@ -1,0 +1,95 @@
+= ol.clave.acme.impl.directory-cache
+
+
+Global directory cache with TTL for ACME directory responses.
+
+ACME directories rarely change, so caching them avoids unnecessary network
+requests for long-running servers managing many domains.
+
+The cache is keyed by directory URL with a 12-hour default TTL.
+Stale entries remain until replaced (no background cleanup).
+
+[#default-ttl-ms]
+== default-ttl-ms
+
+
+
+
+
+Default TTL of 12 hours in milliseconds.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/directory_cache.clj#L10-L12[source,window=_blank]
+
+'''
+
+[#cache-get]
+== cache-get
+
+
+
+
+[source,clojure]
+----
+(cache-get url)
+(cache-get url ttl-ms)
+----
+
+Returns cached directory for url if present and fresh, else nil.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/directory_cache.clj#L25-L31[source,window=_blank]
+
+'''
+
+[#cache-put-BANG-]
+== cache-put!
+
+
+
+
+[source,clojure]
+----
+(cache-put! url directory)
+----
+
+Stores directory in cache with current timestamp. Returns directory.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/directory_cache.clj#L33-L38[source,window=_blank]
+
+'''
+
+[#cache-clear-BANG-]
+== cache-clear!
+
+
+
+
+[source,clojure]
+----
+(cache-clear!)
+----
+
+Clears entire directory cache. Useful for testing.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/directory_cache.clj#L40-L43[source,window=_blank]
+
+'''
+
+[#cache-evict-BANG-]
+== cache-evict!
+
+
+
+
+[source,clojure]
+----
+(cache-evict! url)
+----
+
+Removes single entry from cache.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/directory_cache.clj#L45-L48[source,window=_blank]

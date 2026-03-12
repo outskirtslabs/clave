@@ -1,0 +1,136 @@
+= ol.clave.specs
+
+[#new-nonce-url]
+== new-nonce-url
+
+
+
+
+[source,clojure]
+----
+(new-nonce-url session)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/specs.clj#L91-L92[source,window=_blank]
+
+'''
+
+[#new-account-url]
+== new-account-url
+
+
+
+
+[source,clojure]
+----
+(new-account-url session)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/specs.clj#L94-L95[source,window=_blank]
+
+'''
+
+[#new-order-url]
+== new-order-url
+
+
+
+
+[source,clojure]
+----
+(new-order-url session)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/specs.clj#L97-L98[source,window=_blank]
+
+'''
+
+[#key-change-url]
+== key-change-url
+
+
+
+
+[source,clojure]
+----
+(key-change-url session)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/specs.clj#L100-L101[source,window=_blank]
+
+'''
+
+[#new-authz-url]
+== new-authz-url
+
+
+
+
+[source,clojure]
+----
+(new-authz-url session)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/specs.clj#L103-L104[source,window=_blank]
+
+'''
+
+[#identifier-QMARK-]
+== identifier?
+
+
+
+
+[source,clojure]
+----
+(identifier? value)
+----
+
+Return true when `value` conforms to an ACME identifier map.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/specs.clj#L139-L142[source,window=_blank]
+
+'''
+
+[#order-url]
+== order-url
+
+
+
+
+[source,clojure]
+----
+(order-url order)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/specs.clj#L164-L165[source,window=_blank]
+
+'''
+
+[#certificate-url]
+== certificate-url
+
+
+
+
+[source,clojure]
+----
+(certificate-url order)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/specs.clj#L167-L168[source,window=_blank]

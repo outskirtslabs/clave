@@ -1,5 +1,5 @@
 (ns certificate
-  "Demonstrates the porcelain API for certificate acquisition.
+  "Demonstrates the higher-level API for certificate acquisition.
 
   This example shows the high-level obtain-certificate-for-sans function
   which abstracts the complete ACME workflow into a single call.

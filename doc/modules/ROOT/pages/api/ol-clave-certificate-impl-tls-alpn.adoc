@@ -1,0 +1,37 @@
+= ol.clave.certificate.impl.tls-alpn
+
+
+TLS-ALPN-01 challenge certificate generation.
+
+Builds self-signed X.509 v3 certificates containing the acmeValidationV1
+extension required by RFC 8737 for TLS-ALPN-01 ACME challenges.
+
+[#acme-tls-1-protocol]
+== acme-tls-1-protocol
+
+
+
+
+
+ALPN protocol identifier for TLS-ALPN-01 challenges (RFC 8737 Section 6.2).
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/tls_alpn.clj#L25-L27[source,window=_blank]
+
+'''
+
+[#tlsalpn01-challenge-cert]
+== tlsalpn01-challenge-cert
+
+
+
+
+[source,clojure]
+----
+(tlsalpn01-challenge-cert identifier key-authorization)
+----
+
+See xref:api/ol-clave-acme-challenge.adoc#tlsalpn01-challenge-cert[`ol.clave.acme.challenge/tlsalpn01-challenge-cert`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/tls_alpn.clj#L184-L223[source,window=_blank]

@@ -23,6 +23,10 @@
                     :ns-default build}
 
            :neil {:project {:name        com.outskirtslabs/clave
+                            :url         "https://github.com/outskirtslabs/clave"
                             :license     {:id "EUPL-1.2"}
-                            :description ""
+                            :description "Automatic HTTPS certificate management and renewal via ACME, implemented in pure Clojure with minimal dependencies"
+                            :platforms   [:clj]
+                            :created     "2025-10-28"
+                            :status      :experimental
                             :version     "0.0.0"}}}}

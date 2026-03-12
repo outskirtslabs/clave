@@ -1,0 +1,189 @@
+= ol.clave.acme.solver.tls-alpn
+
+
+TLS-ALPN-01 challenge solver.
+
+Provides two solver implementations:
+- <<bootstrap-solver,`bootstrap-solver`>> - Starts temporary SSLServerSocket (before TLS server running)
+- <<integrated-solver,`integrated-solver`>> - Registers with KeyManager (when TLS server running)
+
+For typical use, <<switchable-solver,`switchable-solver`>> creates a solver that starts in bootstrap
+mode and can be switched to integrated mode after your TLS server starts.
+
+Usage:
+[source,clojure]
+----
+(require '[ol.clave.acme.solver.tls-alpn :as tls-alpn])
+
+(def solver (tls-alpn/switchable-solver {:port 443}))
+
+;; Use solver with automation system
+(auto/start {:solvers {:tls-alpn-01 solver} ...})
+(auto/manage-domains system ["example.com"])
+
+;; Pass registry to sni-alpn-ssl-context
+(jetty-ext/sni-alpn-ssl-context lookup-fn (tls-alpn/challenge-registry solver))
+
+;; After TLS server starts, switch to integrated mode for renewals
+(tls-alpn/switch-to-integrated! solver)
+----
+
+[#bootstrap-solver]
+== bootstrap-solver
+
+
+
+
+[source,clojure]
+----
+(bootstrap-solver {:keys [port] :or {port 443}})
+----
+
+TLS-ALPN-01 solver that starts a temporary server.
+
+Use for initial certificate acquisition before the main TLS server starts.
+Starts an SSLServerSocket during `:present`, stops it during `:cleanup`.
+
+Options:
+
+| key     | description               | default |
+|---------|---------------------------|---------|
+| `:port` | Port for challenge server | 443     |
+
+Returns a solver map with `:present` and `:cleanup` functions.
+
+[source,clojure]
+----
+(def solver (bootstrap-solver {:port 8443}))
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/solver/tls_alpn.clj#L120-L157[source,window=_blank]
+
+'''
+
+[#integrated-solver]
+== integrated-solver
+
+
+
+
+[source,clojure]
+----
+(integrated-solver)
+----
+
+TLS-ALPN-01 solver that registers with an existing TLS server.
+
+Use for certificate renewals when the main TLS server is running.
+Registers challenge cert data in a registry for the server's
+KeyManager to serve during ALPN handshakes.
+
+Creates its own registry atom internally.
+Use <<challenge-registry,`challenge-registry`>> to get the registry for `sni-alpn-ssl-context`.
+
+Returns a solver map with `:present`, `:cleanup`, and `:registry`.
+
+[source,clojure]
+----
+(def solver (integrated-solver))
+(jetty-ext/sni-alpn-ssl-context lookup-fn (challenge-registry solver))
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/solver/tls_alpn.clj#L159-L195[source,window=_blank]
+
+'''
+
+[#switchable-solver]
+== switchable-solver
+
+
+
+
+[source,clojure]
+----
+(switchable-solver {:keys [port] :or {port 443}})
+----
+
+Create a TLS-ALPN-01 solver that can switch from bootstrap to integrated mode.
+
+Returns a solver map with `:present`, `:cleanup`, `:switch-to-integrated!`, and `:registry`.
+Pass directly to the automation system's `:solvers` config.
+
+Creates its own registry atom internally.
+Use <<challenge-registry,`challenge-registry`>> to get the registry for `sni-alpn-ssl-context`.
+
+Starts in bootstrap mode (starts temporary server for initial cert).
+Call <<switch-to-integrated-BANG-,`switch-to-integrated!`>> after your TLS server starts so renewals
+use the integrated solver (registers in registry for KeyManager to serve).
+
+| name   | description                            |
+|--------|----------------------------------------|
+| `opts` | Options map with `:port` (default 443) |
+
+[source,clojure]
+----
+(def solver (switchable-solver {:port 8443}))
+
+;; Use solver with automation
+(auto/start {:solvers {:tls-alpn-01 solver} ...})
+(auto/manage-domains system ["example.com"])
+
+;; Pass registry to sni-alpn-ssl-context
+(jetty-ext/sni-alpn-ssl-context lookup-fn (challenge-registry solver))
+
+;; After TLS server starts
+(switch-to-integrated! solver)
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/solver/tls_alpn.clj#L197-L237[source,window=_blank]
+
+'''
+
+[#switch-to-integrated-BANG-]
+== switch-to-integrated!
+
+
+
+
+[source,clojure]
+----
+(switch-to-integrated! {:keys [switch-to-integrated!]})
+----
+
+Switch a switchable solver from bootstrap to integrated mode.
+
+Call this after your TLS server has started.
+Future challenge validations will use the integrated solver
+(registers cert data in registry for the KeyManager to serve).
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/solver/tls_alpn.clj#L239-L246[source,window=_blank]
+
+'''
+
+[#challenge-registry]
+== challenge-registry
+
+
+
+
+[source,clojure]
+----
+(challenge-registry {:keys [registry]})
+----
+
+Get the challenge registry atom from a solver.
+
+Use this to pass the registry to `sni-alpn-ssl-context` for ALPN challenge support.
+
+[source,clojure]
+----
+(def solver (switchable-solver {:port 443}))
+(jetty-ext/sni-alpn-ssl-context lookup-fn (challenge-registry solver))
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/solver/tls_alpn.clj#L248-L258[source,window=_blank]

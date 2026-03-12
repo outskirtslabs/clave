@@ -1,0 +1,179 @@
+= ol.clave.certificate.impl.keygen
+
+
+Key generation utilities for creating keypairs to back TLS certificates.
+
+Supports multiple key types for certificate signing:
+- ECDSA curves: P-256 (secp256r1), P-384 (secp384r1)
+- EdDSA: Ed25519
+- RSA: 2048, 4096, and 8192 bit keys
+
+Note: ACME account keys are managed separately via `ol.clave.impl.crypto`.
+This namespace is specifically for certificate keypairs.
+
+[#supported-key-types]
+== supported-key-types
+
+
+
+
+
+Set of supported key types for certificate keypair generation.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/keygen.clj#L22-L29[source,window=_blank]
+
+'''
+
+[#pem-encode]
+== pem-encode
+
+
+
+
+[source,clojure]
+----
+(pem-encode type der)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/keygen.clj#L31-L36[source,window=_blank]
+
+'''
+
+[#private-key--GT-pem]
+== private-key->pem
+
+
+
+
+[source,clojure]
+----
+(private-key->pem private-key)
+----
+
+See xref:api/ol-clave-certificate.adoc#private-key--GT-pem[`ol.clave.certificate/private-key->pem`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/keygen.clj#L38-L41[source,window=_blank]
+
+'''
+
+[#gen-ed25519]
+== gen-ed25519
+
+
+
+
+[source,clojure]
+----
+(gen-ed25519)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/keygen.clj#L48-L51[source,window=_blank]
+
+'''
+
+[#gen-p256]
+== gen-p256
+
+
+
+
+[source,clojure]
+----
+(gen-p256)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/keygen.clj#L53-L57[source,window=_blank]
+
+'''
+
+[#gen-p384]
+== gen-p384
+
+
+
+
+[source,clojure]
+----
+(gen-p384)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/keygen.clj#L59-L63[source,window=_blank]
+
+'''
+
+[#gen-rsa2048]
+== gen-rsa2048
+
+
+
+
+[source,clojure]
+----
+(gen-rsa2048)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/keygen.clj#L65-L69[source,window=_blank]
+
+'''
+
+[#gen-rsa4096]
+== gen-rsa4096
+
+
+
+
+[source,clojure]
+----
+(gen-rsa4096)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/keygen.clj#L71-L75[source,window=_blank]
+
+'''
+
+[#gen-rsa8192]
+== gen-rsa8192
+
+
+
+
+[source,clojure]
+----
+(gen-rsa8192)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/keygen.clj#L77-L81[source,window=_blank]
+
+'''
+
+[#generate]
+== generate
+
+
+
+
+[source,clojure]
+----
+(generate key-type)
+----
+
+See xref:api/ol-clave-certificate.adoc#keypair[`ol.clave.certificate/keypair`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/keygen.clj#L83-L95[source,window=_blank]

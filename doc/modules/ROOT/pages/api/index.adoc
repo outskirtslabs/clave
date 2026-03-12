@@ -1,0 +1,138 @@
+= API Reference
+
+This release publishes 43 namespaces.
+
+[cols="1,3",options="header",stripes=hover]
+|===
+| Namespace | Summary
+
+| xref:api/ol-clave-acme-account.adoc[`ol.clave.acme.account`]
+| -
+
+| xref:api/ol-clave-acme-challenge.adoc[`ol.clave.acme.challenge`]
+| Helpers for working with ACME challenges and authorizations.
+
+| xref:api/ol-clave-acme-commands.adoc[`ol.clave.acme.commands`]
+| Plumbing layer ACME command API for interacting with an ACME server.
+
+| xref:api/ol-clave-acme-impl-account.adoc[`ol.clave.acme.impl.account`]
+| -
+
+| xref:api/ol-clave-acme-impl-ari.adoc[`ol.clave.acme.impl.ari`]
+| ARI identifier derivation helpers per RFC 9773.
+
+| xref:api/ol-clave-acme-impl-authorization.adoc[`ol.clave.acme.impl.authorization`]
+| -
+
+| xref:api/ol-clave-acme-impl-challenge.adoc[`ol.clave.acme.impl.challenge`]
+| -
+
+| xref:api/ol-clave-acme-impl-commands.adoc[`ol.clave.acme.impl.commands`]
+| -
+
+| xref:api/ol-clave-acme-impl-directory-cache.adoc[`ol.clave.acme.impl.directory-cache`]
+| Global directory cache with TTL for ACME directory responses.
+
+| xref:api/ol-clave-acme-impl-http-interceptors.adoc[`ol.clave.acme.impl.http.interceptors`]
+| -
+
+| xref:api/ol-clave-acme-impl-order.adoc[`ol.clave.acme.impl.order`]
+| -
+
+| xref:api/ol-clave-acme-impl-revocation.adoc[`ol.clave.acme.impl.revocation`]
+| Pure helpers for certificate revocation payload construction and validation.
+
+| xref:api/ol-clave-acme-impl-tos.adoc[`ol.clave.acme.impl.tos`]
+| Terms of Service change detection helpers.
+
+| xref:api/ol-clave-acme-order.adoc[`ol.clave.acme.order`]
+| Helpers for building and inspecting ACME orders.
+
+| xref:api/ol-clave-acme-solver-http.adoc[`ol.clave.acme.solver.http`]
+| HTTP-01 challenge solver with Ring middleware.
+
+| xref:api/ol-clave-acme-solver-tls-alpn.adoc[`ol.clave.acme.solver.tls-alpn`]
+| TLS-ALPN-01 challenge solver.
+
+| xref:api/ol-clave-automation.adoc[`ol.clave.automation`]
+| Public API for the ACME certificate automation layer.
+
+| xref:api/ol-clave-automation-impl-cache.adoc[`ol.clave.automation.impl.cache`]
+| In-memory certificate cache for the automation layer.
+
+| xref:api/ol-clave-automation-impl-config.adoc[`ol.clave.automation.impl.config`]
+| -
+
+| xref:api/ol-clave-automation-impl-decisions.adoc[`ol.clave.automation.impl.decisions`]
+| Pure decision functions for the automation layer.
+
+| xref:api/ol-clave-automation-impl-domain.adoc[`ol.clave.automation.impl.domain`]
+| Domain validation for the automation layer.
+
+| xref:api/ol-clave-automation-impl-system.adoc[`ol.clave.automation.impl.system`]
+| System lifecycle and component wiring for the automation layer.
+
+| xref:api/ol-clave-certificate.adoc[`ol.clave.certificate`]
+| Certificate acquisition and management.
+
+| xref:api/ol-clave-certificate-impl-csr.adoc[`ol.clave.certificate.impl.csr`]
+| Pure Clojure PKCS#10 CSR generation with no external dependencies.
+
+| xref:api/ol-clave-certificate-impl-keygen.adoc[`ol.clave.certificate.impl.keygen`]
+| Key generation utilities for creating keypairs to back TLS certificates.
+
+| xref:api/ol-clave-certificate-impl-ocsp.adoc[`ol.clave.certificate.impl.ocsp`]
+| Pure Clojure OCSP (Online Certificate Status Protocol) utilities.
+
+| xref:api/ol-clave-certificate-impl-parse.adoc[`ol.clave.certificate.impl.parse`]
+| -
+
+| xref:api/ol-clave-certificate-impl-tls-alpn.adoc[`ol.clave.certificate.impl.tls-alpn`]
+| TLS-ALPN-01 challenge certificate generation.
+
+| xref:api/ol-clave-certificate-impl-x509.adoc[`ol.clave.certificate.impl.x509`]
+| X.
+
+| xref:api/ol-clave-crypto-impl-der.adoc[`ol.clave.crypto.impl.der`]
+| DER (Distinguished Encoding Rules) encoding and decoding for ASN.
+
+| xref:api/ol-clave-crypto-impl-json.adoc[`ol.clave.crypto.impl.json`]
+| -
+
+| xref:api/ol-clave-crypto-impl-jwk.adoc[`ol.clave.crypto.impl.jwk`]
+| -
+
+| xref:api/ol-clave-crypto-impl-jws.adoc[`ol.clave.crypto.impl.jws`]
+| -
+
+| xref:api/ol-clave-crypto-impl-parse-ip.adoc[`ol.clave.crypto.impl.parse-ip`]
+| Parse a string representation of an IPv4 or IPv6 address into an InetAddress instance.
+
+| xref:api/ol-clave-crypto-impl-util.adoc[`ol.clave.crypto.impl.util`]
+| -
+
+| xref:api/ol-clave-errors.adoc[`ol.clave.errors`]
+| Shared error keyword definitions and helpers for ex-info payloads.
+
+| xref:api/ol-clave-ext-common.adoc[`ol.clave.ext.common`]
+| Common utilities for clave server extensions.
+
+| xref:api/ol-clave-ext-jetty.adoc[`ol.clave.ext.jetty`]
+| Jetty integration for clave automation.
+
+| xref:api/ol-clave-ext-ring-jetty-adapter.adoc[`ol.clave.ext.ring-jetty-adapter`]
+| Ring Jetty adapter integration for clave automation.
+
+| xref:api/ol-clave-lease.adoc[`ol.clave.lease`]
+| Cooperative cancellation and deadline propagation for concurrent operations.
+
+| xref:api/ol-clave-specs.adoc[`ol.clave.specs`]
+| -
+
+| xref:api/ol-clave-storage.adoc[`ol.clave.storage`]
+| Key-value storage with path semantics for ACME certificate data.
+
+| xref:api/ol-clave-storage-file.adoc[`ol.clave.storage.file`]
+| Filesystem-based storage implementation.
+
+|===

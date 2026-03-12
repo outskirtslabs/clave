@@ -1,0 +1,194 @@
+= ol.clave.ext.common
+
+
+Common utilities for clave server extensions.
+
+This namespace provides server-agnostic helpers for working with
+clave's automation layer, including keystore creation and event processing.
+
+These functions can be used by any server extension (Jetty, http-kit, etc.).
+
+[#create-keystore]
+== create-keystore
+
+
+
+
+[source,clojure]
+----
+(create-keystore bundle)
+(create-keystore bundle password)
+----
+
+Create an in-memory PKCS12 KeyStore from a clave certificate bundle.
+
+No disk I/O - purely in-memory operation suitable for TLS handshakes.
+
+| key        | description                                                 |
+|------------|-------------------------------------------------------------|
+| `bundle`   | Certificate bundle from xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`] |
+| `password` | Optional keystore password (default "changeit")           |
+
+Returns a `java.security.KeyStore` ready for use with TLS servers.
+Returns nil if bundle is nil (no certificate available yet).
+
+[source,clojure]
+----
+(create-keystore (auto/lookup-cert system "example.com"))
+;; => #object[java.security.KeyStore ...]
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L15-L44[source,window=_blank]
+
+'''
+
+[#certificate-event-QMARK-]
+== certificate-event?
+
+
+
+
+[source,clojure]
+----
+(certificate-event? evt)
+----
+
+Check if an event indicates a certificate change.
+
+Returns true for `:certificate-obtained`, `:certificate-renewed`, and
+`:certificate-loaded` events.
+
+| key   | description                                        |
+|-------|----------------------------------------------------|
+| `evt` | Event from xref:api/ol-clave-automation.adoc#get-event-queue[`ol.clave.automation/get-event-queue`] |
+
+[source,clojure]
+----
+(when (certificate-event? evt)
+  (log/info "Certificate updated for" (event-domain evt)))
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L46-L62[source,window=_blank]
+
+'''
+
+[#event-domain]
+== event-domain
+
+
+
+
+[source,clojure]
+----
+(event-domain evt)
+----
+
+Extract the domain name from a certificate event.
+
+Returns the domain string or nil if event has no domain.
+
+| key   | description |
+|-------|-------------|
+| `evt` | Event map   |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L64-L73[source,window=_blank]
+
+'''
+
+[#wrap-redirect-https]
+== wrap-redirect-https
+
+
+
+
+[source,clojure]
+----
+(wrap-redirect-https handler)
+(wrap-redirect-https handler {:keys [ssl-port] :or {ssl-port 443}})
+----
+
+Ring middleware that redirects HTTP requests to HTTPS.
+
+| key        | description                                        |
+|------------|----------------------------------------------------|
+| `handler`  | Ring handler to wrap                               |
+| `opts`     | Options map with `:ssl-port`                       |
+
+Options:
+- `:ssl-port` - HTTPS port for redirect URL.
+  Defaults to 443 (implicit, no port in URL).
+  Use a custom port like 8443 to include it explicitly.
+
+Passes through requests that are already HTTPS (by `:scheme` or `x-forwarded-proto` header).
+
+[source,clojure]
+----
+(wrap-redirect-https handler {:ssl-port 8443})
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L75-L106[source,window=_blank]
+
+'''
+
+[#no-op-solver]
+== no-op-solver
+
+
+
+
+[source,clojure]
+----
+(no-op-solver)
+----
+
+Create a no-op ACME solver for testing.
+
+Returns a solver that does nothing.
+Useful with `PEBBLE_VA_ALWAYS_VALID=1` where challenge validation is skipped.
+
+[source,clojure]
+----
+{:solvers {:http-01 (no-op-solver)}}
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L108-L119[source,window=_blank]
+
+'''
+
+[#wait-for-certificates]
+== wait-for-certificates
+
+
+
+
+[source,clojure]
+----
+(wait-for-certificates system domains)
+----
+
+Wait for certificates to be available for all domains.
+
+Polls xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`] once per second until certificates
+are available for every domain. Blocks indefinitely until the automation
+system obtains all certificates or throws an error.
+
+| key       | description                     |
+|-----------|---------------------------------|
+| `system`  | clave automation system         |
+| `domains` | Vector of domains to wait for   |
+
+Returns nil once all certificates are available.
+
+[source,clojure]
+----
+(wait-for-certificate system ["example.com" "www.example.com"])
+(create-keystore (auto/lookup-cert system "example.com"))
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L121-L146[source,window=_blank]

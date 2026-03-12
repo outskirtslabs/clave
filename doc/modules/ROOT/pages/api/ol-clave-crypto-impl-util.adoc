@@ -1,0 +1,17 @@
+= ol.clave.crypto.impl.util
+
+[#qualify-keys]
+== qualify-keys
+
+
+
+
+[source,clojure]
+----
+(qualify-keys ns-prefix m)
+----
+
+Qualify the top-level keys of map `m` into `ns-prefix`.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/util.clj#L5-L17[source,window=_blank]

@@ -1,5 +1,5 @@
 (ns e2e-certificate
-  "Demonstrates the porcelain API for certificate acquisition.
+  "Demonstrates the higher-level API for certificate acquisition.
 
   This example reduces the ~100 LOC acme.clj workflow to ~20 LOC
   using the high-level obtain-certificate-for-sans function.

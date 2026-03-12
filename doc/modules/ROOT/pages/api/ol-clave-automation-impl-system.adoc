@@ -1,0 +1,355 @@
+= ol.clave.automation.impl.system
+
+
+System lifecycle and component wiring for the automation layer.
+
+The system map contains all components and is passed to internal functions.
+Components access what they need via destructuring.
+
+[#-STAR-maintenance-interval-ms-STAR-]
+== *maintenance-interval-ms*
+
+
+
+
+
+Maintenance loop interval in milliseconds (1 hour).
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L36-L38[source,window=_blank]
+
+'''
+
+[#-STAR-maintenance-jitter-ms-STAR-]
+== *maintenance-jitter-ms*
+
+
+
+
+
+Maximum jitter for maintenance loop (5 minutes).
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L40-L42[source,window=_blank]
+
+'''
+
+[#-STAR-fast-semaphore-permits-STAR-]
+== *fast-semaphore-permits*
+
+
+
+
+
+Concurrent fast command permits (OCSP, ARI).
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L44-L46[source,window=_blank]
+
+'''
+
+[#-STAR-slow-semaphore-permits-STAR-]
+== *slow-semaphore-permits*
+
+
+
+
+
+Concurrent slow command permits (obtain, renew).
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L48-L50[source,window=_blank]
+
+'''
+
+[#-STAR-shutdown-timeout-ms-STAR-]
+== *shutdown-timeout-ms*
+
+
+
+
+
+Timeout for graceful shutdown in milliseconds (30 seconds).
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L52-L54[source,window=_blank]
+
+'''
+
+[#-STAR-config-fn-timeout-ms-STAR-]
+== *config-fn-timeout-ms*
+
+
+
+
+
+Timeout for config-fn calls in milliseconds (5 seconds).
+If config-fn takes longer than this, the domain is skipped.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L56-L59[source,window=_blank]
+
+'''
+
+[#submit-command-BANG-]
+== submit-command!
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L62-L62[source,window=_blank]
+
+'''
+
+[#trigger-maintenance-BANG-]
+== trigger-maintenance!
+
+
+
+
+[source,clojure]
+----
+(trigger-maintenance! system)
+----
+
+See xref:api/ol-clave-automation.adoc#trigger-maintenance-BANG-[`ol.clave.automation/trigger-maintenance!`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L388-L391[source,window=_blank]
+
+'''
+
+[#create]
+== create
+
+
+
+
+[source,clojure]
+----
+(create config)
+----
+
+See xref:api/ol-clave-automation.adoc#create[`ol.clave.automation/create`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L412-L420[source,window=_blank]
+
+'''
+
+[#start-BANG-]
+== start!
+
+
+
+
+[source,clojure]
+----
+(start! system)
+----
+
+See xref:api/ol-clave-automation.adoc#start-BANG-[`ol.clave.automation/start!`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L422-L428[source,window=_blank]
+
+'''
+
+[#stop]
+== stop
+
+
+
+
+[source,clojure]
+----
+(stop system)
+----
+
+See xref:api/ol-clave-automation.adoc#stop[`ol.clave.automation/stop`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L430-L444[source,window=_blank]
+
+'''
+
+[#started-QMARK-]
+== started?
+
+
+
+
+[source,clojure]
+----
+(started? system)
+----
+
+See xref:api/ol-clave-automation.adoc#started-QMARK-[`ol.clave.automation/started?`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L446-L449[source,window=_blank]
+
+'''
+
+[#lookup-cert]
+== lookup-cert
+
+
+
+
+[source,clojure]
+----
+(lookup-cert system hostname)
+----
+
+See xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L488-L507[source,window=_blank]
+
+'''
+
+[#manage-domains]
+== manage-domains
+
+
+
+
+[source,clojure]
+----
+(manage-domains system domains)
+----
+
+See xref:api/ol-clave-automation.adoc#manage-domains[`ol.clave.automation/manage-domains`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1196-L1232[source,window=_blank]
+
+'''
+
+[#unmanage-domains]
+== unmanage-domains
+
+
+
+
+[source,clojure]
+----
+(unmanage-domains system domains)
+----
+
+See xref:api/ol-clave-automation.adoc#unmanage-domains[`ol.clave.automation/unmanage-domains`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1234-L1246[source,window=_blank]
+
+'''
+
+[#list-domains]
+== list-domains
+
+
+
+
+[source,clojure]
+----
+(list-domains system)
+----
+
+See xref:api/ol-clave-automation.adoc#list-domains[`ol.clave.automation/list-domains`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1248-L1257[source,window=_blank]
+
+'''
+
+[#get-domain-status]
+== get-domain-status
+
+
+
+
+[source,clojure]
+----
+(get-domain-status system domain)
+----
+
+See xref:api/ol-clave-automation.adoc#get-domain-status[`ol.clave.automation/get-domain-status`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1259-L1267[source,window=_blank]
+
+'''
+
+[#has-valid-cert-QMARK-]
+== has-valid-cert?
+
+
+
+
+[source,clojure]
+----
+(has-valid-cert? system domain)
+----
+
+See xref:api/ol-clave-automation.adoc#has-valid-cert-QMARK-[`ol.clave.automation/has-valid-cert?`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1269-L1272[source,window=_blank]
+
+'''
+
+[#get-event-queue]
+== get-event-queue
+
+
+
+
+[source,clojure]
+----
+(get-event-queue system)
+----
+
+See xref:api/ol-clave-automation.adoc#get-event-queue[`ol.clave.automation/get-event-queue`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1274-L1282[source,window=_blank]
+
+'''
+
+[#renew-managed]
+== renew-managed
+
+
+
+
+[source,clojure]
+----
+(renew-managed system)
+----
+
+See xref:api/ol-clave-automation.adoc#renew-managed[`ol.clave.automation/renew-managed`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1284-L1297[source,window=_blank]
+
+'''
+
+[#revoke]
+== revoke
+
+
+
+
+[source,clojure]
+----
+(revoke system certificate opts)
+----
+
+See xref:api/ol-clave-automation.adoc#revoke[`ol.clave.automation/revoke`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1299-L1337[source,window=_blank]

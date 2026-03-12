@@ -1,0 +1,28 @@
+= ol.clave.certificate.impl.csr
+
+
+Pure Clojure PKCS#10 CSR generation with no external dependencies.
+
+Supports RSA (2048, 3072, 4096), ECDSA (P-256, P-384), and Ed25519.
+Automatically handles IDNA conversion for internationalized domains.
+Validates and normalizes Subject Alternative Names.
+
+No other extensions or key types are supported.
+
+If you need more features then you will need to use external tools to provide your own CSR.
+
+[#create-csr]
+== create-csr
+
+
+
+
+[source,clojure]
+----
+(create-csr key-pair sans & [opts])
+----
+
+See xref:api/ol-clave-certificate.adoc#csr[`ol.clave.certificate/csr`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/csr.clj#L342-L402[source,window=_blank]

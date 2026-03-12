@@ -1,0 +1,427 @@
+= ol.clave.automation
+
+
+Public API for the ACME certificate automation layer.
+
+The automation layer manages TLS certificate lifecycle automatically:
+- Obtains certificates for managed domains
+- Renews certificates before expiration
+- Handles OCSP stapling
+- Provides events for monitoring
+
+## Quick Start
+
+[source,clojure]
+----
+(require '[ol.clave.automation :as auto]
+         '[ol.clave.storage.file :as fs])
+
+;; Create the automation system
+(def system (auto/create {:storage (fs/file-storage "/var/lib/acme")
+                          :issuers [{:directory-url "https://acme-v02.api.letsencrypt.org/directory"
+                                     :email "admin@example.com"}]
+                          :solvers {:http-01 my-http-solver}}))
+
+;; Optionally get the event queue before starting
+(def queue (auto/get-event-queue system))
+
+;; Start the maintenance loop
+(auto/start! system)
+
+;; Add domains to manage
+(auto/manage-domains system ["example.com"])
+
+;; Look up certificate for TLS handshake
+(auto/lookup-cert system "example.com")
+
+;; Stop the system
+(auto/stop system)
+----
+
+## Configuration
+
+The config map supports:
+
+| key                 | description                                                                  |
+|---------------------|------------------------------------------------------------------------------|
+| `:storage`          | Storage implementation (required)                                            |
+| `:issuers`          | Vector of issuer configs with `:directory-url` and optional `:email`, `:eab` |
+| `:issuer-selection` | `:in-order` (default) or `:shuffle`                                          |
+| `:key-type`         | `:p256` (default), `:p384`, `:rsa2048`, `:rsa4096`, `:rsa8192`, `:ed25519`   |
+| `:key-reuse`        | Reuse private key on renewal (default false)                                 |
+| `:solvers`          | Map of solver types to implementations                                       |
+| `:ocsp`             | OCSP config with `:enabled`, `:must-staple`                                  |
+| `:ari`              | ARI config with `:enabled`                                                   |
+| `:cache-capacity`   | Max certificates in cache (nil = unlimited)                                  |
+| `:config-fn`        | Function: domain -> config overrides                                         |
+| `:http-client`      | HTTP client options for ACME requests                                        |
+
+[#create]
+== create
+
+
+
+
+[source,clojure]
+----
+(create config)
+----
+
+Creates the automation system without starting the maintenance loop.
+
+Returns a system handle that is not yet started.
+
+Throws if configuration is invalid or storage cannot be initialized.
+
+After calling this function you might be interested in <<get-event-queue,`get-event-queue`>> and <<start-BANG-,`start!`>>.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L58-L67[source,window=_blank]
+
+'''
+
+[#start-BANG-]
+== start!
+
+
+
+
+[source,clojure]
+----
+(start! system)
+----
+
+Starts the maintenance loop on a created system.
+
+Call this after <<create,`create`>> to begin automatic certificate management.
+Idempotent: calling on an already-started system is a no-op.
+
+Returns the system handle.
+
+See also <<create,`create`>>.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L69-L79[source,window=_blank]
+
+'''
+
+[#stop]
+== stop
+
+
+
+
+[source,clojure]
+----
+(stop system)
+----
+
+Stops the automation system.
+
+Signals the maintenance loop to stop, waits for in-flight operations,
+and releases resources.
+
+| key | description |
+|-----|-------------|
+| `system` | System handle from `start` |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L86-L96[source,window=_blank]
+
+'''
+
+[#started-QMARK-]
+== started?
+
+
+
+
+[source,clojure]
+----
+(started? system)
+----
+
+Returns true if the system is in started state.
+
+| key | description |
+|-----|-------------|
+| `system` | System handle from `start` |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L98-L105[source,window=_blank]
+
+'''
+
+[#manage-domains]
+== manage-domains
+
+
+
+
+[source,clojure]
+----
+(manage-domains system domains)
+----
+
+Adds domains to management, triggering immediate certificate obtain.
+
+Returns `nil` on success.
+Throws with `:errors` in ex-data if any domain is invalid.
+
+| key       | description                      |
+|-----------|----------------------------------|
+| `system`  | System handle from `start`       |
+| `domains` | Vector of domain names to manage |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L107-L118[source,window=_blank]
+
+'''
+
+[#unmanage-domains]
+== unmanage-domains
+
+
+
+
+[source,clojure]
+----
+(unmanage-domains system domains)
+----
+
+Removes domains from management.
+
+Stops renewal and maintenance for these domains.
+Certificates remain in storage but are no longer actively managed.
+
+| key       | description                        |
+|-----------|------------------------------------|
+| `system`  | System handle from `start`         |
+| `domains` | Vector of domain names to unmanage |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L120-L131[source,window=_blank]
+
+'''
+
+[#lookup-cert]
+== lookup-cert
+
+
+
+
+[source,clojure]
+----
+(lookup-cert system hostname)
+----
+
+Finds a certificate for a hostname.
+
+Tries exact match first, then wildcard match.
+Returns the certificate bundle or nil if not found.
+
+| key        | description                |
+|------------|----------------------------|
+| `system`   | System handle from `start` |
+| `hostname` | Hostname to look up        |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L133-L144[source,window=_blank]
+
+'''
+
+[#list-domains]
+== list-domains
+
+
+
+
+[source,clojure]
+----
+(list-domains system)
+----
+
+Lists all managed domains with status.
+
+Returns a vector of maps with `:domain`, `:status`, and `:not-after`.
+
+| key | description |
+|-----|-------------|
+| `system` | System handle from `start` |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L146-L155[source,window=_blank]
+
+'''
+
+[#get-domain-status]
+== get-domain-status
+
+
+
+
+[source,clojure]
+----
+(get-domain-status system domain)
+----
+
+Gets detailed status for a specific domain.
+
+Returns a map with `:domain`, `:status`, `:not-after`, `:issuer`,
+`:needs-renewal`, or nil if domain is not managed.
+
+| key | description |
+|-----|-------------|
+| `system` | System handle from `start` |
+| `domain` | Domain name to check |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L157-L168[source,window=_blank]
+
+'''
+
+[#has-valid-cert-QMARK-]
+== has-valid-cert?
+
+
+
+
+[source,clojure]
+----
+(has-valid-cert? system domain)
+----
+
+Returns true if the system has a valid certificate for the domain.
+
+| key | description |
+|-----|-------------|
+| `system` | System handle from `start` |
+| `domain` | Domain name to check |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L170-L178[source,window=_blank]
+
+'''
+
+[#get-event-queue]
+== get-event-queue
+
+
+
+
+[source,clojure]
+----
+(get-event-queue system)
+----
+
+Gets the event queue handle for monitoring.
+
+The queue is created lazily on first call. Subsequent calls return
+the same queue instance.
+
+Returns a `java.util.concurrent.LinkedBlockingQueue`
+Poll with `.poll`, `.poll(timeout, unit)`, or `.take`.
+
+When the system is stopped via <<stop,`stop`>>, a `:ol.clave/shutdown` keyword
+is placed on the queue. Consumers should check for this sentinel to
+know when to stop polling.
+
+| key      | description                  |
+|----------|------------------------------|
+| `system` | System handle from `start` |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L180-L197[source,window=_blank]
+
+'''
+
+[#renew-managed]
+== renew-managed
+
+
+
+
+[source,clojure]
+----
+(renew-managed system)
+----
+
+Forces renewal of all managed certificates.
+
+Submits renewal commands for every managed certificate in the cache.
+Commands are submitted asynchronously - this function returns immediately.
+
+Normally certificates are renewed automatically. Use this for
+testing or when you need to force renewal.
+
+Returns the number of certificates queued for renewal.
+
+| key | description |
+|-----|-------------|
+| `system` | System handle from `start` |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L199-L214[source,window=_blank]
+
+'''
+
+[#revoke]
+== revoke
+
+
+
+
+[source,clojure]
+----
+(revoke system certificate opts)
+----
+
+Revokes a certificate.
+
+The `certificate` parameter can be:
+- A domain string - looks up the certificate from the cache
+- A bundle map - uses the bundle directly
+
+| key | description |
+|-----|-------------|
+| `system` | System handle from `start` |
+| `certificate` | Domain string or bundle map |
+| `opts` | Options map (see below) |
+
+Options:
+
+| key | description |
+|-----|-------------|
+| `:remove-from-storage` | When true, deletes certificate files from storage |
+| `:reason` | RFC 5280 revocation reason code (0-6, 8-10) |
+
+Returns `{:status :success}` on successful revocation,
+or `{:status :error :message ...}` on failure.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L216-L239[source,window=_blank]
+
+'''
+
+[#trigger-maintenance-BANG-]
+== trigger-maintenance!
+
+
+
+
+[source,clojure]
+----
+(trigger-maintenance! system)
+----
+
+Manually triggers a maintenance cycle.
+
+This is primarily useful for testing - in normal operation the
+maintenance loop runs automatically at regular intervals.
+
+| key | description |
+|-----|-------------|
+| `system` | System handle from `start` |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L241-L251[source,window=_blank]

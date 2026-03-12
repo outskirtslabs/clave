@@ -1,0 +1,929 @@
+= ol.clave.crypto.impl.der
+
+
+DER (Distinguished Encoding Rules) encoding and decoding for ASN.1 structures.
+
+This namespace provides low-level functions for encoding and decoding ASN.1
+data structures according to ITU-T X.690 (DER encoding rules).
+
+We implement just enough to:
+- Generate CSRs
+- Generate TLS-ALPN-01 challenge certificates
+- Parse certificate extensions (AIA, AKI)
+- Parse OCSP responses
+
+Encoding functions return byte arrays.
+Decoding functions work with byte arrays and return Clojure data structures.
+
+[#tag-boolean]
+== tag-boolean
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L29-L29[source,window=_blank]
+
+'''
+
+[#tag-integer]
+== tag-integer
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L30-L30[source,window=_blank]
+
+'''
+
+[#tag-bit-string]
+== tag-bit-string
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L31-L31[source,window=_blank]
+
+'''
+
+[#tag-octet-string]
+== tag-octet-string
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L32-L32[source,window=_blank]
+
+'''
+
+[#tag-null]
+== tag-null
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L33-L33[source,window=_blank]
+
+'''
+
+[#tag-oid]
+== tag-oid
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L34-L34[source,window=_blank]
+
+'''
+
+[#tag-enumerated]
+== tag-enumerated
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L35-L35[source,window=_blank]
+
+'''
+
+[#tag-utf8-string]
+== tag-utf8-string
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L36-L36[source,window=_blank]
+
+'''
+
+[#tag-printable-string]
+== tag-printable-string
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L37-L37[source,window=_blank]
+
+'''
+
+[#tag-ia5-string]
+== tag-ia5-string
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L38-L38[source,window=_blank]
+
+'''
+
+[#tag-utc-time]
+== tag-utc-time
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L39-L39[source,window=_blank]
+
+'''
+
+[#tag-generalized-time]
+== tag-generalized-time
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L40-L40[source,window=_blank]
+
+'''
+
+[#tag-sequence]
+== tag-sequence
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L41-L41[source,window=_blank]
+
+'''
+
+[#tag-set]
+== tag-set
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L42-L42[source,window=_blank]
+
+'''
+
+[#class-context-specific]
+== class-context-specific
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L44-L44[source,window=_blank]
+
+'''
+
+[#constructed-bit]
+== constructed-bit
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L45-L45[source,window=_blank]
+
+'''
+
+[#encode-length]
+== encode-length
+
+
+
+
+[source,clojure]
+----
+(encode-length length)
+----
+
+Encode DER length octets (short or long form).
+
+Short form (length < 128): single byte with the length value.
+Long form (length >= 128): first byte has high bit set and indicates
+number of length bytes, followed by length bytes in big-endian order.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L49-L68[source,window=_blank]
+
+'''
+
+[#concat-bytes]
+== concat-bytes
+
+
+
+
+[source,clojure]
+----
+(concat-bytes & arrays)
+----
+
+Concatenate multiple byte arrays into a new byte array.
+
+Efficiently copies all input arrays into a single output array.
+Returns empty array if no arrays provided.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L70-L83[source,window=_blank]
+
+'''
+
+[#der-primitive]
+== der-primitive
+
+
+
+
+[source,clojure]
+----
+(der-primitive tag content)
+----
+
+Encode DER primitive with given tag and content.
+
+Tag should be a single-byte tag value (e.g., 0x02 for INTEGER).
+Content is the raw bytes for this primitive.
+Returns complete TLV (tag-length-value) encoded byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L87-L100[source,window=_blank]
+
+'''
+
+[#der-constructed]
+== der-constructed
+
+
+
+
+[source,clojure]
+----
+(der-constructed tag content)
+----
+
+Encode DER constructed with given tag and content.
+
+Tag should include the constructed bit (0x20).
+Content is the concatenated encoding of all child elements.
+Returns complete TLV (tag-length-value) encoded byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L102-L115[source,window=_blank]
+
+'''
+
+[#der-sequence]
+== der-sequence
+
+
+
+
+[source,clojure]
+----
+(der-sequence & parts)
+----
+
+Encode DER SEQUENCE from parts.
+
+Concatenates all parts and wraps in SEQUENCE tag (0x30).
+Returns encoded SEQUENCE byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L119-L126[source,window=_blank]
+
+'''
+
+[#der-set]
+== der-set
+
+
+
+
+[source,clojure]
+----
+(der-set & parts)
+----
+
+Encode DER SET from parts.
+
+DER requires SET elements to be sorted in lexicographic order by their
+encoded bytes. This implementation sorts all parts before encoding.
+
+Returns encoded SET byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L128-L151[source,window=_blank]
+
+'''
+
+[#der-integer]
+== der-integer
+
+
+
+
+[source,clojure]
+----
+(der-integer value)
+----
+
+Encode DER INTEGER from long value.
+
+Handles zero specially, uses BigInteger for proper two's complement encoding.
+Returns encoded INTEGER byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L153-L162[source,window=_blank]
+
+'''
+
+[#der-integer-bytes]
+== der-integer-bytes
+
+
+
+
+[source,clojure]
+----
+(der-integer-bytes value)
+----
+
+Encode DER INTEGER from byte array.
+
+Adds leading zero if high bit is set to avoid negative interpretation.
+Returns encoded INTEGER byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L164-L175[source,window=_blank]
+
+'''
+
+[#der-boolean]
+== der-boolean
+
+
+
+
+[source,clojure]
+----
+(der-boolean v)
+----
+
+Encode DER BOOLEAN.
+
+True encodes as 0xFF, false as 0x00.
+Returns encoded BOOLEAN byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L177-L183[source,window=_blank]
+
+'''
+
+[#encode-base128]
+== encode-base128
+
+
+
+
+[source,clojure]
+----
+(encode-base128 value)
+----
+
+Encode a long value as base-128 (for OID encoding).
+
+Used by der-oid for encoding OID arc values.
+Each byte has high bit set except the last byte.
+Returns base-128 encoded bytes.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L185-L202[source,window=_blank]
+
+'''
+
+[#der-oid]
+== der-oid
+
+
+
+
+[source,clojure]
+----
+(der-oid dotted)
+----
+
+Encode DER OBJECT IDENTIFIER from dotted string.
+
+Example: "2.5.4.3" for CN (Common Name).
+First two arcs are encoded specially per X.690 (40*arc1 + arc2).
+Returns encoded OID byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L204-L223[source,window=_blank]
+
+'''
+
+[#der-utf8-string]
+== der-utf8-string
+
+
+
+
+[source,clojure]
+----
+(der-utf8-string s)
+----
+
+Encode DER UTF8String.
+
+Encodes string using UTF-8 character set.
+Returns encoded UTF8String byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L225-L231[source,window=_blank]
+
+'''
+
+[#der-octet-string]
+== der-octet-string
+
+
+
+
+[source,clojure]
+----
+(der-octet-string content)
+----
+
+Encode DER OCTET STRING.
+
+Wraps arbitrary byte content in OCTET STRING tag (0x04).
+Returns encoded OCTET STRING byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L233-L239[source,window=_blank]
+
+'''
+
+[#der-bit-string]
+== der-bit-string
+
+
+
+
+[source,clojure]
+----
+(der-bit-string bytes)
+----
+
+Encode DER BIT STRING.
+
+First content byte specifies number of unused bits (always 0 here).
+Returns encoded BIT STRING byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L241-L250[source,window=_blank]
+
+'''
+
+[#der-utc-time]
+== der-utc-time
+
+
+
+
+[source,clojure]
+----
+(der-utc-time date)
+----
+
+Encode DER UTCTime from Date.
+
+Format: YYMMDDHHmmssZ (2-digit year, UTC timezone).
+Used for dates before 2050 per X.509 conventions.
+Returns encoded UTCTime byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L254-L263[source,window=_blank]
+
+'''
+
+[#der-generalized-time]
+== der-generalized-time
+
+
+
+
+[source,clojure]
+----
+(der-generalized-time date)
+----
+
+Encode DER GeneralizedTime from Date.
+
+Format: YYYYMMDDHHmmssZ (4-digit year, UTC timezone).
+Used for dates in 2050 or later per X.509 conventions.
+Returns encoded GeneralizedTime byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L265-L274[source,window=_blank]
+
+'''
+
+[#der-context-specific-constructed-implicit]
+== der-context-specific-constructed-implicit
+
+
+
+
+[source,clojure]
+----
+(der-context-specific-constructed-implicit tag-number content)
+----
+
+Encode IMPLICIT [tag] CONSTRUCTED with given content.
+
+Context-specific tag with constructed bit set (0xA0 | tag-number).
+Used for IMPLICIT tagging in ASN.1.
+Returns encoded context-specific byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L278-L286[source,window=_blank]
+
+'''
+
+[#der-context-specific-primitive]
+== der-context-specific-primitive
+
+
+
+
+[source,clojure]
+----
+(der-context-specific-primitive tag-number raw-content)
+----
+
+Encode context-specific PRIMITIVE tag with raw content.
+
+Context-specific tag without constructed bit (0x80 | tag-number).
+Used for IMPLICIT tagging of primitive types in ASN.1.
+Returns encoded context-specific byte array.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L288-L296[source,window=_blank]
+
+'''
+
+[#read-length]
+== read-length
+
+
+
+
+[source,clojure]
+----
+(read-length data offset)
+----
+
+Read DER length and return [length bytes-consumed].
+
+Supports short form (single byte < 128) and long form (multi-byte).
+Returns vector of [length-value number-of-bytes-consumed].
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L300-L320[source,window=_blank]
+
+'''
+
+[#read-tlv]
+== read-tlv
+
+
+
+
+[source,clojure]
+----
+(read-tlv data offset)
+----
+
+Read a complete TLV (tag-length-value) structure.
+
+Returns a map with:
+- `:tag` - the raw tag byte
+- `:tag-class` - :universal, :application, :context-specific, or :private
+- `:constructed?` - true if constructed (contains other TLVs)
+- `:tag-number` - the tag number within the class
+- `:value` - byte array of the value
+- `:total-length` - total bytes consumed including tag and length
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L322-L354[source,window=_blank]
+
+'''
+
+[#decode-sequence-elements]
+== decode-sequence-elements
+
+
+
+
+[source,clojure]
+----
+(decode-sequence-elements data)
+----
+
+Decode all elements in a SEQUENCE/SET value.
+
+Takes the value bytes (not including SEQUENCE tag/length) and returns
+a vector of TLV maps.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L356-L368[source,window=_blank]
+
+'''
+
+[#decode-integer]
+== decode-integer
+
+
+
+
+[source,clojure]
+----
+(decode-integer value)
+----
+
+Decode a DER INTEGER value bytes to BigInteger.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L372-L375[source,window=_blank]
+
+'''
+
+[#decode-enumerated]
+== decode-enumerated
+
+
+
+
+[source,clojure]
+----
+(decode-enumerated value)
+----
+
+Decode a DER ENUMERATED value bytes to long.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L377-L380[source,window=_blank]
+
+'''
+
+[#decode-oid]
+== decode-oid
+
+
+
+
+[source,clojure]
+----
+(decode-oid value)
+----
+
+Decode a DER OID value bytes to dotted string notation.
+
+First two arcs are encoded as (40 * arc1 + arc2) in the first byte(s).
+Subsequent arcs use base-128 encoding with high bit continuation.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L382-L412[source,window=_blank]
+
+'''
+
+[#decode-octet-string]
+== decode-octet-string
+
+
+
+
+[source,clojure]
+----
+(decode-octet-string value)
+----
+
+Return the raw bytes from an OCTET STRING value.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L414-L417[source,window=_blank]
+
+'''
+
+[#decode-bit-string]
+== decode-bit-string
+
+
+
+
+[source,clojure]
+----
+(decode-bit-string value)
+----
+
+Decode a BIT STRING value, returning the actual bits as bytes.
+
+First byte indicates unused bits in the last byte.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L419-L430[source,window=_blank]
+
+'''
+
+[#decode-ia5-string]
+== decode-ia5-string
+
+
+
+
+[source,clojure]
+----
+(decode-ia5-string value)
+----
+
+Decode an IA5String (ASCII) value to String.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L432-L435[source,window=_blank]
+
+'''
+
+[#decode-utf8-string]
+== decode-utf8-string
+
+
+
+
+[source,clojure]
+----
+(decode-utf8-string value)
+----
+
+Decode a UTF8String value to String.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L437-L440[source,window=_blank]
+
+'''
+
+[#decode-printable-string]
+== decode-printable-string
+
+
+
+
+[source,clojure]
+----
+(decode-printable-string value)
+----
+
+Decode a PrintableString value to String.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L442-L445[source,window=_blank]
+
+'''
+
+[#decode-generalized-time]
+== decode-generalized-time
+
+
+
+
+[source,clojure]
+----
+(decode-generalized-time value)
+----
+
+Decode a GeneralizedTime value to java.time.Instant.
+
+Format: YYYYMMDDHHmmss[.fraction]Z
+Supports optional fractional seconds.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L458-L469[source,window=_blank]
+
+'''
+
+[#decode-utc-time]
+== decode-utc-time
+
+
+
+
+[source,clojure]
+----
+(decode-utc-time value)
+----
+
+Decode a UTCTime value to java.time.Instant.
+
+Format: YYMMDDHHmmssZ (2-digit year, interpreted as 1950-2049).
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L480-L490[source,window=_blank]
+
+'''
+
+[#find-context-tag]
+== find-context-tag
+
+
+
+
+[source,clojure]
+----
+(find-context-tag elements tag-number)
+----
+
+Find a context-specific tagged element by tag number in a sequence of TLVs.
+
+Returns the TLV map if found, nil otherwise.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L494-L501[source,window=_blank]
+
+'''
+
+[#unwrap-octet-string]
+== unwrap-octet-string
+
+
+
+
+[source,clojure]
+----
+(unwrap-octet-string data)
+----
+
+Unwrap a DER OCTET STRING and return its content bytes.
+
+Parses the TLV structure and extracts the value.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L503-L511[source,window=_blank]
+
+'''
+
+[#unwrap-sequence]
+== unwrap-sequence
+
+
+
+
+[source,clojure]
+----
+(unwrap-sequence data)
+----
+
+Unwrap a DER SEQUENCE and return its decoded elements.
+
+Parses the TLV structure and decodes all child elements.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/der.clj#L513-L521[source,window=_blank]

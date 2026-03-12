@@ -1,8 +1,13 @@
-{:deps  {}
+{:deps  {outskirtslabs/bb-tasks
+         {:git/url "https://github.com/outskirtslabs/bb-tasks"
+          :git/sha "b224881d5f6d4ae72c514faede9a5eb0b5f627a8"}}
+ :pods  {clj-kondo/clj-kondo {:version "2026.01.19"}}
  :paths ["resources" "scripts"]
  :tasks {:requires ([babashka.fs :as fs]
                     [clojure.string :as str]
-                    [babashka.tasks :refer [shell]])
+                    [babashka.tasks :refer [shell]]
+                    [ol.bb-tasks.gen-docs :as gen-docs]
+                    [ol.bb-tasks.publish-clojars :as publish-clojars])
          :init     (do (def paths #_["src" "test" "dev" "examples"] ["src" "test"]))
          dev       {:doc "Start a local development server" :task (apply clojure "-M:dev:repl/dev" *command-line-args*)}
 
@@ -66,7 +71,11 @@
 
          publish {:doc     "Publish the clojure sdk libs to clojars"
                   :depends [jar]
-                  :task    (clojure "-T:build deploy")}
+                  :task    (publish-clojars/publish!)}
+
+         gen-docs
+         {:doc  "Generate all Antora documentation"
+          :task (gen-docs/generate!)}
 
          qa
          {:doc     "Run full quality assurance: format, lint, and test"

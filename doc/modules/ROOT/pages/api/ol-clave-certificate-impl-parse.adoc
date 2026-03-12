@@ -1,0 +1,35 @@
+= ol.clave.certificate.impl.parse
+
+[#parse-pem-chain]
+== parse-pem-chain
+
+
+
+
+[source,clojure]
+----
+(parse-pem-chain pem)
+----
+
+Parse a PEM-encoded certificate chain into structured data.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/parse.clj#L36-L44[source,window=_blank]
+
+'''
+
+[#parse-pem-response]
+== parse-pem-response
+
+
+
+
+[source,clojure]
+----
+(parse-pem-response resp url)
+----
+
+Validate and parse a PEM certificate response.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/parse.clj#L46-L61[source,window=_blank]

@@ -1,0 +1,140 @@
+= ol.clave.certificate.impl.ocsp
+
+
+Pure Clojure OCSP (Online Certificate Status Protocol) utilities.
+
+Provides functionality to:
+- Extract OCSP responder URLs from certificates
+- Fetch OCSP responses from responders
+- Parse and validate OCSP responses
+
+[#extract-ocsp-urls]
+== extract-ocsp-urls
+
+
+
+
+[source,clojure]
+----
+(extract-ocsp-urls cert)
+----
+
+Extract OCSP responder URLs from a certificate's AIA extension.
+
+Returns a vector of OCSP URLs, or empty vector if none found.
+
+| key | description |
+|-----|-------------|
+| `cert` | X509Certificate to extract OCSP URLs from |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/ocsp.clj#L61-L90[source,window=_blank]
+
+'''
+
+[#create-ocsp-request]
+== create-ocsp-request
+
+
+
+
+[source,clojure]
+----
+(create-ocsp-request cert issuer)
+----
+
+Create an OCSP request for a certificate.
+
+Requires both the leaf certificate and its issuer certificate.
+Returns the DER-encoded OCSP request bytes.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/ocsp.clj#L193-L202[source,window=_blank]
+
+'''
+
+[#parse-ocsp-response]
+== parse-ocsp-response
+
+
+
+
+[source,clojure]
+----
+(parse-ocsp-response response-bytes)
+----
+
+Parse an OCSP response and extract status information.
+
+Returns a map with:
+- `:status` - One of :good, :revoked, :unknown, or :error
+- `:this-update` - When this response was generated
+- `:next-update` - When the response expires
+- `:revocation-time` - For revoked certs, when it was revoked
+- `:revocation-reason` - For revoked certs, the reason code
+- `:raw-bytes` - The original DER-encoded response
+- `:error-code` - For error responses, the OCSP error code
+- `:message` - For error responses, the error message
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/ocsp.clj#L342-L387[source,window=_blank]
+
+'''
+
+[#fetch-ocsp-response]
+== fetch-ocsp-response
+
+
+
+
+[source,clojure]
+----
+(fetch-ocsp-response cert issuer responder-url http-opts)
+----
+
+Fetch OCSP response for a certificate from the specified responder.
+
+| key | description |
+|-----|-------------|
+| `cert` | The X509Certificate to check |
+| `issuer` | The issuer certificate |
+| `responder-url` | URL of the OCSP responder |
+| `http-opts` | HTTP client options map |
+
+Returns a result map:
+- On success: `{:status :success :ocsp-response {...}}`
+- On failure: `{:status :error :message "..."}`
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/ocsp.clj#L391-L428[source,window=_blank]
+
+'''
+
+[#fetch-ocsp-for-bundle]
+== fetch-ocsp-for-bundle
+
+
+
+
+[source,clojure]
+----
+(fetch-ocsp-for-bundle bundle http-opts responder-overrides)
+----
+
+Fetch OCSP response for a certificate bundle.
+
+Extracts the OCSP URL from the leaf certificate and fetches the response.
+Supports responder URL overrides for testing.
+
+| key | description |
+|-----|-------------|
+| `bundle` | Certificate bundle with `:certificate` chain |
+| `http-opts` | HTTP client options |
+| `responder-overrides` | Optional map of original-url -> override-url |
+
+Returns a result map:
+- On success: `{:status :success :ocsp-response {...}}`
+- On failure: `{:status :error :message "..."}`
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/ocsp.clj#L430-L468[source,window=_blank]

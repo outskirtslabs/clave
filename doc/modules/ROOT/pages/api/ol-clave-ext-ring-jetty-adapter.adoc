@@ -1,0 +1,110 @@
+= ol.clave.ext.ring-jetty-adapter
+
+
+Ring Jetty adapter integration for clave automation.
+
+Provides a high-level API for running Jetty with auto-renewing TLS certificates.
+Wraps ring-jetty-adapter with the same `[handler opts]` signature.
+
+Automatically configures both HTTP-01 and TLS-ALPN-01 solvers.
+
+Uses SNI-based certificate selection: certificates are looked up fresh on each
+TLS handshake, so renewals take effect immediately without server restart.
+
+[source,clojure]
+----
+(require '[ol.clave.ext.ring-jetty-adapter :as clave-jetty])
+
+(def ctx (clave-jetty/run-jetty handler
+           {:port 80
+            :ssl-port 443
+            ::clave-jetty/config
+            {:storage (file-storage/file-storage "/tmp/certs")
+             :issuers [{:directory-url "https://acme-v02.api.letsencrypt.org/directory"
+                        :email "admin@example.com"}]
+             :domains ["example.com"]}}))
+
+;; Later: stop everything
+(clave-jetty/stop ctx)
+----
+
+[#run-jetty]
+== run-jetty
+
+
+
+
+[source,clojure]
+----
+(run-jetty handler {::keys [config] :as opts})
+----
+
+Serve `handler` over HTTPS for all `domains` with automatic certificate management.
+
+This is an opinionated, high-level convenience function that applies sane
+defaults for production use: challenge solving, HTTP to HTTPS redirects,
+and SNI-based certificate selection.
+
+Blocks until the initial certificate is obtained, then starts serving.
+Redirects all HTTP requests to HTTPS (when HTTP port is configured).
+Obtains and renews TLS certificates automatically.
+Certificate renewals take effect immediately via SNI-based selection.
+
+For advanced use cases, use `ring.adapter.jetty/run-jetty` directly with
+xref:api/ol-clave-ext-jetty.adoc[`ol.clave.ext.jetty`] functions for certificate management.
+
+`opts` are passed through to `ring.adapter.jetty/run-jetty`.
+Exception: the `:join?` option from `ring.adapter.jetty/run-jetty` is not supported.
+Use <<stop,`stop`>> to shut down the server instead.
+
+Calling this function signifies acceptance of the CA's Subscriber Agreement
+and/or Terms of Service.
+
+| key       | description                                                                   |
+|-----------|-------------------------------------------------------------------------------|
+| `handler` | Ring handler                                                                  |
+| `opts`    | Options map, see `ring.adapter.jetty/run-jetty` for jetty-adapter's options |
+
+Clave config is provided via the `:ol.clave.ext.ring-jetty-adapter/config` key in `opts`:
+
+| key               | description                             | default   |
+|-------------------|-----------------------------------------|-----------|
+| `:domains`        | Domains to manage certs for (required)  |           |
+| `:redirect-http?` | Wrap handler with HTTP->HTTPS redirect  | true      |
+
+Additional automation config keys (e.g., `:issuers`, `:storage` etc.) are passed through to xref:api/ol-clave-automation.adoc#create[`ol.clave.automation/create`].
+
+Returns a context map for use with <<stop,`stop`>>.
+
+[source,clojure]
+----
+(def server (run-jetty handler
+              {:port 80 :ssl-port 443
+               ::config {:domains ["example.com"]}}))
+
+;; Later:
+(stop server)
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/ring_jetty_adapter.clj#L45-L119[source,window=_blank]
+
+'''
+
+[#stop]
+== stop
+
+
+
+
+[source,clojure]
+----
+(stop {:keys [server system]})
+----
+
+Stop a server context returned by <<run-jetty,`run-jetty`>>.
+
+Stops the Jetty server and automation system.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/ring_jetty_adapter.clj#L121-L127[source,window=_blank]

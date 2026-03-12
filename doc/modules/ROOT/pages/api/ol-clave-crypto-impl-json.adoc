@@ -1,0 +1,40 @@
+= ol.clave.crypto.impl.json
+
+[#read-str]
+== read-str
+
+
+
+
+[source,clojure]
+----
+(read-str s)
+(read-str s opts)
+----
+
+Returns a Clojure value from the JSON string.
+
+Options:
+  :key-fn - Convert JSON keys using this function. Defaults to keyword.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/json.clj#L5-L12[source,window=_blank]
+
+'''
+
+[#write-str]
+== write-str
+
+
+
+
+[source,clojure]
+----
+(write-str x)
+(write-str x opts)
+----
+
+Returns a JSON string from the Clojure value.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/json.clj#L14-L18[source,window=_blank]

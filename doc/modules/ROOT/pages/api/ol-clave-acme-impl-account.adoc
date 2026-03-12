@@ -1,0 +1,127 @@
+= ol.clave.acme.impl.account
+
+[#validate-account]
+== validate-account
+
+
+
+
+[source,clojure]
+----
+(validate-account account)
+----
+
+See xref:api/ol-clave-acme-account.adoc#validate-account[`ol.clave.acme.account/validate-account`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/account.clj#L43-L64[source,window=_blank]
+
+'''
+
+[#get-primary-contact]
+== get-primary-contact
+
+
+
+
+[source,clojure]
+----
+(get-primary-contact account)
+----
+
+See xref:api/ol-clave-acme-account.adoc#get-primary-contact[`ol.clave.acme.account/get-primary-contact`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/account.clj#L66-L71[source,window=_blank]
+
+'''
+
+[#account-from-edn]
+== account-from-edn
+
+
+
+
+[source,clojure]
+----
+(account-from-edn registration-edn)
+----
+
+See xref:api/ol-clave-acme-account.adoc#account-from-edn[`ol.clave.acme.account/account-from-edn`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/account.clj#L73-L84[source,window=_blank]
+
+'''
+
+[#serialize]
+== serialize
+
+
+
+
+[source,clojure]
+----
+(serialize account keypair)
+----
+
+See xref:api/ol-clave-acme-account.adoc#serialize[`ol.clave.acme.account/serialize`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/account.clj#L93-L105[source,window=_blank]
+
+'''
+
+[#deserialize]
+== deserialize
+
+
+
+
+[source,clojure]
+----
+(deserialize account-edn)
+----
+
+See xref:api/ol-clave-acme-account.adoc#deserialize[`ol.clave.acme.account/deserialize`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/account.clj#L107-L124[source,window=_blank]
+
+'''
+
+[#generate-keypair]
+== generate-keypair
+
+
+
+
+[source,clojure]
+----
+(generate-keypair)
+(generate-keypair {:keys [algo] :or {algo :p256}})
+----
+
+See xref:api/ol-clave-acme-account.adoc#generate-keypair[`ol.clave.acme.account/generate-keypair`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/account.clj#L126-L131[source,window=_blank]
+
+'''
+
+[#create]
+== create
+
+
+
+
+[source,clojure]
+----
+(create contact tos-agreed)
+(create contact tos-agreed _)
+----
+
+See xref:api/ol-clave-acme-account.adoc#create[`ol.clave.acme.account/create`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/account.clj#L133-L157[source,window=_blank]

@@ -1,0 +1,130 @@
+= ol.clave.acme.impl.order
+
+[#create-identifier]
+== create-identifier
+
+
+
+
+[source,clojure]
+----
+(create-identifier identifier)
+(create-identifier identifier-type identifier-value)
+----
+
+See xref:api/ol-clave-acme-order.adoc#create-identifier[`ol.clave.acme.order/create-identifier`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/order.clj#L21-L37[source,window=_blank]
+
+'''
+
+[#create]
+== create
+
+
+
+
+[source,clojure]
+----
+(create identifiers)
+(create identifiers opts)
+----
+
+See xref:api/ol-clave-acme-order.adoc#create[`ol.clave.acme.order/create`]
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/order.clj#L39-L62[source,window=_blank]
+
+'''
+
+[#build-order-payload]
+== build-order-payload
+
+
+
+
+[source,clojure]
+----
+(build-order-payload order)
+----
+
+Build an ACME newOrder payload from a qualified order map.
+
+Parameters:
+- `order` - Order map with `::acme/identifiers` and optional
+            `::acme/notBefore`, `::acme/notAfter`, `::acme/replaces`.
+
+The `replaces` field (RFC 9773) links a renewal order to its predecessor
+certificate using the ARI unique identifier format.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/order.clj#L74-L101[source,window=_blank]
+
+'''
+
+[#normalize-order]
+== normalize-order
+
+
+
+
+[source,clojure]
+----
+(normalize-order order location)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/order.clj#L103-L113[source,window=_blank]
+
+'''
+
+[#ensure-identifiers-consistent]
+== ensure-identifiers-consistent
+
+
+
+
+[source,clojure]
+----
+(ensure-identifiers-consistent expected order)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/order.clj#L115-L122[source,window=_blank]
+
+'''
+
+[#order-ready-QMARK-]
+== order-ready?
+
+
+
+
+[source,clojure]
+----
+(order-ready? order)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/order.clj#L124-L126[source,window=_blank]
+
+'''
+
+[#order-terminal-QMARK-]
+== order-terminal?
+
+
+
+
+[source,clojure]
+----
+(order-terminal? order)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/order.clj#L128-L130[source,window=_blank]

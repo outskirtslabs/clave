@@ -1,0 +1,82 @@
+= ol.clave
+
+____
+Automatic HTTPS certificate management and renewal via ACME, implemented in pure Clojure with minimal dependencies
+____
+
+image:https://img.shields.io/badge/doc-outskirtslabs-orange.svg[doc,link=https://docs.outskirtslabs.com/ol.clave/next/]
+image:https://img.shields.io/badge/status-experimental-red.svg[status: experimental,link=https://docs.outskirtslabs.com/open-source-vital-signs#experimental]
+image:https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fgarnix.io%2Fapi%2Fbadges%2Foutskirtslabs%2Fclave[alt=built with garnix,link=https://garnix.io/repo/outskirtslabs/clave]
+https://clojars.org/com.outskirtslabs/clave[image:https://img.shields.io/clojars/v/com.outskirtslabs/clave.svg[Clojars Project]]
+
+`ol.clave` is an https://datatracker.ietf.org/doc/html/rfc8555[ACME client] for Clojure.
+
+It gives you a lower-level API for implementing the ACME protocol itself when you need that much control. If you want to work directly with accounts, orders, authorizations, challenges, and certificate issuance, you can do that.
+
+And if you do not want to live at RFC altitude all day, it also gives you a higher-level API for provisioning certificates from application code, managing them over time, and keeping them up to date. That is the part most people actually want. Ask for a cert. Renew the cert. Repeat.
+
+`ol.clave` also includes adapters for wiring ACME into Jetty-based applications, plus helpers for HTTP-01 and TLS-ALPN-01 validation. For DNS validation, it gives you the hooks you need, but it does not ship DNS provider integrations by default. DNS provider integrations are future work. (If you are interested in that, https://casey.link/about[get in touch].)
+
+One of the design goals for `ol.clave` was as few dependencies as possible and avoid dragging in a bunch of Java ecosystem baggage.
+
+At runtime there are exactly two hard dependencies. The first is https://github.com/babashka/json[`babashka/json`], which is a BYO JSON-library-library. On the JVM it will use a JSON provider from your classpath. In many applications that will just work because you already have one. If you care which provider gets picked, or want to force one, go read that project's docs.
+
+The second runtime dep is https://github.com/taoensso/trove[Peter Taoussanis's Trove], which gives `ol.clave` a very lightweight way to emit signals and logging without forcing a backend on you. Same story there: wire it into whatever telemetry or logging stack you already use after reading Peter's docs.
+
+The no-dependencies choice has consequences. I did not want to pull in Bouncy Castle as a runtime dependency. It is large, it is heavy, and it is the kind of library that likes to start version fights when two things on your classpath want different releases. But ACME certificate provisioning still needs some plumbing that the JDK does not hand you directly (despite being distributed as part of the keytool util in every JDK package), especially around DER de/encoding, CSR generation, and a few X.509-adjacent details.
+
+To be clear, `ol.clave` is not implementing any cryptography itself. The actual crypto primitives (RSA, ECC, etc) still come from the JVM. What `ol.clave` implements in pure Clojure is the narrow slice of encoding, decoding, and certificate-request machinery needed to make ACME work  without the heavyweight runtime dependencies. That problem space is small enough to specify, small enough to test thoroughly and it isn't a general-purpose PKI toolkit.
+
+Project status: *https://docs.outskirtslabs.com/open-source-vital-signs#experimental[Experimental]*.
+
+== Installation
+
+[source,clojure]
+----
+;; deps.edn
+{:deps {com.outskirtslabs/clave {:mvn/version "0.0.0"}}}
+
+;; Leiningen
+[com.outskirtslabs/clave "0.0.0"]
+----
+
+== Quick Start
+
+Start with one of the runnable examples in this repository:
+
+* https://github.com/outskirtslabs/clave/blob/main/examples/certificate.clj[`examples/certificate.clj`] for the higher-level certificate acquisition flow.
+* https://github.com/outskirtslabs/clave/blob/main/examples/acme.clj[`examples/acme.clj`] for a lower-level step-by-step ACME transaction.
+* https://github.com/outskirtslabs/clave/blob/main/examples/ring_jetty.clj[`examples/ring_jetty.clj`] for auto-renewing HTTPS with `ring-jetty-adapter`.
+
+These examples use https://github.com/letsencrypt/pebble[Pebble] for local ACME testing.
+
+== Documentation
+
+* https://docs.outskirtslabs.com/ol.clave/next/[Docs]
+* https://docs.outskirtslabs.com/ol.clave/next/api[API Reference]
+* https://github.com/outskirtslabs/clave/issues[Support via GitHub Issues]
+
+== Recommended Reading
+
+* https://datatracker.ietf.org/doc/html/rfc8555[RFC 8555: Automatic Certificate Management Environment (ACME)]
+* https://datatracker.ietf.org/doc/html/rfc9773[RFC 9773: ACME Renewal Information (ARI) Extension]
+* https://github.com/https-dev/docs/blob/master/acme-ops.md[Best Practices for ACME Client Operations]
+
+== Security
+
+ifdef::env-github[]
+See link:./SECURITY.adoc[SECURITY.adoc] for security reporting and policy links.
+endif::[]
+ifndef::env-github[]
+See xref:security.adoc[Security] for security reporting and policy links.
+endif::[]
+
+== License
+
+Copyright (C) 2025-2026 Casey Link
+
+Distributed under the https://spdx.org/licenses/EUPL-1.2.html[EUPL-1.2].
+
+Some files included in this project are from third-party sources and retain their original licenses as indicated in link:./NOTICE[NOTICE].
+
+Special thanks to https://github.com/borkdude/[Michiel Borkent (@borkdude)] for the use of https://github.com/babashka/http-client[babashka/http-client] and https://github.com/babashka/json[babashka/json].

@@ -1,0 +1,266 @@
+= ol.clave.automation.impl.cache
+
+
+In-memory certificate cache for the automation layer.
+
+The cache provides fast certificate lookup for TLS handshakes and
+iteration for maintenance loop. Certificates are indexed by SAN
+for efficient domain-based lookups.
+
+[#cache-certificate]
+== cache-certificate
+
+
+
+
+[source,clojure]
+----
+(cache-certificate cache_ bundle)
+----
+
+Add or update a certificate in the cache.
+
+If `:capacity` is set in the cache and adding would exceed it,
+one random certificate is evicted first.
+
+| key      | description                                         |
+|----------|-----------------------------------------------------|
+| `cache_` | Atom containing {:certs {} :index {} :capacity nil} |
+| `bundle` | Certificate bundle with :hash and :names            |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/cache.clj#L44-L70[source,window=_blank]
+
+'''
+
+[#lookup-cert]
+== lookup-cert
+
+
+
+
+[source,clojure]
+----
+(lookup-cert cache_ hostname)
+----
+
+Find certificate for hostname.
+
+Tries exact match first, then wildcard match.
+
+| key        | description                           |
+|------------|---------------------------------------|
+| `cache_`   | Atom containing {:certs {} :index {}} |
+| `hostname` | Hostname to look up                   |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/cache.clj#L80-L96[source,window=_blank]
+
+'''
+
+[#remove-certificate]
+== remove-certificate
+
+
+
+
+[source,clojure]
+----
+(remove-certificate cache_ bundle)
+----
+
+Remove a certificate from the cache.
+
+| key      | description                                         |
+|----------|-----------------------------------------------------|
+| `cache_` | Atom containing {:certs {} :index {} :capacity nil} |
+| `bundle` | Certificate bundle with :hash and :names to remove  |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/cache.clj#L98-L112[source,window=_blank]
+
+'''
+
+[#update-ocsp-staple]
+== update-ocsp-staple
+
+
+
+
+[source,clojure]
+----
+(update-ocsp-staple cache_ hash ocsp-response)
+----
+
+Update OCSP staple in existing cached bundle.
+
+| key             | description                                         |
+|-----------------|-----------------------------------------------------|
+| `cache_`        | Atom containing {:certs {} :index {} :capacity nil} |
+| `hash`          | Hash of the certificate to update                   |
+| `ocsp-response` | New OCSP staple data                                |
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/cache.clj#L114-L128[source,window=_blank]
+
+'''
+
+[#update-ari-data]
+== update-ari-data
+
+
+
+
+[source,clojure]
+----
+(update-ari-data cache_ hash ari-data)
+----
+
+Update ARI data in existing cached bundle.
+
+| key        | description                                                         |
+|------------|---------------------------------------------------------------------|
+| `cache_`   | Atom containing {:certs {} :index {} :capacity nil}                 |
+| `hash`     | Hash of the certificate to update                                   |
+| `ari-data` | ARI data with `:suggested-window`, `:selected-time`, `:retry-after` |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/cache.clj#L130-L143[source,window=_blank]
+
+'''
+
+[#mark-managed]
+== mark-managed
+
+
+
+
+[source,clojure]
+----
+(mark-managed cache_ hash)
+----
+
+Set the :managed flag on a cached bundle.
+
+Used when a previously-cached (unmanaged) certificate becomes managed
+via `manage-domains` after passing validation.
+
+| key      | description                           |
+|----------|---------------------------------------|
+| `cache_` | Atom containing {:certs {} :index {}} |
+| `hash`   | Hash of the certificate to update     |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/cache.clj#L145-L160[source,window=_blank]
+
+'''
+
+[#newer-than-cache-QMARK-]
+== newer-than-cache?
+
+
+
+
+[source,clojure]
+----
+(newer-than-cache? stored-bundle cached-bundle)
+----
+
+Check if a stored certificate is newer than the cached version.
+
+Compares certificates by their `:not-before` timestamp. Returns true
+if the stored certificate was issued after the cached one.
+
+| key             | description                     |
+|-----------------|---------------------------------|
+| `stored-bundle` | Certificate bundle from storage |
+| `cached-bundle` | Certificate bundle from cache   |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/cache.clj#L162-L175[source,window=_blank]
+
+'''
+
+[#hash-certificate]
+== hash-certificate
+
+
+
+
+[source,clojure]
+----
+(hash-certificate cert-chain)
+----
+
+Compute a consistent hash of certificate chain bytes.
+
+Uses SHA-256 to produce a unique identifier for a certificate chain.
+The hash is stable: same input always produces the same output.
+
+| key          | description                                                    |
+|--------------|----------------------------------------------------------------|
+| `cert-chain` | Vector of byte arrays (certificate chain in DER or PEM format) |
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/cache.clj#L185-L199[source,window=_blank]
+
+'''
+
+[#create-bundle]
+== create-bundle
+
+
+
+
+[source,clojure]
+----
+(create-bundle certs private-key issuer-key managed?)
+----
+
+Create a certificate bundle from ACME response data.
+
+Extracts SANs, computes hash, and creates a complete bundle map
+suitable for caching and TLS use.
+
+| key           | description                                         |
+|---------------|-----------------------------------------------------|
+| `certs`       | Vector of X509Certificate objects (chain)           |
+| `private-key` | Private key for the certificate                     |
+| `issuer-key`  | Identifier for the issuer (e.g., CA directory host) |
+| `managed?`    | Whether cert is actively managed for renewal        |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/cache.clj#L218-L244[source,window=_blank]
+
+'''
+
+[#handle-command-result]
+== handle-command-result
+
+
+
+
+[source,clojure]
+----
+(handle-command-result cache_ cmd result)
+----
+
+Update cache based on command result.
+
+Handles cache updates for different command types:
+- `:obtain-certificate` success: adds new certificate to cache
+- `:renew-certificate` success: removes old cert, adds new cert
+- `:fetch-ocsp` success: updates OCSP staple in existing bundle
+
+Does nothing on failure (`:status :error`).
+
+| key      | description                                         |
+|----------|-----------------------------------------------------|
+| `cache_` | Atom containing {:certs {} :index {}}               |
+| `cmd`    | Command descriptor with `:command` and `:bundle`    |
+| `result` | Result map with `:status` and command-specific data |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/cache.clj#L246-L283[source,window=_blank]

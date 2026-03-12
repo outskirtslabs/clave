@@ -1,0 +1,123 @@
+= ol.clave.acme.order
+
+
+Helpers for building and inspecting ACME orders.
+
+[#create-identifier]
+== create-identifier
+
+
+
+
+[source,clojure]
+----
+(create-identifier identifier)
+(create-identifier identifier-type identifier-value)
+----
+
+Construct an identifier map from `identifier` or `type` and `value`.
+
+`type` may be a string or keyword such as `dns` or `:dns`.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/order.clj#L9-L16[source,window=_blank]
+
+'''
+
+[#create]
+== create
+
+
+
+
+[source,clojure]
+----
+(create identifiers)
+(create identifiers opts)
+----
+
+Construct an order map with the supplied identifiers and options.
+
+Options:
+
+| key           | description                                   |
+|---------------|-----------------------------------------------|
+| `:not-before` | Optional notBefore instant or RFC3339 string. |
+| `:not-after`  | Optional notAfter instant or RFC3339 string.  |
+| `:profile`    | Optional profile name as a string.            |
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/order.clj#L18-L32[source,window=_blank]
+
+'''
+
+[#identifiers]
+== identifiers
+
+
+
+
+[source,clojure]
+----
+(identifiers order)
+----
+
+Return the identifiers on an order map.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/order.clj#L34-L37[source,window=_blank]
+
+'''
+
+[#authorizations]
+== authorizations
+
+
+
+
+[source,clojure]
+----
+(authorizations order)
+----
+
+Return the authorization URLs from an order map.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/order.clj#L39-L42[source,window=_blank]
+
+'''
+
+[#url]
+== url
+
+
+
+
+[source,clojure]
+----
+(url order)
+----
+
+Return the order URL from an order map.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/order.clj#L44-L47[source,window=_blank]
+
+'''
+
+[#certificate-url]
+== certificate-url
+
+
+
+
+[source,clojure]
+----
+(certificate-url order)
+----
+
+Return the certificate URL from an order map.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/order.clj#L49-L52[source,window=_blank]

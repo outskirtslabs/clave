@@ -1,0 +1,104 @@
+= ol.clave.acme.impl.authorization
+
+[#normalize-authorization]
+== normalize-authorization
+
+
+
+
+[source,clojure]
+----
+(normalize-authorization authorization account-key location)
+----
+
+Normalize an authorization response into qualified keys and computed data.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/authorization.clj#L12-L27[source,window=_blank]
+
+'''
+
+[#authorization-valid-QMARK-]
+== authorization-valid?
+
+
+
+
+[source,clojure]
+----
+(authorization-valid? authorization)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/authorization.clj#L29-L31[source,window=_blank]
+
+'''
+
+[#authorization-invalid-QMARK-]
+== authorization-invalid?
+
+
+
+
+[source,clojure]
+----
+(authorization-invalid? authorization)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/authorization.clj#L33-L35[source,window=_blank]
+
+'''
+
+[#authorization-unusable-QMARK-]
+== authorization-unusable?
+
+
+
+
+[source,clojure]
+----
+(authorization-unusable? authorization)
+----
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/authorization.clj#L37-L39[source,window=_blank]
+
+'''
+
+[#authorization-problem]
+== authorization-problem
+
+
+
+
+[source,clojure]
+----
+(authorization-problem authorization)
+----
+
+Return the most relevant problem map from an authorization.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/authorization.clj#L41-L45[source,window=_blank]
+
+'''
+
+[#wildcard-identifier-QMARK-]
+== wildcard-identifier?
+
+
+
+
+[source,clojure]
+----
+(wildcard-identifier? identifier)
+----
+
+Return true when `identifier` is a wildcard (value starts with *.).
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/authorization.clj#L47-L52[source,window=_blank]

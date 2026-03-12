@@ -1,0 +1,109 @@
+= ol.clave.acme.impl.ari
+
+
+ARI identifier derivation helpers per RFC 9773.
+
+Extracts the Authority Key Identifier keyIdentifier and serial number
+from an X509Certificate and builds the unique renewal identifier string.
+
+[#authority-key-identifier]
+== authority-key-identifier
+
+
+
+
+[source,clojure]
+----
+(authority-key-identifier cert)
+----
+
+Extract the keyIdentifier bytes from the AKI extension of a certificate.
+
+Parameters:
+- `cert` - X509Certificate to extract AKI from.
+
+Returns the keyIdentifier bytes or throws `::errors/renewal-info-invalid`
+if the AKI extension is missing or does not contain a keyIdentifier.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/ari.clj#L23-L57[source,window=_blank]
+
+'''
+
+[#serial-der-bytes]
+== serial-der-bytes
+
+
+
+
+[source,clojure]
+----
+(serial-der-bytes cert)
+----
+
+Return the DER-encoded serial number bytes of a certificate.
+
+Per RFC 9773, this is the two's complement encoding of the serial number
+with a leading zero byte if the high bit is set (to preserve positive sign).
+
+Parameters:
+- `cert` - X509Certificate to extract serial from.
+
+Returns the DER-encoded serial number bytes (without tag and length).
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/ari.clj#L59-L73[source,window=_blank]
+
+'''
+
+[#renewal-id]
+== renewal-id
+
+
+
+
+[source,clojure]
+----
+(renewal-id cert)
+----
+
+Derive the ARI renewal identifier from a certificate.
+
+The identifier is: base64url(AKI keyIdentifier) || '.' || base64url(serial DER)
+with all trailing padding ('=') stripped per RFC 9773.
+
+Parameters:
+- `cert` - X509Certificate to derive identifier from.
+
+Returns the renewal identifier string.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/ari.clj#L75-L90[source,window=_blank]
+
+'''
+
+[#normalize-renewal-info]
+== normalize-renewal-info
+
+
+
+
+[source,clojure]
+----
+(normalize-renewal-info body retry-after-ms)
+----
+
+Normalize a RenewalInfo response from the server.
+
+Parameters:
+- `body` - parsed JSON response body as a map (keyword or string keys).
+- `retry-after-ms` - Retry-After value in milliseconds.
+
+Returns a normalized map with `:suggested-window`, optional `:explanation-url`,
+and `:retry-after-ms`. Throws `::errors/renewal-info-invalid` if the response
+is malformed or the window is invalid.
+
+The suggested window must have end strictly after start per RFC 9773.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/ari.clj#L107-L144[source,window=_blank]

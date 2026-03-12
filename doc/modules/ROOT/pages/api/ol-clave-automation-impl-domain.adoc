@@ -1,0 +1,41 @@
+= ol.clave.automation.impl.domain
+
+
+Domain validation for the automation layer.
+
+[#validate-domain]
+== validate-domain
+
+
+
+
+[source,clojure]
+----
+(validate-domain domain config)
+----
+
+Validate a domain name for ACME certificate issuance.
+
+Returns nil if the domain is valid, or an error map if it cannot
+receive ACME certificates.
+
+Error map structure:
+- `:error` - always `:invalid-domain`
+- `:message` - human-readable explanation
+
+Security validations:
+- Directory traversal patterns (.., /, \)
+- Invalid characters
+- Invalid format (leading/trailing dots)
+- Wildcard format and DNS-01 solver requirement
+- (when using a public ca) the following are not allowed
+  - localhost, .local, .internal, .test TLDs
+  - private IP addresses
+
+| key      | description                     |
+|----------|---------------------------------|
+| `domain` | Domain name to validate         |
+| `config` | Configuration with :solvers map |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/domain.clj#L100-L156[source,window=_blank]

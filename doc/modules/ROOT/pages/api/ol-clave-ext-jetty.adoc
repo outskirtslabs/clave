@@ -1,0 +1,147 @@
+= ol.clave.ext.jetty
+
+
+Jetty integration for clave automation.
+
+Provides SNI-based certificate selection during TLS handshakes.
+Certificates are looked up on-demand for each connection based on the
+requested hostname, so renewals take effect immediately.
+
+This ns is useful for authors integrating with jetty directly. If you want to use a jetty ring adapter see:
+
+- xref:api/ol-clave-ext-ring-jetty-adapter.adoc[`ol.clave.ext.ring-jetty-adapter`]
+
+[#sni-key-manager]
+== sni-key-manager
+
+
+
+
+[source,clojure]
+----
+(sni-key-manager lookup-fn)
+----
+
+Create an X509ExtendedKeyManager that looks up certificates by SNI hostname.
+
+On each TLS handshake, extracts the SNI hostname from the ClientHello and
+calls `lookup-fn` to retrieve the certificate bundle for that hostname.
+
+| key         | description                                             |
+|-------------|---------------------------------------------------------|
+| `lookup-fn` | Function `(fn [hostname] bundle)` returning cert bundle |
+
+The `lookup-fn` receives the SNI hostname and should return a certificate
+bundle map with `:certificate` (vector of X509Certificate) and `:private-key`.
+Returns nil if no certificate is available for that hostname.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/jetty.clj#L34-L85[source,window=_blank]
+
+'''
+
+[#sni-ssl-context]
+== sni-ssl-context
+
+
+
+
+[source,clojure]
+----
+(sni-ssl-context lookup-fn)
+----
+
+Create an SSLContext configured with SNI-aware certificate selection.
+
+Uses `lookup-fn` to fetch certificates during TLS handshake based on
+the client's requested hostname (SNI). Certificates are looked up fresh
+on each handshake, so renewals take effect immediately.
+
+| key         | description                                             |
+|-------------|---------------------------------------------------------|
+| `lookup-fn` | Function `(fn [hostname] bundle)` returning cert bundle |
+
+Returns a `javax.net.ssl.SSLContext` ready for use with Jetty.
+
+[source,clojure]
+----
+(def ssl-ctx (sni-ssl-context
+               (fn [hostname] (auto/lookup-cert system hostname))))
+(jetty/run-jetty handler {:ssl-context ssl-ctx ...})
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/jetty.clj#L87-L112[source,window=_blank]
+
+'''
+
+[#sni-alpn-key-manager]
+== sni-alpn-key-manager
+
+
+
+
+[source,clojure]
+----
+(sni-alpn-key-manager lookup-fn challenge-registry)
+----
+
+Create an X509ExtendedKeyManager that handles both SNI and ALPN challenges.
+
+Extends the SNI-based certificate selection with TLS-ALPN-01 challenge support.
+During TLS handshake:
+1. If ALPN protocol is 'acme-tls/1' and challenge-registry has data, serve challenge cert
+2. Otherwise, use lookup-fn for normal SNI-based cert selection
+
+This does NOT interfere with HTTP/2 (h2) negotiation because:
+- Regular clients offer ["h2", "http/1.1"] -> normal cert via SNI lookup
+- ACME servers offer ["acme-tls/1"] exclusively -> challenge cert
+
+| key                  | description                                       |
+|----------------------|---------------------------------------------------|
+| `lookup-fn`          | Function `(fn [hostname] bundle)` for SNI lookup  |
+| `challenge-registry` | Atom with domain->challenge-cert-data map         |
+
+The challenge-registry contains maps as returned by `tlsalpn01-challenge-cert`:
+- `:x509` - The X509Certificate to serve
+- `:keypair` - The KeyPair with private key
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/jetty.clj#L124-L202[source,window=_blank]
+
+'''
+
+[#sni-alpn-ssl-context]
+== sni-alpn-ssl-context
+
+
+
+
+[source,clojure]
+----
+(sni-alpn-ssl-context lookup-fn tls-alpn-solver)
+----
+
+Create an SSLContext with SNI cert selection and ALPN challenge support.
+
+For normal HTTPS traffic: looks up certs by SNI hostname via lookup-fn.
+For ACME TLS-ALPN-01 challenges: serves challenge cert when ALPN is 'acme-tls/1'.
+
+| key               | description                                      |
+|-------------------|--------------------------------------------------|
+| `lookup-fn`       | Function `(fn [hostname] bundle)` for SNI lookup |
+| `tls-alpn-solver` | TLS-ALPN solver with `:registry` key )           |
+
+Returns a `javax.net.ssl.SSLContext` ready for use with Jetty.
+
+[source,clojure]
+----
+(def tls-alpn-solver (tls-alpn/switchable-solver {:port 443}))
+(def ssl-ctx (sni-alpn-ssl-context
+               (fn [hostname] (auto/lookup-cert system hostname))
+               tls-alpn-solver))
+(jetty/run-jetty handler {:ssl-context ssl-ctx ...})
+----
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/jetty.clj#L204-L231[source,window=_blank]

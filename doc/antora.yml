@@ -1,0 +1,7 @@
+---
+name: ol.clave
+title: ol.clave
+version: next
+prerelease: true
+nav:
+  - modules/ROOT/nav.adoc

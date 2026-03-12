@@ -1,0 +1,502 @@
+= ol.clave.automation.impl.decisions
+
+
+Pure decision functions for the automation layer.
+
+These functions contain all the logic for determining what maintenance
+actions are needed for certificates.
+
+[#-STAR-renewal-threshold-STAR-]
+== *renewal-threshold*
+
+
+
+
+
+Fraction of lifetime remaining that triggers renewal.
+Default 0.33 means renew when 1/3 of lifetime remains.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L10-L13[source,window=_blank]
+
+'''
+
+[#-STAR-emergency-override-ari-threshold-STAR-]
+== *emergency-override-ari-threshold*
+
+
+
+
+
+Fraction of lifetime remaining that overrides ARI guidance.
+Default 0.05 (1/20) = 5% of lifetime.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L15-L18[source,window=_blank]
+
+'''
+
+[#-STAR-emergency-critical-threshold-STAR-]
+== *emergency-critical-threshold*
+
+
+
+
+
+Fraction of lifetime remaining that triggers critical emergency.
+Default 0.02 (1/50) = 2% of lifetime.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L20-L23[source,window=_blank]
+
+'''
+
+[#-STAR-emergency-min-intervals-STAR-]
+== *emergency-min-intervals*
+
+
+
+
+
+Minimum maintenance intervals before expiration for critical status.
+Default 5 intervals.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L25-L28[source,window=_blank]
+
+'''
+
+[#-STAR-ocsp-refresh-threshold-STAR-]
+== *ocsp-refresh-threshold*
+
+
+
+
+
+Fraction of OCSP validity window that triggers refresh.
+Default 0.5 = refresh at 50% of validity window.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L30-L33[source,window=_blank]
+
+'''
+
+[#-STAR-short-lived-threshold-ms-STAR-]
+== *short-lived-threshold-ms*
+
+
+
+
+
+Threshold for short-lived certificates (7 days in ms).
+Certificates shorter than this use different renewal logic.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L35-L38[source,window=_blank]
+
+'''
+
+[#-STAR-max-retry-duration-ms-STAR-]
+== *max-retry-duration-ms*
+
+
+
+
+
+Maximum duration to retry a failing operation (30 days).
+After this duration, the operation fails permanently.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L40-L43[source,window=_blank]
+
+'''
+
+[#short-lived-cert-QMARK-]
+== short-lived-cert?
+
+
+
+
+[source,clojure]
+----
+(short-lived-cert? bundle)
+----
+
+Check if a certificate is short-lived (< 7 days lifetime).
+
+Short-lived certificates (like those from ACME staging or specialized CAs)
+require different renewal timing logic.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L45-L54[source,window=_blank]
+
+'''
+
+[#ari-suggests-renewal-QMARK-]
+== ari-suggests-renewal?
+
+
+
+
+[source,clojure]
+----
+(ari-suggests-renewal? bundle now maintenance-interval-ms)
+----
+
+Check if ARI data suggests renewal is due.
+
+Per RFC 9710, returns true if current time is past the cutoff, where
+cutoff = selected-time minus maintenance-interval. This ensures we don't
+miss the renewal window if maintenance runs just after the selected time.
+
+Returns false if no ARI data or no selected-time is present.
+
+| key                       | description                                  |
+|---------------------------|----------------------------------------------|
+| `bundle`                  | Certificate bundle with optional `:ari-data` |
+| `now`                     | Current instant                              |
+| `maintenance-interval-ms` | Maintenance loop interval in milliseconds    |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L56-L76[source,window=_blank]
+
+'''
+
+[#calculate-ari-renewal-time]
+== calculate-ari-renewal-time
+
+
+
+
+[source,clojure]
+----
+(calculate-ari-renewal-time ari-data)
+(calculate-ari-renewal-time ari-data rng)
+----
+
+Calculate a random time within the ARI suggested renewal window.
+
+| key        | description                                                   |
+|------------|---------------------------------------------------------------|
+| `ari-data` | ARI data with `:suggested-window` [start-instant end-instant] |
+| `rng`      | `java.util.Random` instance for random selection (optional)   |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L78-L93[source,window=_blank]
+
+'''
+
+[#needs-renewal-QMARK-]
+== needs-renewal?
+
+
+
+
+[source,clojure]
+----
+(needs-renewal? bundle now maintenance-interval-ms)
+----
+
+Check if certificate needs renewal based on expiration, ARI, and emergency.
+
+Returns true if:
+- Less than 5% (`*emergency-override-ari-threshold*`) of lifetime remains
+  (supersedes ARI guidance for safety), OR
+- ARI selected-time cutoff has passed (per RFC 9710), OR
+- Less than `*renewal-threshold*` (default 1/3) of lifetime remains
+
+The emergency override ensures we never rely solely on ARI when the
+certificate is dangerously close to expiration.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L95-L119[source,window=_blank]
+
+'''
+
+[#emergency-renewal-QMARK-]
+== emergency-renewal?
+
+
+
+
+[source,clojure]
+----
+(emergency-renewal? bundle now maintenance-interval-ms)
+----
+
+Check if certificate is dangerously close to expiration.
+
+Tiered thresholds:
+- `:critical` - 1/50 (2%) lifetime remaining OR fewer than 5 maintenance intervals
+- `:override-ari` - 1/20 (5%) lifetime remaining, overrides ARI guidance
+- `nil` - no emergency
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L121-L144[source,window=_blank]
+
+'''
+
+[#needs-ocsp-refresh-QMARK-]
+== needs-ocsp-refresh?
+
+
+
+
+[source,clojure]
+----
+(needs-ocsp-refresh? bundle config now)
+----
+
+Check if OCSP staple needs refresh.
+
+Returns true if:
+- OCSP is enabled in config AND
+- Certificate is not short-lived (>= 7 days) AND
+- Staple is nil OR past 50% of validity window
+
+Returns false if:
+- OCSP is disabled, OR
+- Certificate is short-lived (< 7 days lifetime)
+
+Short-lived certificates don't benefit from OCSP stapling because
+the certificate will expire before the OCSP response provides value.
+
+| key      | description                                              |
+|----------|----------------------------------------------------------|
+| `bundle` | Certificate bundle with optional `:ocsp-staple`          |
+| `config` | Configuration with `:ocsp` map containing `:enabled` key |
+| `now`    | Current instant                                          |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L169-L196[source,window=_blank]
+
+'''
+
+[#check-cert-maintenance]
+== check-cert-maintenance
+
+
+
+
+[source,clojure]
+----
+(check-cert-maintenance bundle config now maintenance-interval-ms)
+----
+
+Returns commands needed for this certificate.
+
+Pure function that examines certificate state and returns a vector
+of command descriptors. Does not perform any I/O.
+
+| key                       | description                               |
+|---------------------------|-------------------------------------------|
+| `bundle`                  | Certificate bundle from cache             |
+| `config`                  | Resolved configuration for this domain    |
+| `now`                     | Current instant                           |
+| `maintenance-interval-ms` | Maintenance loop interval in milliseconds |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L198-L221[source,window=_blank]
+
+'''
+
+[#command-key]
+== command-key
+
+
+
+
+[source,clojure]
+----
+(command-key cmd)
+----
+
+Generate a key for command deduplication.
+
+Returns a vector of [command-type domain] that uniquely identifies
+a command. Commands with the same key are considered duplicates
+and can be deduplicated by the job queue.
+
+| key   | description                                           |
+|-------|-------------------------------------------------------|
+| `cmd` | Command descriptor with `:command` and `:domain` keys |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L223-L234[source,window=_blank]
+
+'''
+
+[#fast-command-QMARK-]
+== fast-command?
+
+
+
+
+[source,clojure]
+----
+(fast-command? cmd)
+----
+
+Check if a command is fast.
+
+| key   | description                            |
+|-------|----------------------------------------|
+| `cmd` | Command descriptor with `:command` key |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L240-L247[source,window=_blank]
+
+'''
+
+[#classify-error]
+== classify-error
+
+
+
+
+[source,clojure]
+----
+(classify-error ex)
+----
+
+Classify an exception into an error category.
+
+Categories:
+- `:network-error` - connection failures, DNS issues, timeouts
+- `:rate-limited` - HTTP 429 responses
+- `:acme-error` - ACME protocol errors (4xx responses)
+- `:server-error` - server-side failures (5xx responses)
+- `:config-error` - configuration problems
+- `:storage-error` - I/O and storage failures
+- `:unknown` - unrecognized exceptions
+
+| key  | description           |
+|------|-----------------------|
+| `ex` | Exception to classify |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L261-L302[source,window=_blank]
+
+'''
+
+[#retryable-error-QMARK-]
+== retryable-error?
+
+
+
+
+[source,clojure]
+----
+(retryable-error? error-type)
+----
+
+Check if an error type should be retried.
+
+Retryable errors:
+- `:network-error` - transient network issues
+- `:rate-limited` - should back off and retry
+- `:server-error` - server may recover
+- `:storage-error` - storage may become available
+
+Non-retryable errors:
+- `:acme-error` - client errors unlikely to succeed
+- `:config-error` - configuration must be fixed
+- `:unknown` - cannot determine if safe to retry
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L308-L322[source,window=_blank]
+
+'''
+
+[#event-for-result]
+== event-for-result
+
+
+
+
+[source,clojure]
+----
+(event-for-result cmd result)
+----
+
+Create an event from a command result.
+
+Event types by command and status:
+- `:obtain-certificate` success -> `:certificate-obtained`
+- `:renew-certificate` success -> `:certificate-renewed`
+- `:obtain-certificate` error -> `:certificate-failed`
+- `:renew-certificate` error -> `:certificate-failed`
+- `:fetch-ocsp` success -> `:ocsp-stapled`
+- `:fetch-ocsp` error -> `:ocsp-failed`
+
+| key      | description                                        |
+|----------|----------------------------------------------------|
+| `cmd`    | Command descriptor with `:command` and `:domain`   |
+| `result` | Result map with `:status` (`:success` or `:error`) |
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L326-L410[source,window=_blank]
+
+'''
+
+[#create-certificate-loaded-event]
+== create-certificate-loaded-event
+
+
+
+
+[source,clojure]
+----
+(create-certificate-loaded-event bundle)
+----
+
+Create an event for a certificate loaded from storage.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L412-L421[source,window=_blank]
+
+'''
+
+[#retry-intervals]
+== retry-intervals
+
+
+
+
+
+Exponential backoff intervals for failed operations (in milliseconds).
+
+The pattern is front-loaded: aggressive early retries (1-2 min) catch
+transient failures quickly, then backs off through medium intervals
+(5-20 min) for rate-limiting or brief outages, then longer intervals
+(30 min - 1 hr) for issues requiring propagation or human intervention.
+Caps at 6 hours to avoid wasting resources during persistent outages.
+
+Repeated consecutive values control dwell time at each tier before
+escalating (e.g., three 10-minute intervals means 3 attempts at that
+tier before moving to 20 minutes).
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L425-L461[source,window=_blank]
+
+'''
+
+[#calculate-maintenance-jitter]
+== calculate-maintenance-jitter
+
+
+
+
+[source,clojure]
+----
+(calculate-maintenance-jitter maintenance-jitter)
+(calculate-maintenance-jitter maintenance-jitter rng)
+----
+
+Calculate random jitter for maintenance loop scheduling.
+
+Returns a random value in [0, maintenance-jitter) to spread out
+maintenance operations and avoid thundering herd problems.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L463-L471[source,window=_blank]

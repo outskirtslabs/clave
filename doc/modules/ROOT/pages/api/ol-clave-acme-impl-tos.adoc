@@ -1,0 +1,31 @@
+= ol.clave.acme.impl.tos
+
+
+Terms of Service change detection helpers.
+
+Compares prior and current directory meta values to detect ToS changes.
+
+[#compare-terms]
+== compare-terms
+
+
+
+
+[source,clojure]
+----
+(compare-terms previous current)
+----
+
+Compare previous and current directory meta maps for ToS changes.
+
+Parameters:
+- `previous` - previous directory meta map with `::specs/termsOfService`.
+- `current` - current directory meta map with `::specs/termsOfService`.
+
+Returns a map with:
+- `:changed?` - true if termsOfService values differ
+- `:previous` - previous termsOfService URL or nil
+- `:current` - current termsOfService URL or nil
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/tos.clj#L10-L26[source,window=_blank]

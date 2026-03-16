@@ -13,14 +13,12 @@
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (deftest ip-address-certificate-issued-via-http01
   (testing "IP address certificate issued via HTTP-01"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
           ;; Use 127.0.0.1 since Pebble's challenge server listens there
-          ip-address "127.0.0.1"
+    (let [ip-address "127.0.0.1"
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -29,7 +27,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}

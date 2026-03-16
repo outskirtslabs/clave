@@ -9,13 +9,11 @@
    [ol.clave.storage.file :as file-storage]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (deftest solver-throws-exception-is-caught-and-logged
   (testing "Solver throwing RuntimeException is caught and logged"
     (let [domain1 "localhost"
-          storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
           exception-message "Simulated solver failure from test"
           ;; We'll test that the system continues working after failure
           call-count (atom 0)
@@ -23,7 +21,7 @@
                                       (swap! call-count inc)
                                       (throw (RuntimeException. exception-message)))
                            :cleanup (fn [_lease _chall _state] nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 throwing-solver}
                   :http-client pebble/http-client-opts}

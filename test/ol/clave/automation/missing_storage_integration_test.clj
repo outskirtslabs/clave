@@ -14,6 +14,7 @@
   (:import
    [java.util.concurrent TimeUnit]))
 
+(use-fixtures :each test-util/storage-fixture)
 (use-fixtures :once pebble/pebble-challenge-fixture)
 
 (defn- make-http01-solver
@@ -50,12 +51,10 @@
 
 (deftest certificate-in-cache-but-missing-from-storage-triggers-re-obtain
   (testing "Certificate in cache but deleted from storage triggers re-obtain on maintenance"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+    (let [domain "localhost"
           solver (make-http01-solver)
           ;; Disable OCSP to avoid stale events from OCSP fetch failures
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
@@ -86,13 +85,13 @@
               key-key (config/key-storage-key issuer-key domain)
               meta-key (config/meta-storage-key issuer-key domain)]
           ;; Delete all certificate files from storage
-          (storage/delete! storage-impl nil cert-key)
-          (storage/delete! storage-impl nil key-key)
-          (storage/delete! storage-impl nil meta-key)
+          (storage/delete! test-util/*storage-impl* nil cert-key)
+          (storage/delete! test-util/*storage-impl* nil key-key)
+          (storage/delete! test-util/*storage-impl* nil meta-key)
           ;; Verify files are deleted
-          (is (not (storage/exists? storage-impl nil cert-key))
+          (is (not (storage/exists? test-util/*storage-impl* nil cert-key))
               "Certificate file should be deleted from storage")
-          (is (not (storage/exists? storage-impl nil key-key))
+          (is (not (storage/exists? test-util/*storage-impl* nil key-key))
               "Key file should be deleted from storage"))
         ;; Step 3: Trigger maintenance loop
         (system/trigger-maintenance! system)
@@ -106,7 +105,7 @@
         ;; Step 6: Verify new certificate is stored
         (let [issuer-key (config/issuer-key-from-url (pebble/uri))
               cert-key (config/cert-storage-key issuer-key domain)]
-          (is (storage/exists? storage-impl nil cert-key)
+          (is (storage/exists? test-util/*storage-impl* nil cert-key)
               "New certificate should be stored after re-obtain"))
         ;; Step 7: Clean up - handled by finally
         (finally

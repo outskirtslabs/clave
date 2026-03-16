@@ -17,7 +17,7 @@
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (defn- make-http01-solver
   "Create an HTTP-01 solver that uses Pebble's challenge test server."
@@ -56,12 +56,10 @@
   ;; is the same regardless of the number of domains, so we test with
   ;; localhost which is the domain that Pebble can actually validate.
   (testing "System recovers after complete storage wipe by re-obtaining certificate"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+    (let [domain "localhost"
           solver (make-http01-solver)
           ;; Disable OCSP and ARI to simplify the test
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
@@ -92,24 +90,24 @@
         ;; Verify certificate is in storage
         (let [issuer-key (config/issuer-key-from-url (pebble/uri))
               cert-key (config/cert-storage-key issuer-key domain)]
-          (is (storage/exists? storage-impl nil cert-key)
+          (is (storage/exists? test-util/*storage-impl* nil cert-key)
               "Certificate should exist in storage"))
 
         ;; Also verify account keys are in storage
         (let [issuer-key (config/issuer-key-from-url (pebble/uri))
               account-key (config/account-private-key-storage-key issuer-key)]
-          (is (storage/exists? storage-impl nil account-key)
+          (is (storage/exists? test-util/*storage-impl* nil account-key)
               "Account private key should exist in storage"))
 
         ;; Drain any remaining events
         (drain-queue queue)
 
         ;; Step 4: Delete entire storage directory
-        (println "Step 4: Deleting storage directory:" storage-dir)
-        (delete-directory-recursively! storage-dir)
+        (println "Step 4: Deleting storage directory:" test-util/*storage-dir*)
+        (delete-directory-recursively! test-util/*storage-dir*)
 
         ;; Verify storage is truly gone
-        (is (not (Files/exists (Path/of storage-dir (make-array String 0))
+        (is (not (Files/exists (Path/of test-util/*storage-dir* (make-array String 0))
                                (make-array java.nio.file.LinkOption 0)))
             "Storage directory should be deleted")
 
@@ -137,13 +135,13 @@
         ;; Verify certificate is back in storage
         (let [issuer-key (config/issuer-key-from-url (pebble/uri))
               cert-key (config/cert-storage-key issuer-key domain)]
-          (is (storage/exists? storage-impl nil cert-key)
+          (is (storage/exists? test-util/*storage-impl* nil cert-key)
               "Recovered certificate should exist in storage"))
 
         ;; Verify new account keys were created
         (let [issuer-key (config/issuer-key-from-url (pebble/uri))
               account-key (config/account-private-key-storage-key issuer-key)]
-          (is (storage/exists? storage-impl nil account-key)
+          (is (storage/exists? test-util/*storage-impl* nil account-key)
               "New account private key should exist in storage after recovery"))
 
         (println "Full system recovery completed successfully")
@@ -152,4 +150,4 @@
         (finally
           (automation/stop system)
           ;; Clean up temp directory
-          (delete-directory-recursively! storage-dir))))))
+          (delete-directory-recursively! test-util/*storage-dir*))))))

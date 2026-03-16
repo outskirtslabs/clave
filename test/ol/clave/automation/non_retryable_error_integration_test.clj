@@ -18,7 +18,7 @@
   (:import
    [java.util.concurrent TimeUnit]))
 
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (deftest non-retryable-acme-error-fails-immediately
   ;; Test #132: Non-retryable ACME error fails immediately
@@ -32,8 +32,6 @@
   (testing "ACME rejectedIdentifier error fails immediately without retry"
     (let [;; Use domain from Pebble's domainBlocklist
           blocked-domain "blocked-domain.example"
-          storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
           ;; Track how many times obtain is attempted
           obtain-attempts (atom 0)
           tracking-solver {:present (fn [_lease _chall _account-key]
@@ -41,7 +39,7 @@
                                       ;; Won't be called - blocked domain fails at order creation
                                       nil)
                            :cleanup (fn [_lease _chall _state] nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 tracking-solver}
                   :http-client pebble/http-client-opts}

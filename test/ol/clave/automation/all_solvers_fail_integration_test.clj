@@ -16,7 +16,7 @@
   (:import
    [java.util.concurrent TimeUnit]))
 
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (deftest all-challenge-types-failing-emits-comprehensive-error
   ;; Test #139: All challenge types failing emits comprehensive error
@@ -29,9 +29,7 @@
   ;; 6. Verify error details include each challenge failure
   ;; 7. Clean up
   (testing "All solvers failing emits comprehensive error event"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+    (let [domain "localhost"
           ;; Track which solvers are attempted
           http01-attempts (atom 0)
           tls-alpn01-attempts (atom 0)
@@ -44,7 +42,7 @@
                                                (swap! tls-alpn01-attempts inc)
                                                (throw (RuntimeException. "TLS-ALPN-01 solver failed intentionally")))
                                     :cleanup (fn [_lease _chall _state] nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   ;; Provide both solvers (DNS-01 not available in Pebble test)
                   :solvers {:http-01 broken-http01-solver

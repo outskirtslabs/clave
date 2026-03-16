@@ -36,7 +36,7 @@
   (let [solver (make-http01-solver)]
 
     (testing "override routes to custom responder"
-      (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+      (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
             domain "override1.localhost"
             _ (ocsp-harness/clear-ocsp-responses!)
             _ (ocsp-harness/set-ocsp-response! "*" :good)
@@ -59,7 +59,7 @@
             (automation/stop system)))))
 
     (testing "without override fails to reach fake URL"
-      (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+      (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
             domain "override2.localhost"
             _ (ocsp-harness/clear-ocsp-responses!)
             _ (ocsp-harness/set-ocsp-response! "*" :good)

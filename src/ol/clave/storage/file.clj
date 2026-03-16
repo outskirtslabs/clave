@@ -76,10 +76,10 @@
            '[ol.clave.storage :as s])
 
   ;; Use platform-appropriate directories for certificate storage
-  (def storage (fs/file-storage (fs/data-dir \"myapp\")))
+  (def storage (fs/file-storage {:root (fs/data-dir \"myapp\")}))
 
   ;; Or specify a custom path
-  (def storage (fs/file-storage \"/var/lib/myapp\"))
+  (def storage (fs/file-storage {:root \"/var/lib/myapp\"}))
 
   ;; Store and retrieve data
   (s/store-string! storage nil \"certs/example.com/cert.pem\" cert)
@@ -481,7 +481,7 @@
   (state-dir)           ; => \"/var/lib/myapp\"
   (state-dir \"myapp\")  ; => \"/var/lib/myapp\" (no double append)
 
-  (file-storage (state-dir \"myapp\"))
+  (file-storage {:root (state-dir \"myapp\")})
   ```"
   ([]
    (or (first-path (System/getenv "STATE_DIRECTORY"))
@@ -633,7 +633,7 @@
   (data-dir)           ; => \"/var/lib/myapp\"
   (data-dir \"myapp\")  ; => \"/var/lib/myapp\" (no double append)
 
-  (file-storage (data-dir \"myapp\"))
+  (file-storage {:root (data-dir \"myapp\")})
   ```"
   ([]
    (or (first-path (System/getenv "STATE_DIRECTORY"))
@@ -652,20 +652,41 @@
        (str base "/" app-name)))))
 
 (defn file-storage
-  "Creates a [[FileStorage]] rooted at `root. 
+  "Creates a [[FileStorage]].
 
-  `root` may be a string or [[java.nio.file.Path]].
-  The directory is created if it does not exist.
-  
-  Default: \"ol.clave\" subdir inside [[data-dir]]
+  With no arguments, storage defaults to the `\"ol.clave\"` subdirectory
+  inside [[data-dir]].
 
-  Returns a record implementing [[ol.clave.storage/Storage]] and [[ol.clave.storage/TryLocker]]."
+  With one argument, pass an opts map.
+
+  Options:
+
+  | key     | description
+  |---------|-------------
+  | `:root` | Required root directory as a string or [[java.nio.file.Path]]
+
+  The root directory is created if it does not exist.
+
+  Returns a record implementing [[ol.clave.storage/Storage]] and
+  [[ol.clave.storage/TryLocker]].
+
+  Example:
+
+  ```clojure
+  (file-storage {:root \"/var/lib/myapp\"})
+  ```"
   ([]
-   (file-storage (data-dir "ol.clave")))
-  ([root]
-   (let [^Path p (if (instance? Path root)
-                   root
-                   (Paths/get (str root) (make-array String 0)))]
-     (create-dirs! p)
-     (t/log! {:level :debug :id ::initialized :data {:path (str p)}})
-     (->FileStorage (.normalize p)))))
+   (file-storage {:root (data-dir "ol.clave")}))
+  ([opts]
+   (let [root (:root opts)]
+     (when-not (or (string? root)
+                   (instance? Path root))
+       (throw (ex-info "file-storage opts must include :root as a string or Path"
+                       {:opts opts
+                        :root root})))
+     (let [^Path p (if (instance? Path root)
+                     root
+                     (Paths/get (str root) (make-array String 0)))]
+       (create-dirs! p)
+       (t/log! {:level :debug :id ::initialized :data {:path (str p)}})
+       (->FileStorage (.normalize p))))))

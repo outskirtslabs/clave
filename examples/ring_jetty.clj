@@ -55,7 +55,7 @@
               :ssl-port            5001
               ::clave-jetty/config {:domains     ["localhost"]
                                     ;; in prod the remaining config keys are not necessary, they are only for this demo environment
-                                    :storage     (file-storage/file-storage "/tmp/clave-ring-jetty-example")
+                                    :storage     (file-storage/file-storage {:root "/tmp/clave-ring-jetty-example"})
                                     :issuers     [{:directory-url "https://localhost:14000/dir"
                                                    :email         "admin@example.com"}]
                                     :http-client {:ssl-context {:trust-store-pass "changeit"

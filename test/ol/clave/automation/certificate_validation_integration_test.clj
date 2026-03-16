@@ -41,7 +41,7 @@
 
 (deftest certificate-chain-test
   (testing "chain includes leaf and intermediate certificates"
-    (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+    (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
           domain "chain.localhost"
           solver (make-http01-solver)
           system (automation/create-started! (make-config storage solver))]
@@ -76,7 +76,7 @@
         solver (make-http01-solver)]
 
     (testing "expired managed cert triggers automatic renewal"
-      (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+      (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
             domain "expired1.localhost"
             cert (test-util/generate-test-certificate
                   domain
@@ -99,7 +99,7 @@
               (automation/stop system))))))
 
     (testing "expired cert remains available when renewal fails"
-      (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+      (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
             domain "expired2.localhost"
             not-after (.minus now 1 ChronoUnit/DAYS)
             cert (test-util/generate-test-certificate
@@ -126,7 +126,7 @@
 
 (deftest not-yet-valid-certificate-test
   (testing "future-dated cert is loaded and available"
-    (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+    (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
           domain "future.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           now (Instant/now)

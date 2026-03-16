@@ -227,7 +227,7 @@
     ;; deployments (like certmagic). Coordination happens via domain-level locks
     ;; during certificate operations, not at system startup.
     (let [temp-dir (create-temp-dir)
-          storage (file-storage/file-storage temp-dir)
+          storage (file-storage/file-storage {:root temp-dir})
           config {:storage storage
                   :issuers [{:directory-url "https://localhost:14000/dir"}]}]
       (try
@@ -261,7 +261,7 @@
   (testing "System can be restarted after proper shutdown"
     ;; Step 1: Create temp storage directory
     (let [temp-dir (create-temp-dir)
-          storage (file-storage/file-storage temp-dir)
+          storage (file-storage/file-storage {:root temp-dir})
           config {:storage storage
                   :issuers [{:directory-url "https://localhost:14000/dir"}]}]
       (try

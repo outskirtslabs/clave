@@ -56,7 +56,7 @@
         now (Instant/now)]
 
     (testing "short-lived 1-day cert skips OCSP fetch"
-      (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+      (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
             domain "shortlived.localhost"
             cert (test-util/generate-test-certificate domain now (.plus now 1 ChronoUnit/DAYS))]
         (test-util/store-test-cert! storage issuer-key domain cert)
@@ -71,7 +71,7 @@
               (automation/stop system))))))
 
     (testing "short-lived 6-day cert skips OCSP fetch"
-      (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+      (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
             domain "sixday.localhost"
             cert (test-util/generate-test-certificate domain now (.plus now 6 ChronoUnit/DAYS))]
         (test-util/store-test-cert! storage issuer-key domain cert)
@@ -86,7 +86,7 @@
               (automation/stop system))))))
 
     (testing "normal 90-day cert with OCSP disabled skips fetch"
-      (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+      (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
             domain "noocsp.localhost"
             cert (test-util/generate-test-certificate domain now (.plus now 90 ChronoUnit/DAYS))]
         (test-util/store-test-cert! storage issuer-key domain cert)
@@ -103,7 +103,7 @@
 ;; Auto-fetch tests
 
 (deftest ocsp-auto-fetch-test
-  (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+  (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
         domain "autofetch.localhost"
         solver (make-http01-solver)
         _ (ocsp-harness/clear-ocsp-responses!)
@@ -136,7 +136,7 @@
 
 (deftest ocsp-persistence-test
   (let [storage-dir (test-util/temp-storage-dir)
-        storage (file-storage/file-storage storage-dir)
+        storage (file-storage/file-storage {:root storage-dir})
         domain "persist.localhost"
         solver (make-http01-solver)
         _ (ocsp-harness/clear-ocsp-responses!)
@@ -175,7 +175,7 @@
           (automation/stop system1))))))
 
 (deftest ocsp-revocation-test
-  (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+  (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
         domain "revoke.localhost"
         solver (make-http01-solver)
         _ (ocsp-harness/clear-ocsp-responses!)

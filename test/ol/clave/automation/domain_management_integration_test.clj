@@ -13,6 +13,7 @@
   (:import
    [java.time Instant]))
 
+(use-fixtures :each test-util/storage-fixture)
 (use-fixtures :once pebble/pebble-challenge-fixture)
 
 (defn- event-of [events type]
@@ -20,9 +21,7 @@
 
 (deftest domain-management-flow
   (testing "manage-domains triggers immediate certificate obtain"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "dm-http01.localhost"
+    (let [domain "dm-http01.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
@@ -32,7 +31,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
@@ -110,9 +109,9 @@
           ;; Step 8: Verify certificate is persisted to storage
           (let [cert-key (config/cert-storage-key issuer-key domain)
                 key-key (config/key-storage-key issuer-key domain)]
-            (is (storage/exists? storage-impl nil cert-key)
+            (is (storage/exists? test-util/*storage-impl* nil cert-key)
                 "Certificate should be persisted to storage")
-            (is (storage/exists? storage-impl nil key-key)
+            (is (storage/exists? test-util/*storage-impl* nil key-key)
                 "Private key should be persisted to storage"))
           ;; Verify list-domains includes the domain with valid status
           (let [domains (automation/list-domains system)
@@ -149,7 +148,7 @@
           (is (nil? (automation/lookup-cert system domain))
               "Certificate should be removed from cache after unmanage")
           (let [cert-key (config/cert-storage-key issuer-key domain)]
-            (is (storage/exists? storage-impl nil cert-key)
+            (is (storage/exists? test-util/*storage-impl* nil cert-key)
                 "Certificate should remain in storage after unmanage"))
           (let [managed (automation/list-domains system)]
             (is (empty? managed)
@@ -159,9 +158,7 @@
 
 (deftest manage-domains-with-tls-alpn01-solver
   (testing "manage-domains triggers immediate certificate obtain with TLS-ALPN-01"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "dm-tlsalpn.localhost"
+    (let [domain "dm-tlsalpn.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           solver {:present (fn [_lease chall account-key]
                              (let [key-auth (challenge/key-authorization chall account-key)]
@@ -171,7 +168,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-tlsalpn01 (:domain state))
                              nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:tls-alpn-01 solver}
                   :http-client pebble/http-client-opts}
@@ -234,9 +231,9 @@
           ;; Verify certificate is persisted to storage
           (let [cert-key (config/cert-storage-key issuer-key domain)
                 key-key (config/key-storage-key issuer-key domain)]
-            (is (storage/exists? storage-impl nil cert-key)
+            (is (storage/exists? test-util/*storage-impl* nil cert-key)
                 "Certificate should be persisted to storage")
-            (is (storage/exists? storage-impl nil key-key)
+            (is (storage/exists? test-util/*storage-impl* nil key-key)
                 "Private key should be persisted to storage")))
         (finally
           (automation/stop system))))))

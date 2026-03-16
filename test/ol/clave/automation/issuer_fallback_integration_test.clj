@@ -2,7 +2,7 @@
   "Integration tests for issuer fallback and EAB behavior.
   Tests run against Pebble ACME test server instances."
   (:require
-   [clojure.test :refer [deftest is testing]]
+   [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.acme.impl.http.impl :as http]
    [ol.clave.automation :as automation]
@@ -14,6 +14,8 @@
    [ol.clave.storage.file :as file-storage])
   (:import
    [java.util.concurrent TimeUnit]))
+
+(use-fixtures :each test-util/storage-fixture)
 
 ;; Pre-configured EAB credentials from pebble-config.json
 (def eab-kid "test-kid-1")
@@ -72,9 +74,7 @@
           (is (wait-for-pebble-at url-a {}) "Pebble A should start")
           (is (wait-for-pebble-at url-b {}) "Pebble B should start"))
         ;; Step 3: Configure automation with issuers [Pebble A, Pebble B]
-        (let [storage-dir (test-util/temp-storage-dir)
-              storage-impl (file-storage/file-storage storage-dir)
-              _issuer-key-a (config/issuer-key-from-url
+        (let [_issuer-key-a (config/issuer-key-from-url
                              (str "https://localhost:" (:listen-port ports-a) "/dir"))
               issuer-key-b (config/issuer-key-from-url
                             (str "https://localhost:" (:listen-port ports-b) "/dir"))
@@ -88,7 +88,7 @@
                                  (binding [pebble/*pebble-ports* ports-b]
                                    (pebble/challtestsrv-del-http01 (:token state)))
                                  nil)}
-              automation-config {:storage storage-impl
+              automation-config {:storage test-util/*storage-impl*
                                  :issuers [{:directory-url (str "https://localhost:" (:listen-port ports-a) "/dir")}
                                            {:directory-url (str "https://localhost:" (:listen-port ports-b) "/dir")}]
                                  :issuer-selection :in-order
@@ -174,9 +174,7 @@
         (binding [pebble/*pebble-ports* ports]
           (is (pebble/wait-for-pebble) "Pebble should start"))
         ;; Configure automation with EAB credentials
-        (let [storage-dir (test-util/temp-storage-dir)
-              storage-impl (file-storage/file-storage storage-dir)
-              directory-url (str "https://localhost:" (:listen-port ports) "/dir")
+        (let [directory-url (str "https://localhost:" (:listen-port ports) "/dir")
               solver {:present (fn [_lease chall account-key]
                                  (let [token (::specs/token chall)
                                        key-auth (challenge/key-authorization chall account-key)]
@@ -187,7 +185,7 @@
                                  (binding [pebble/*pebble-ports* ports]
                                    (pebble/challtestsrv-del-http01 (:token state)))
                                  nil)}
-              automation-config {:storage storage-impl
+              automation-config {:storage test-util/*storage-impl*
                                  :issuers [{:directory-url directory-url
                                             ;; EAB credentials configured in issuer
                                             :external-account {:kid eab-kid

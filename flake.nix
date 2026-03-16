@@ -67,6 +67,58 @@
             '';
           };
       };
+      checks = {
+        tests =
+          pkgs:
+          let
+            root = toString ./.;
+            projectSrc = pkgs.lib.cleanSourceWith {
+              src = ./.;
+              filter =
+                path: _type:
+                let
+                  rel = pkgs.lib.removePrefix (root + "/") (toString path);
+                  base = builtins.baseNameOf path;
+                in
+                !(
+                  base == ".git"
+                  || rel == "result"
+                  || pkgs.lib.hasPrefix "target/" rel
+                );
+            };
+            depsCache = pkgs.mk-deps-cache {
+              lockfile = projectSrc + "/deps-lock.json";
+            };
+          in
+          pkgs.runCommand "clave-test-suite"
+            {
+              allowSubstitutes = false;
+              nativeBuildInputs = [
+                pkgs.cfssl
+                pkgs.jdk25
+                (pkgs.clojure.override { jdk = pkgs.jdk25; })
+                pkgs.pebble
+              ];
+              preferLocalBuild = true;
+            }
+            ''
+              export HOME="${depsCache}"
+              export JAVA_HOME="${pkgs.jdk25.home}"
+              export JAVA_CMD="${pkgs.jdk25}/bin/java"
+              export JAVA_TOOL_OPTIONS="-Duser.home=${depsCache}"
+              export CLJ_CONFIG="$HOME/.clojure"
+              export CLJ_CACHE="$TMPDIR/clj-cache"
+              export GITLIBS="$HOME/.gitlibs"
+
+              cp -r ${projectSrc} source
+              chmod -R u+w source
+              cd source
+
+              clojure -M:dev:test:kaocha --timing-edn-file "$TMPDIR/test-timings.edn"
+
+              touch "$out"
+            '';
+      };
       devShell =
         pkgs:
         pkgs.devshell.mkShell {

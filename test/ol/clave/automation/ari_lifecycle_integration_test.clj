@@ -14,7 +14,7 @@
   (:import
    [java.time Instant]))
 
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (defn- create-http01-solver
   "Create an HTTP-01 solver that works with Pebble's challenge test server."
@@ -30,11 +30,9 @@
 
 (deftest ari-guided-renewal-full-lifecycle
   (testing "ARI data persists across system restarts and guides renewal timing"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "ari-life.localhost"
+    (let [domain "ari-life.localhost"
           solver (create-http01-solver)
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts

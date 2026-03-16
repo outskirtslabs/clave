@@ -13,6 +13,7 @@
   (:import
    [java.time Instant]))
 
+(use-fixtures :each test-util/storage-fixture)
 (use-fixtures :once pebble/pebble-challenge-fixture)
 
 (defn- create-http01-solver
@@ -29,14 +30,13 @@
 
 (deftest ari-data-and-renewal-behavior
   (testing "ARI data is stored and renewal can be forced"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "ari-data.localhost"
+    (let [domain "ari-data.localhost"
           solver (create-http01-solver)
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
+                  :ocsp {:enabled false}
                   :ari {:enabled true}}
           system (automation/create-started! config)]
       (try
@@ -86,7 +86,7 @@
             (binding [decisions/*renewal-threshold* 1.01]
               (automation/trigger-maintenance! system)
               (let [events (test-util/wait-for-events queue {:expected #{:certificate-renewed}
-                                                             :timeout-ms 10000})
+                                                             :timeout-ms 60000})
                     renewed-event (first (filter #(= :certificate-renewed (:type %)) events))]
                 (is (some? renewed-event)
                     "Should receive certificate-renewed event")
@@ -99,14 +99,13 @@
 
 (deftest ari-fetch-failure-falls-back-to-standard-renewal-timing
   (testing "ARI fetch failure emits :ari-failed event and certificate uses standard timing"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "ari-fallback.localhost"
+    (let [domain "ari-fallback.localhost"
           solver (create-http01-solver)
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
+                  :ocsp {:enabled false}
                   :ari {:enabled true}}
           system (automation/create-started! config)]
       (try

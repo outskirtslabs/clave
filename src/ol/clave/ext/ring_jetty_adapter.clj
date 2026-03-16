@@ -16,7 +16,7 @@
              {:port 80
               :ssl-port 443
               ::clave-jetty/config
-              {:storage (file-storage/file-storage \"/tmp/certs\")
+              {:storage (file-storage/file-storage {:root \"/tmp/certs\"})
                :issuers [{:directory-url \"https://acme-v02.api.letsencrypt.org/directory\"
                           :email \"admin@example.com\"}]
                :domains [\"example.com\"]}}))

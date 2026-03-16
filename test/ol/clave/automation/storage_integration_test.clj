@@ -19,7 +19,7 @@
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
 ;; This prevents authorization state accumulation across tests.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (defn- posix-supported?
   "Check if POSIX file permissions are supported on this system."
@@ -38,9 +38,7 @@
   (testing "Private key and certificate files have 0600 permissions"
     (if-not (posix-supported?)
       (println "Skipping file permissions test - POSIX not supported on this platform")
-      (let [storage-dir (test-util/temp-storage-dir)
-            storage-impl (file-storage/file-storage storage-dir)
-            domain "localhost"
+      (let [domain "localhost"
             issuer-key (config/issuer-key-from-url (pebble/uri))
             solver {:present (fn [_lease chall account-key]
                                (let [token (::specs/token chall)
@@ -50,7 +48,7 @@
                     :cleanup (fn [_lease _chall state]
                                (pebble/challtestsrv-del-http01 (:token state))
                                nil)}
-            config {:storage storage-impl
+            config {:storage test-util/*storage-impl*
                     :issuers [{:directory-url (pebble/uri)}]
                     :solvers {:http-01 solver}
                     :http-client pebble/http-client-opts}
@@ -67,8 +65,8 @@
             ;; Step 3-6: Check file permissions
             (let [cert-key (config/cert-storage-key issuer-key domain)
                   key-key (config/key-storage-key issuer-key domain)
-                  cert-path (Paths/get storage-dir (into-array String [cert-key]))
-                  key-path (Paths/get storage-dir (into-array String [key-key]))
+                  cert-path (Paths/get test-util/*storage-dir* (into-array String [cert-key]))
+                  key-path (Paths/get test-util/*storage-dir* (into-array String [key-key]))
                   expected-perms (PosixFilePermissions/fromString "rw-------")]
               ;; Step 3-4: Check private key file permissions
               (is (Files/exists key-path (make-array java.nio.file.LinkOption 0))
@@ -89,9 +87,7 @@
 
 (deftest storage-fallback-only-when-cache-nearly-full
   (testing "Storage fallback only triggers when cache is at 90%+ capacity"
-    (let [storage-dir  (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain       "localhost"
+    (let [domain       "localhost"
           issuer-key   (config/issuer-key-from-url (pebble/uri))
           solver       {:present (fn [_lease chall account-key]
                                    (let [token    (::specs/token chall)
@@ -101,7 +97,7 @@
                         :cleanup (fn [_lease _chall state]
                                    (pebble/challtestsrv-del-http01 (:token state))
                                    nil)}
-          config       {:storage        storage-impl
+          config       {:storage        test-util/*storage-impl*
                         :issuers        [{:directory-url (pebble/uri)}]
                         :solvers        {:http-01 solver}
                         :http-client    pebble/http-client-opts
@@ -124,7 +120,7 @@
               (is (nil? lookup-result)
                   "lookup-cert should return nil when cache is not nearly full"))
             (let [cert-key (config/cert-storage-key issuer-key domain)]
-              (is (storage/exists? storage-impl nil cert-key)
+              (is (storage/exists? test-util/*storage-impl* nil cert-key)
                   "Certificate should still exist in storage"))))
         (finally
           (automation/stop system))))))

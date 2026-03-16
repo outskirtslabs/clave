@@ -171,7 +171,7 @@
     (is (= :invalid-domain (:error (domain/validate-domain "host@example.com" {}))))))
 
 (defn- test-config [storage-dir]
-  {:storage (file-storage/file-storage storage-dir)
+  {:storage (file-storage/file-storage {:root storage-dir})
    :issuers [{:directory-url "https://acme-v02.api.letsencrypt.org/directory"}]
    :solvers {:http-01 {:solver :placeholder}}})
 

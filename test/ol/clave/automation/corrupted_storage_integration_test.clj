@@ -15,7 +15,7 @@
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (defn- make-http01-solver
   "Create an HTTP-01 solver that uses Pebble's challenge test server."
@@ -31,11 +31,9 @@
 
 (deftest corrupted-certificate-file-is-handled-gracefully
   (testing "Corrupted certificate file is detected and system attempts re-obtain"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+    (let [domain "localhost"
           solver (make-http01-solver)
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
@@ -59,7 +57,7 @@
       (let [issuer-key (config/issuer-key-from-url (pebble/uri))
             cert-key (config/cert-storage-key issuer-key domain)]
         ;; Overwrite with truncated garbage data
-        (storage/store-string! storage-impl nil cert-key "GARBAGE NOT A PEM"))
+        (storage/store-string! test-util/*storage-impl* nil cert-key "GARBAGE NOT A PEM"))
       ;; Step 3-7: Start a new system and verify behavior
       (let [system2 (automation/create-started! config)
             queue2 (automation/get-event-queue system2)]
@@ -90,11 +88,9 @@
 
 (deftest corrupted-private-key-file-is-handled-gracefully
   (testing "Corrupted private key file is detected and system attempts re-obtain"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+    (let [domain "localhost"
           solver (make-http01-solver)
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
@@ -118,7 +114,7 @@
       (let [issuer-key (config/issuer-key-from-url (pebble/uri))
             key-key (config/key-storage-key issuer-key domain)]
         ;; Overwrite with truncated garbage data
-        (storage/store-string! storage-impl nil key-key "GARBAGE NOT A KEY"))
+        (storage/store-string! test-util/*storage-impl* nil key-key "GARBAGE NOT A KEY"))
       ;; Step 3-7: Start a new system and verify behavior
       (let [system2 (automation/create-started! config)
             queue2 (automation/get-event-queue system2)]

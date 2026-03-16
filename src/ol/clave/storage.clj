@@ -71,7 +71,7 @@
   (require '[ol.clave.storage :as s]
            '[ol.clave.storage.file :as fs])
 
-  (let [storage (fs/file-storage \"/var/acme\")]
+  (let [storage (fs/file-storage {:root \"/var/acme\"})]
     ;; Store and retrieve data
     (s/store-string! storage nil \"certs/example.com\" cert-pem)
     (s/load-string storage nil \"certs/example.com\")

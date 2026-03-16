@@ -17,7 +17,8 @@
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.lease :as lease]
    [ol.clave.specs :as specs]
-   [ol.clave.storage :as storage])
+   [ol.clave.storage :as storage]
+   [ol.clave.storage.file :as file-storage])
   (:import
    [java.io ByteArrayInputStream]
    [java.security KeyPairGenerator SecureRandom Signature]
@@ -44,6 +45,22 @@
                                  (when (fs/exists? path-str)
                                    (fs/delete-tree path-str)))))
     path-str))
+
+(def ^:dynamic *storage-dir* nil)
+(def ^:dynamic *storage-impl* nil)
+
+(defn storage-fixture
+  "Binds a shared file storage for a test namespace."
+  [f]
+  (let [storage-dir (temp-storage-dir)
+        storage-impl (file-storage/file-storage {:root storage-dir})]
+    (with-redefs [*storage-dir* storage-dir
+                  *storage-impl* storage-impl]
+      (try
+        (f)
+        (finally
+          (when (fs/exists? storage-dir)
+            (fs/delete-tree storage-dir)))))))
 
 ;; handy function that lets us test the :type inside (ex-data e) that
 ;; are thrown in test

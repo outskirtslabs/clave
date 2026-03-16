@@ -11,13 +11,12 @@
    [ol.clave.specs :as specs]
    [ol.clave.storage.file :as file-storage]))
 
+(use-fixtures :each test-util/storage-fixture)
 (use-fixtures :once pebble/pebble-challenge-fixture)
 
 (deftest private-key-type-respects-configuration
   (testing "Certificate private key type matches :key-type configuration"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "pk-type.localhost"
+    (let [domain "pk-type.localhost"
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -27,7 +26,7 @@
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
           ;; Configure RSA 2048-bit key type
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :key-type :rsa2048
@@ -37,7 +36,7 @@
         (let [queue (automation/get-event-queue system)]
           (automation/manage-domains system [domain])
           (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
-                                                         :timeout-ms 8000})]
+                                                         :timeout-ms 15000})]
             (is (some #(= :certificate-obtained (:type %)) events)
                 "Should receive :certificate-obtained event"))
           ;; Verify key type is RSA 2048-bit
@@ -56,9 +55,7 @@
 
 (deftest new-private-key-generated-for-each-certificate-by-default
   (testing "Renewal generates new private key (key-reuse false by default)"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "pk-new.localhost"
+    (let [domain "pk-new.localhost"
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -67,7 +64,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
@@ -76,7 +73,7 @@
         (let [queue (automation/get-event-queue system)]
           (automation/manage-domains system [domain])
           (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
-                                                         :timeout-ms 8000})]
+                                                         :timeout-ms 15000})]
             (is (some #(= :certificate-obtained (:type %)) events)))
           ;; Get initial private key fingerprint
           (let [initial-bundle (automation/lookup-cert system domain)
@@ -101,9 +98,7 @@
 
 (deftest private-key-reused-on-renewal-when-configured
   (testing "Renewal reuses private key when :key-reuse is true"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "pk-reuse.localhost"
+    (let [domain "pk-reuse.localhost"
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -112,7 +107,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :key-reuse true  ;; Enable key reuse
@@ -122,7 +117,7 @@
         (let [queue (automation/get-event-queue system)]
           (automation/manage-domains system [domain])
           (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
-                                                         :timeout-ms 8000})]
+                                                         :timeout-ms 15000})]
             (is (some #(= :certificate-obtained (:type %)) events)))
           ;; Get initial private key encoded bytes
           (let [initial-bundle (automation/lookup-cert system domain)

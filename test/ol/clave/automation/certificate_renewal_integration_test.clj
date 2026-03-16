@@ -12,13 +12,12 @@
   (:import
    [java.util.concurrent TimeUnit]))
 
+(use-fixtures :each test-util/storage-fixture)
 (use-fixtures :once pebble/pebble-challenge-fixture)
 
 (deftest certificate-renewal-happens-before-expiration
   (testing "Certificate renewal is triggered when threshold is reached"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "renewal-threshold.localhost"
+    (let [domain "renewal-threshold.localhost"
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -27,7 +26,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
@@ -81,10 +80,8 @@
 
 (deftest renew-managed-forces-renewal-of-all-certificates
   (testing "renew-managed forces renewal of all certificates"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
           ;; Use unique domains to avoid conflicts with other tests using "localhost"
-          domains ["renew-test-a.localhost" "renew-test-b.localhost"]
+    (let [domains ["renew-test-a.localhost" "renew-test-b.localhost"]
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)]
@@ -93,7 +90,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}

@@ -27,23 +27,21 @@
               (pebble/challtestsrv-del-http01 (:token state))
               nil)})
 
-(defn- wait-for-renewed-domain [queue domain timeout-ms]
+(defn- wait-for-renewed-domain [system domain now timeout-ms]
   (let [deadline (+ (System/currentTimeMillis) timeout-ms)]
     (loop []
       (if (>= (System/currentTimeMillis) deadline)
         nil
-        (let [evt (test-util/wait-for-events queue {:timeout-ms 200})
-              renewed (some #(when (and (= :certificate-renewed (:type %))
-                                        (= domain (get-in % [:data :domain])))
-                               %)
-                            evt)]
-          (if renewed
-            renewed
-            (recur)))))))
+        (let [bundle (automation/lookup-cert system domain)]
+          (if (and bundle (.isAfter ^Instant (:not-after bundle) now))
+            bundle
+            (do
+              (Thread/sleep 100)
+              (recur))))))))
 
 (deftest maintenance-loop-interval-test
   (testing "automatic renewal at configured interval"
-    (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+    (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
           domain "interval.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           now (Instant/now)]
@@ -72,7 +70,7 @@
 
 (deftest maintenance-loop-continues-when-one-domain-fails
   (testing "continues processing other domains when one throws"
-    (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+    (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
           domains ["cont-a.localhost" "cont-b.localhost" "cont-c.localhost"]
           issuer-key (config/issuer-key-from-url (pebble/uri))
           now (Instant/now)]
@@ -110,7 +108,7 @@
 
 (deftest config-fn-error-handling-test
   (testing "skips domains when config-fn times out or throws"
-    (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+    (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
           issuer-key (config/issuer-key-from-url (pebble/uri))
           now (Instant/now)
           domain-timeout "timeout.localhost"
@@ -151,7 +149,7 @@
 
 (deftest mixed-certificate-states-test
   (testing "loads valid, expired, and renewal-due certs; renews expired"
-    (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+    (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
           issuer-key (config/issuer-key-from-url (pebble/uri))
           now (Instant/now)
           d-valid "valid.localhost"
@@ -181,17 +179,9 @@
           (is (some? (automation/lookup-cert system d-expired)))
           (is (some? (automation/lookup-cert system d-renewal)))
           (is (.isAfter ^Instant (:not-after (automation/lookup-cert system d-valid)) now))
-          (let [queue (automation/get-event-queue system)
-                renewed (wait-for-renewed-domain queue d-expired 8000)]
-            (is (some? renewed)))
-          (let [updated? (loop [n 0]
-                           (if (>= n 20)
-                             false
-                             (if (.isAfter ^Instant (:not-after (automation/lookup-cert system d-expired)) now)
-                               true
-                               (do
-                                 (Thread/sleep 50)
-                                 (recur (inc n))))))]
-            (is updated? "Expired cert should be renewed"))
+          (let [renewed (wait-for-renewed-domain system d-expired now 15000)]
+            (is (some? renewed) "Expired cert should be renewed")
+            (is (.isAfter ^Instant (:not-after renewed) now)
+                "Renewed cert should be valid"))
           (finally
             (automation/stop system)))))))

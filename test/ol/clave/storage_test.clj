@@ -70,7 +70,7 @@
 
 (deftest file-storage-rejects-traversal
   (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
-        fs (file/file-storage dir)
+        fs (file/file-storage {:root dir})
         l (lease/background)]
     (try
       (is (thrown? IllegalArgumentException
@@ -80,7 +80,7 @@
 
 (deftest file-storage-missing-key-errors
   (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
-        fs (file/file-storage dir)
+        fs (file/file-storage {:root dir})
         l (lease/background)]
     (try
       (is (thrown? NoSuchFileException (storage/load fs l "missing")))
@@ -91,7 +91,7 @@
 
 (deftest file-storage-list-semantics
   (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
-        fs (file/file-storage dir)
+        fs (file/file-storage {:root dir})
         l (lease/background)]
     (try
       (storage/store! fs l "a/file1" (.getBytes "x" StandardCharsets/UTF_8))
@@ -105,7 +105,7 @@
 
 (deftest file-storage-delete-recursive
   (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
-        fs (file/file-storage dir)
+        fs (file/file-storage {:root dir})
         l (lease/background)]
     (try
       (storage/store! fs l "a/file1" (.getBytes "x" StandardCharsets/UTF_8))
@@ -118,7 +118,7 @@
 
 (deftest file-storage-stale-lock-is-reclaimed
   (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
-        fs (file/file-storage dir)
+        fs (file/file-storage {:root dir})
         l (lease/background)
         lock (lock-file dir "stale")
         stale-ms (- (System/currentTimeMillis) 15000)]
@@ -132,7 +132,7 @@
 
 (deftest file-storage-lock-freshener-updates-meta
   (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
-        fs (file/file-storage dir)
+        fs (file/file-storage {:root dir})
         l (lease/background)
         lock (lock-file dir "fresh")]
     (try
@@ -148,7 +148,7 @@
 
 (deftest file-storage-empty-lockfile-is-reclaimed
   (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
-        fs (file/file-storage dir)
+        fs (file/file-storage {:root dir})
         l (lease/background)
         lock (lock-file dir "empty")]
     (try
@@ -165,7 +165,7 @@
 
 (deftest file-storage-list-respects-lease-cancellation
   (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
-        fs (file/file-storage dir)
+        fs (file/file-storage {:root dir})
         l (lease/background)
         [cancellable cancel] (lease/with-cancel (lease/background))]
     (try
@@ -179,7 +179,7 @@
 
 (deftest file-storage-atomic-write-no-partial-reads
   (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
-        fs (file/file-storage dir)
+        fs (file/file-storage {:root dir})
         l (lease/background)
         size (* 1024 1024)
         a (bytes-filled size 97)
@@ -209,7 +209,7 @@
 
 (deftest file-storage-store-load
   (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
-        fs (file/file-storage dir)
+        fs (file/file-storage {:root dir})
         l (lease/background)]
     (try
       (storage/store! fs l "foo" (.getBytes "bar" java.nio.charset.StandardCharsets/UTF_8))
@@ -217,9 +217,28 @@
       (finally
         (delete-recursively! dir)))))
 
+(deftest file-storage-constructor-opts
+  (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
+        l (lease/background)]
+    (try
+      (testing "one-arg constructor accepts opts with :root"
+        (let [fs (file/file-storage {:root dir})]
+          (storage/store! fs l "foo" (.getBytes "bar" StandardCharsets/UTF_8))
+          (is (= "bar" (storage/load-string fs l "foo")))))
+
+      (testing "one-arg constructor requires a valid :root"
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                              #":root"
+                              (file/file-storage {})))
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                              #":root"
+                              (file/file-storage {:root :not-a-path}))))
+      (finally
+        (delete-recursively! dir)))))
+
 (deftest file-storage-store-load-race
   (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
-        fs (file/file-storage dir)
+        fs (file/file-storage {:root dir})
         l (lease/background)
         size (* 4096 1024)
         a (bytes-filled size 97)
@@ -245,7 +264,7 @@
 
 (deftest file-storage-locking
   (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
-        fs (file/file-storage dir)
+        fs (file/file-storage {:root dir})
         l (lease/background)
         [cancelled cancel] (lease/with-cancel (lease/background))]
     (cancel)

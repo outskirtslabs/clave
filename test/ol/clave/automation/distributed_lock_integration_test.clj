@@ -17,7 +17,7 @@
   (:import
    [java.util.concurrent CountDownLatch TimeUnit]))
 
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (deftest distributed-lock-prevents-duplicate-certificate-work
   ;; Test #104: Distributed lock prevents duplicate certificate work
@@ -33,9 +33,7 @@
   ;; Step 9: Clean up
   (testing "Distributed lock prevents duplicate certificate work"
     (let [;; Shared storage directory
-          storage-dir (test-util/temp-storage-dir)
           ;; Both instances use the same storage
-          storage-impl (file-storage/file-storage storage-dir)
 
           ;; Track which instance actually does the ACME work
           obtain-count (atom 0)
@@ -68,8 +66,8 @@
                        :http-client pebble/http-client-opts}
 
           ;; Create two separate system instances sharing the same storage
-          config1 (assoc base-config :storage storage-impl)
-          config2 (assoc base-config :storage storage-impl)
+          config1 (assoc base-config :storage test-util/*storage-impl*)
+          config2 (assoc base-config :storage test-util/*storage-impl*)
           system1 (automation/create-started! config1)
           system2 (automation/create-started! config2)]
 

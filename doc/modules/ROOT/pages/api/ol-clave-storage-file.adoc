@@ -79,10 +79,10 @@ On non-POSIX systems (Windows), default permissions apply.
          '[ol.clave.storage :as s])
 
 ;; Use platform-appropriate directories for certificate storage
-(def storage (fs/file-storage (fs/data-dir "myapp")))
+(def storage (fs/file-storage {:root (fs/data-dir "myapp")}))
 
 ;; Or specify a custom path
-(def storage (fs/file-storage "/var/lib/myapp"))
+(def storage (fs/file-storage {:root "/var/lib/myapp"}))
 
 ;; Store and retrieve data
 (s/store-string! storage nil "certs/example.com/cert.pem" cert)
@@ -255,7 +255,7 @@ Returns `nil` if a suitable directory cannot be determined.
 (state-dir)           ; => "/var/lib/myapp"
 (state-dir "myapp")  ; => "/var/lib/myapp" (no double append)
 
-(file-storage (state-dir "myapp"))
+(file-storage {:root (state-dir "myapp")})
 ----
 
 [.api-source]
@@ -413,7 +413,7 @@ Returns `nil` if a suitable directory cannot be determined.
 (data-dir)           ; => "/var/lib/myapp"
 (data-dir "myapp")  ; => "/var/lib/myapp" (no double append)
 
-(file-storage (data-dir "myapp"))
+(file-storage {:root (data-dir "myapp")})
 ----
 
 [.api-source]
@@ -430,17 +430,33 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/storage/file.
 [source,clojure]
 ----
 (file-storage)
-(file-storage root)
+(file-storage opts)
 ----
 
-Creates a <<FileStorage,`FileStorage`>> rooted at `root. 
+Creates a <<FileStorage,`FileStorage`>>.
 
-`root` may be a string or `java.nio.file.Path`.
-The directory is created if it does not exist.
+With no arguments, storage defaults to the `"ol.clave"` subdirectory
+inside <<data-dir,`data-dir`>>.
 
-Default: "ol.clave" subdir inside <<data-dir,`data-dir`>>
+With one argument, pass an opts map.
 
-Returns a record implementing xref:api/ol-clave-storage.adoc#Storage[`ol.clave.storage/Storage`] and xref:api/ol-clave-storage.adoc#TryLocker[`ol.clave.storage/TryLocker`].
+Options:
+
+| key     | description
+|---------|-------------
+| `:root` | Required root directory as a string or `java.nio.file.Path`
+
+The root directory is created if it does not exist.
+
+Returns a record implementing xref:api/ol-clave-storage.adoc#Storage[`ol.clave.storage/Storage`] and
+xref:api/ol-clave-storage.adoc#TryLocker[`ol.clave.storage/TryLocker`].
+
+Example:
+
+[source,clojure]
+----
+(file-storage {:root "/var/lib/myapp"})
+----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/storage/file.clj#L654-L671[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/storage/file.clj#L654-L692[source,window=_blank]

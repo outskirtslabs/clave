@@ -16,7 +16,7 @@
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (defn- make-http01-solver
   "Create an HTTP-01 solver that uses the pebble challenge test server."
@@ -44,11 +44,9 @@
 
 (deftest adapter-integration-pattern-with-certificate-lookup-and-events
   (testing "Adapter consumes events and uses lookup-cert for TLS handshakes"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+    (let [domain "localhost"
           solver (make-http01-solver)
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}

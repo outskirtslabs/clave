@@ -13,6 +13,7 @@
    [java.security.spec ECParameterSpec]
    [java.util.concurrent TimeUnit]))
 
+(use-fixtures :each test-util/storage-fixture)
 (use-fixtures :once pebble/pebble-challenge-fixture)
 
 (defn- create-solver
@@ -43,11 +44,9 @@
   "Obtains a certificate with the specified key type and returns the bundle.
   Returns the certificate bundle or nil if the operation failed."
   [key-type domain-suffix]
-  (let [storage-dir (test-util/temp-storage-dir)
-        storage-impl (file-storage/file-storage storage-dir)
-        domain (str "keytype-" (name key-type) "-" domain-suffix ".localhost")
+  (let [domain (str "keytype-" (name key-type) "-" domain-suffix ".localhost")
         solver (create-solver)
-        config {:storage storage-impl
+        config {:storage test-util/*storage-impl*
                 :issuers [{:directory-url (pebble/uri)}]
                 :solvers {:http-01 solver}
                 :http-client pebble/http-client-opts

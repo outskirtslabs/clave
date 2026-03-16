@@ -22,7 +22,7 @@
 
 (deftest system-startup-test
   (testing "starts and stops cleanly with minimal config"
-    (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+    (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
           system (automation/create-started! {:storage storage
                                               :issuers [{:directory-url (pebble/uri)}]
                                               :http-client pebble/http-client-opts})]
@@ -49,7 +49,7 @@
 
 (deftest system-loads-certificates-test
   (testing "certificates stored from previous session are loaded on startup"
-    (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+    (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
           domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           [_ ^X509Certificate cert kp] (test-util/issue-certificate (test-util/fresh-session))]
@@ -71,7 +71,7 @@
 
 (deftest system-graceful-shutdown-test
   (testing "stop waits for in-flight operations and sends shutdown signal"
-    (let [storage (file-storage/file-storage (test-util/temp-storage-dir))
+    (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
           domain "localhost"
           solver-started (atom false)
           solver {:present (fn [_lease chall account-key]

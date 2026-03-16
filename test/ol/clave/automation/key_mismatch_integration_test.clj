@@ -16,7 +16,7 @@
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (defn- make-http01-solver
   "Create an HTTP-01 solver that uses Pebble's challenge test server."
@@ -32,11 +32,9 @@
 
 (deftest certificate-with-mismatched-key-is-rejected
   (testing "Certificate with non-matching private key is detected on load"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+    (let [domain "localhost"
           solver (make-http01-solver)
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
@@ -63,7 +61,7 @@
             ^java.security.KeyPair wrong-keypair (keygen/generate :p256)
             wrong-key-pem (keygen/private-key->pem (.getPrivate wrong-keypair))]
         ;; Overwrite the private key file with the wrong key
-        (storage/store-string! storage-impl nil key-key wrong-key-pem))
+        (storage/store-string! test-util/*storage-impl* nil key-key wrong-key-pem))
       ;; Step 3-6: Start a new system and verify behavior
       (let [system2 (automation/create-started! config)
             queue2 (automation/get-event-queue system2)]

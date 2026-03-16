@@ -17,7 +17,7 @@ The automation layer manages TLS certificate lifecycle automatically:
          '[ol.clave.storage.file :as fs])
 
 ;; Create the automation system
-(def system (auto/create {:storage (fs/file-storage "/var/lib/acme")
+(def system (auto/create {:storage (fs/file-storage {:root "/var/lib/acme"})
                           :issuers [{:directory-url "https://acme-v02.api.letsencrypt.org/directory"
                                      :email "admin@example.com"}]
                           :solvers {:http-01 my-http-solver}}))

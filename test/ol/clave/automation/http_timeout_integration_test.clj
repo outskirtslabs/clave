@@ -16,6 +16,7 @@
   [f]
   (pebble/with-pebble {:env {"PEBBLE_VA_NOSLEEP" "1"}} f))
 
+(use-fixtures :each test-util/storage-fixture)
 (use-fixtures :once pebble-no-challtestsrv-fixture)
 
 (defn- start-slow-server
@@ -75,9 +76,7 @@
 
 (deftest http-client-timeout-triggers-certificate-failed-event
   (testing "HTTP client timeout during certificate obtain triggers failure event"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+    (let [domain "localhost"
           ;; Start a slow server on the HTTP challenge port
           ;; Delay just needs to exceed HTTP timeout (2s) to trigger timeout
           slow-server (start-slow-server (:http-port pebble/*pebble-ports*) 10000)
@@ -88,7 +87,7 @@
                              ;; No-op solver - challenge validation will timeout
                              {:token "test"})
                   :cleanup (fn [_lease _chall _state] nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client http-opts}

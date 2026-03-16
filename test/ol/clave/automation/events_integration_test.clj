@@ -14,13 +14,11 @@
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
 ;; This prevents authorization state accumulation across tests.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (deftest job-queue-deduplicates-concurrent-requests
   (testing "Multiple concurrent requests for same domain result in single certificate obtain"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+    (let [domain "localhost"
           solver {:present (fn [_lease chall account-key]
                              ;; Add small delay to make concurrent requests more likely to overlap
                              (Thread/sleep 50)
@@ -31,7 +29,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}

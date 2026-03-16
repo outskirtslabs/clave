@@ -18,7 +18,7 @@
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (defn- store-account-keypair!
   "Store an account keypair to storage in the automation format."
@@ -32,16 +32,14 @@
 
 (deftest account-auto-recreated-when-ca-reset
   (testing "Account is automatically recreated when CA no longer has the account"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+    (let [domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           ;; Step 1: Generate an account keypair manually
           ;; This simulates having an account key from a previous registration
           ;; that the CA no longer knows about (CA was reset)
           pre-existing-keypair (account/generate-keypair)
-          _ (store-account-keypair! storage-impl issuer-key pre-existing-keypair)
-          _ (is (storage/exists? storage-impl nil (config/account-private-key-storage-key issuer-key))
+          _ (store-account-keypair! test-util/*storage-impl* issuer-key pre-existing-keypair)
+          _ (is (storage/exists? test-util/*storage-impl* nil (config/account-private-key-storage-key issuer-key))
                 "Pre-existing account key should be in storage")
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
@@ -51,7 +49,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
@@ -85,7 +83,7 @@
               (is (= [domain] (:names cert-bundle)) "Certificate should be for our domain")))
           ;; Verify the same account key is still used (not regenerated)
           (let [stored-private-key-pem (storage/load-string
-                                        storage-impl nil
+                                        test-util/*storage-impl* nil
                                         (config/account-private-key-storage-key issuer-key))
                 original-private-key-pem (crypto/encode-private-key-pem
                                           (.getPrivate pre-existing-keypair))]

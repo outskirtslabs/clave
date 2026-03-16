@@ -13,7 +13,7 @@
    [java.util.concurrent TimeUnit]))
 
 ;; Use :each to give each test a fresh Pebble instance with clean state.
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (deftest multiple-solver-fallback-when-first-fails
   ;; Test #118: Multiple solver fallback when first fails
@@ -27,9 +27,7 @@
   ;; 7. Verify certificate is issued via TLS-ALPN-01
   ;; 8. Clean up
   (testing "System falls back to TLS-ALPN-01 when HTTP-01 solver fails"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+    (let [domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           ;; Track solver attempts to verify order
           http01-attempts (atom 0)
@@ -47,7 +45,7 @@
                                      :cleanup (fn [_lease _chall state]
                                                 (pebble/challtestsrv-del-tlsalpn01 (:domain state))
                                                 nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   ;; Provide both solvers
                   :solvers {:http-01 broken-http01-solver

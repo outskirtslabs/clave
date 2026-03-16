@@ -13,14 +13,12 @@
    [java.security.interfaces ECPrivateKey RSAPrivateKey]
    [java.util.concurrent TimeUnit]))
 
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (deftest per-domain-config-fn-selects-different-key-types
   (testing "config-fn returns different key types per domain"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
           ;; Two domains - each will get a different key type via config-fn
-          domain-a "localhost"
+    (let [domain-a "localhost"
           domain-b "127.0.0.1"
           ;; config-fn that returns P256 for domain A, RSA2048 for domain B
           config-fn (fn [domain]
@@ -36,7 +34,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts

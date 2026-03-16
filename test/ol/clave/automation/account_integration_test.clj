@@ -9,16 +9,14 @@
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
-   [ol.clave.storage :as storage]
-   [ol.clave.storage.file :as file-storage]))
+   [ol.clave.storage :as storage]))
 
+(use-fixtures :each test-util/storage-fixture)
 (use-fixtures :once pebble/pebble-challenge-fixture)
 
 (deftest account-is-created-automatically-on-first-certificate-request
   (testing "Account is created and persisted on first certificate request"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "acct-create.localhost"
+    (let [domain "acct-create.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
@@ -28,7 +26,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
@@ -45,18 +43,16 @@
           ;; Step 5: Verify account key is persisted to storage
           (let [private-key-key (config/account-private-key-storage-key issuer-key)
                 public-key-key (config/account-public-key-storage-key issuer-key)]
-            (is (storage/exists? storage-impl nil private-key-key)
+            (is (storage/exists? test-util/*storage-impl* nil private-key-key)
                 "Account private key should be persisted")
-            (is (storage/exists? storage-impl nil public-key-key)
+            (is (storage/exists? test-util/*storage-impl* nil public-key-key)
                 "Account public key should be persisted")))
         (finally
           (automation/stop system))))))
 
 (deftest account-key-is-persisted-and-reused-across-restarts
   (testing "Account key is reused after system restart"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "acct-reuse.localhost"
+    (let [domain "acct-reuse.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
@@ -66,7 +62,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}]
@@ -83,7 +79,7 @@
       ;; Record the account key fingerprint
       ;; Second run: restart and obtain another certificate
       (let [private-key-key (config/account-private-key-storage-key issuer-key)
-            original-key-pem (storage/load-string storage-impl nil private-key-key)
+            original-key-pem (storage/load-string test-util/*storage-impl* nil private-key-key)
             system2 (automation/create-started! config)
             queue2 (automation/get-event-queue system2)]
         (try
@@ -94,7 +90,7 @@
                                                             :timeout-ms 15000})]
               (is (some #(= :certificate-renewed (:type %)) events))))
             ;; Verify account key is unchanged
-          (let [reloaded-key-pem (storage/load-string storage-impl nil private-key-key)]
+          (let [reloaded-key-pem (storage/load-string test-util/*storage-impl* nil private-key-key)]
             (is (= original-key-pem reloaded-key-pem)
                 "Account key should be unchanged after restart"))
           (finally
@@ -102,9 +98,7 @@
 
 (deftest tos-acceptance-is-implicit-with-issuer-config
   (testing "Terms of Service acceptance is implicit when issuer is configured"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "acct-tos.localhost"
+    (let [domain "acct-tos.localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
@@ -116,7 +110,7 @@
                              nil)}
           ;; Configure automation with issuer - NO explicit ToS agreement
           ;; ToS acceptance should be implicit when you configure an issuer
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)
                              :email "test@example.com"}]
                   :solvers {:http-01 solver}
@@ -133,9 +127,9 @@
           ;; Account registration requires ToS acceptance - if this exists, ToS was sent
           (let [account-private-key (config/account-private-key-storage-key issuer-key)
                 account-public-key (config/account-public-key-storage-key issuer-key)]
-            (is (storage/exists? storage-impl nil account-private-key)
+            (is (storage/exists? test-util/*storage-impl* nil account-private-key)
                 "Account private key should exist in storage (proves registration happened)")
-            (is (storage/exists? storage-impl nil account-public-key)
+            (is (storage/exists? test-util/*storage-impl* nil account-public-key)
                 "Account public key should exist in storage (proves registration happened)"))
           ;; Step 5: Verify account was created successfully
           ;; Certificate obtainment proves account creation succeeded

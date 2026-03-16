@@ -13,13 +13,11 @@
    [ol.clave.storage :as storage]
    [ol.clave.storage.file :as file-storage]))
 
-(use-fixtures :each pebble/pebble-challenge-fixture)
+(use-fixtures :each test-util/storage-fixture pebble/pebble-challenge-fixture)
 
 (deftest ^:integration challenge-token-stored-during-obtain
   (testing "Challenge token is stored in shared storage during certificate obtain"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+    (let [domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           token-stored? (atom false)
           token-data (atom nil)
@@ -27,7 +25,7 @@
                              (let [token (::specs/token chall)
                                    key-auth (challenge/key-authorization chall account-key)
                                    storage-key (config/challenge-token-storage-key issuer-key domain)]
-                               (when-let [data (storage/load storage-impl nil storage-key)]
+                               (when-let [data (storage/load test-util/*storage-impl* nil storage-key)]
                                  (reset! token-stored? true)
                                  (reset! token-data (read-string (String. ^bytes data "UTF-8"))))
                                (pebble/challtestsrv-add-http01 token key-auth)
@@ -35,7 +33,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
@@ -62,9 +60,7 @@
 
 (deftest ^:integration challenge-token-cleaned-up-after-completion
   (testing "Challenge token is removed from storage after certificate obtained"
-    (let [storage-dir (test-util/temp-storage-dir)
-          storage-impl (file-storage/file-storage storage-dir)
-          domain "localhost"
+    (let [domain "localhost"
           issuer-key (config/issuer-key-from-url (pebble/uri))
           solver {:present (fn [_lease chall account-key]
                              (let [token (::specs/token chall)
@@ -74,7 +70,7 @@
                   :cleanup (fn [_lease _chall state]
                              (pebble/challtestsrv-del-http01 (:token state))
                              nil)}
-          config {:storage storage-impl
+          config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
@@ -90,7 +86,7 @@
         (is (some? (automation/lookup-cert system domain))
             "Certificate should be obtained")
         (let [storage-key (config/challenge-token-storage-key issuer-key domain)]
-          (is (not (storage/exists? storage-impl nil storage-key))
+          (is (not (storage/exists? test-util/*storage-impl* nil storage-key))
               "Challenge token should be cleaned up after certificate obtained"))
         (finally
           (automation/stop system))))))

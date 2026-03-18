@@ -59,17 +59,18 @@
   - `:management-port`  Pebble management API port
   - `:http-port`        HTTP-01 challenge port (Pebble connects here to validate)
   - `:tls-port`         TLS-ALPN-01 challenge port (Pebble connects here to validate)
-  - `:challenge-port`   Challenge test server management API port"
+  - `:challenge-port`   Challenge test server management API port
+  - `:dns-port`         Challenge test server DNS port"
   nil)
 
 (defn allocate-pebble-ports
   "Allocates random available ports for Pebble.
   Opens all sockets simultaneously to guarantee unique ports."
   []
-  (let [sockets (repeatedly 5 #(ServerSocket. 0))
+  (let [sockets (repeatedly 6 #(ServerSocket. 0))
         ports (mapv #(.getLocalPort ^ServerSocket %) sockets)]
     (run! #(.close ^ServerSocket %) sockets)
-    (zipmap [:listen-port :management-port :http-port :tls-port :challenge-port]
+    (zipmap [:listen-port :management-port :http-port :tls-port :challenge-port :dns-port]
             ports)))
 
 (defn uri
@@ -135,11 +136,17 @@
 (defn pebble-start
   "Starts the Pebble ACME test server in the background.
   Returns the process map."
-  [config-path env]
-  (p/process ["pebble" "-config" config-path]
-             (cond-> {:out :str
-                      :err :out}
-               env (assoc :extra-env env))))
+  ([config-path env]
+   (pebble-start config-path env {}))
+  ([config-path env {:keys [use-dnsserver?]
+                     :or {use-dnsserver? true}}]
+   (let [command (cond-> ["pebble" "-config" config-path]
+                   (and use-dnsserver? (:dns-port *pebble-ports*))
+                   (conj "-dnsserver" (str "127.0.0.1:" (:dns-port *pebble-ports*))))]
+     (p/process command
+                (cond-> {:out :inherit
+                         :err :inherit}
+                  env (assoc :extra-env env))))))
 
 (defn pebble-stop
   "Stops the Pebble ACME test server.
@@ -153,10 +160,13 @@
   []
   (p/process ["pebble-challtestsrv"
               "-management" (str ":" (:challenge-port *pebble-ports*))
+              "-dns01" (str ":" (:dns-port *pebble-ports*))
+              "-doh" ""
               "-http01" (str ":" (:http-port *pebble-ports*))
+              "-https01" ""
               "-tlsalpn01" (str ":" (:tls-port *pebble-ports*))]
-             {:out :str
-              :err :out}))
+             {:out :inherit
+              :err :inherit}))
 
 (defn challtestsrv-stop
   "Stops the Pebble challenge test server."
@@ -273,7 +283,7 @@
                           (let [proc (challtestsrv-start)]
                             (wait-for-challtestsrv)
                             proc))
-             pebble-proc (pebble-start config-path env)]
+             pebble-proc (pebble-start config-path env {:use-dnsserver? with-challtestsrv})]
          (try
            (wait-for-pebble)
            (f)

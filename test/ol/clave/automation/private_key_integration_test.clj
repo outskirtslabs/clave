@@ -31,7 +31,7 @@
                   :solvers {:http-01 solver}
                   :key-type :rsa2048
                   :http-client pebble/http-client-opts}
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         (let [queue (automation/get-event-queue system)]
           (automation/manage-domains system [domain])
@@ -68,7 +68,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         (let [queue (automation/get-event-queue system)]
           (automation/manage-domains system [domain])
@@ -82,7 +82,7 @@
             (is (some? initial-key) "Initial bundle should have private key")
             ;; Force renewal with threshold > 1.0
             (binding [decisions/*renewal-threshold* 1.01]
-              (automation/trigger-maintenance! system)
+              (automation/trigger-maintenance system)
               (let [events (test-util/wait-for-events queue {:expected #{:certificate-renewed}
                                                              :timeout-ms 10000})]
                 (is (some #(= :certificate-renewed (:type %)) events))))
@@ -112,7 +112,7 @@
                   :solvers {:http-01 solver}
                   :key-reuse true  ;; Enable key reuse
                   :http-client pebble/http-client-opts}
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         (let [queue (automation/get-event-queue system)]
           (automation/manage-domains system [domain])
@@ -126,7 +126,7 @@
             (is (some? initial-key) "Initial bundle should have private key")
             ;; Force renewal with threshold > 1.0
             (binding [decisions/*renewal-threshold* 1.01]
-              (automation/trigger-maintenance! system)
+              (automation/trigger-maintenance system)
               (let [events (test-util/wait-for-events queue {:expected #{:certificate-renewed}
                                                              :timeout-ms 10000})]
                 (is (some #(= :certificate-renewed (:type %)) events))))

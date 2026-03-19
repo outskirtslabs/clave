@@ -23,7 +23,7 @@
   (def queue (auto/get-event-queue system))
 
   ;; Start the maintenance loop
-  (auto/start! system)
+  (auto/start system)
 
   ;; Add domains to manage
   (auto/manage-domains system [\"example.com\"])
@@ -62,11 +62,11 @@
 
   Throws if configuration is invalid or storage cannot be initialized.
 
-  After calling this function you might be interested in [[get-event-queue]] and [[start!]]."
+  After calling this function you might be interested in [[get-event-queue]] and [[start]]."
   [config]
   (system/create config))
 
-(defn start!
+(defn start
   "Starts the maintenance loop on a created system.
 
   Call this after [[create]] to begin automatic certificate management.
@@ -76,12 +76,12 @@
 
   See also [[create]]."
   [system]
-  (system/start! system))
+  (system/start system))
 
-(defn ^:no-doc create-started!
-  "For internal/test use. Prefer [[create]] + [[start!]] for production."
+(defn ^:no-doc create-started
+  "For internal use. Not public."
   [config]
-  (start! (create config)))
+  (start (create config)))
 
 (defn stop
   "Stops the automation system.
@@ -238,7 +238,7 @@
   [system certificate opts]
   (system/revoke system certificate opts))
 
-(defn trigger-maintenance!
+(defn trigger-maintenance
   "Manually triggers a maintenance cycle.
 
   This is primarily useful for testing - in normal operation the
@@ -248,4 +248,4 @@
   |-----|-------------|
   | `system` | System handle from `start` |"
   [system]
-  (system/trigger-maintenance! system))
+  (system/trigger-maintenance system))

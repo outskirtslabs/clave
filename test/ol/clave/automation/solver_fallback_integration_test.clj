@@ -53,7 +53,7 @@
                   ;; Force HTTP-01 to be tried first via preferred-challenges
                   :preferred-challenges [:http-01 :tls-alpn-01]
                   :http-client pebble/http-client-opts}
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 3: Call manage-domains

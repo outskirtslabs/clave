@@ -75,14 +75,14 @@
   [storage]
   (try
     ;; Write test value
-    (storage/store! storage nil storage-test-key storage-test-value)
+    (storage/store storage nil storage-test-key storage-test-value)
     ;; Read it back
     (let [read-value (storage/load storage nil storage-test-key)]
       (when-not (java.util.Arrays/equals ^bytes storage-test-value ^bytes read-value)
         (throw (ex-info "Storage validation failed: read value does not match"
                         {:type :storage-error}))))
     ;; Delete test file
-    (storage/delete! storage nil storage-test-key)
+    (storage/delete storage nil storage-test-key)
     (catch Exception e
       (throw (ex-info (str "Storage validation failed: " (ex-message e))
                       {:type :storage-error
@@ -385,8 +385,8 @@
                        :data  {:domain (first (:names bundle))}
                        :error e})))))))
 
-(defn trigger-maintenance!
-  "See [[ol.clave.automation/trigger-maintenance!]]"
+(defn trigger-maintenance
+  "See [[ol.clave.automation/trigger-maintenance]]"
   [system]
   (run-maintenance-cycle! system))
 
@@ -419,8 +419,8 @@
       (load-all-certificates! system)
       system)))
 
-(defn start!
-  "See [[ol.clave.automation/start!]]"
+(defn start
+  "See [[ol.clave.automation/start]]"
   [system]
   (when-not @(:started? system)
     (start-maintenance-loop! system)
@@ -527,8 +527,8 @@
         public-key-key (config/account-public-key-storage-key issuer-key)
         private-pem (crypto/encode-private-key-pem (.getPrivate keypair))
         public-pem (crypto/encode-public-key-pem (.getPublic keypair))]
-    (storage/store-string! storage nil private-key-key private-pem)
-    (storage/store-string! storage nil public-key-key public-pem)))
+    (storage/store-string storage nil private-key-key private-pem)
+    (storage/store-string storage nil public-key-key public-pem)))
 
 (defn- load-account-registration
   "Load account registration (KID) from storage if it exists.
@@ -545,7 +545,7 @@
   "Save account registration (KID) to storage."
   [storage issuer-key account-kid]
   (let [reg-key (config/account-registration-storage-key issuer-key)]
-    (storage/store-string! storage nil reg-key (pr-str {:account-kid account-kid}))))
+    (storage/store-string storage nil reg-key (pr-str {:account-kid account-kid}))))
 
 (defn- account-lock-key
   "Returns the storage lock key for account registration."
@@ -565,14 +565,14 @@
   [storage issuer-key]
   (or (load-account-keypair storage issuer-key)
       (let [lock-key (account-lock-key issuer-key)]
-        (storage/lock! storage nil lock-key)
+        (storage/lock storage nil lock-key)
         (try
           (or (load-account-keypair storage issuer-key)
               (let [keypair (account/generate-keypair)]
                 (save-account-keypair! storage issuer-key keypair)
                 keypair))
           (finally
-            (storage/unlock! storage nil lock-key))))))
+            (storage/unlock storage nil lock-key))))))
 
 (defn- create-acme-session
   "Create an ACME session for the given issuer config.
@@ -611,9 +611,9 @@
         cert-key (config/cert-storage-key issuer-key domain)
         key-key (config/key-storage-key issuer-key domain)
         meta-key (config/meta-storage-key issuer-key domain)]
-    (storage/store-string! storage nil cert-key cert-pem)
-    (storage/store-string! storage nil key-key key-pem)
-    (storage/store-string! storage nil meta-key (pr-str {:names names :issuer issuer-key :managed true}))))
+    (storage/store-string storage nil cert-key cert-pem)
+    (storage/store-string storage nil key-key key-pem)
+    (storage/store-string storage nil meta-key (pr-str {:names names :issuer issuer-key :managed true}))))
 
 (defn- try-obtain-from-issuer
   "Try to obtain a certificate from a single issuer.
@@ -705,7 +705,7 @@
         lock-key (domain-cert-lock-key domain)]
     (log/log! {:level :trace :id ::obtain-start :data {:domain domain}})
     ;; Acquire distributed lock for this domain
-    (storage/lock! storage nil lock-key)
+    (storage/lock storage nil lock-key)
     (log/log! {:level :trace :id ::lock-acquired :data {:domain domain}})
     (try
       ;; Double-check: another instance may have obtained cert while we waited
@@ -718,7 +718,7 @@
         (do-obtain-certificate! system cmd))
       (finally
         (log/log! {:level :trace :id ::lock-released :data {:domain domain}})
-        (storage/unlock! storage nil lock-key)
+        (storage/unlock storage nil lock-key)
         (log/log! {:level :trace :id ::obtain-end :data {:domain domain}})))))
 
 (defn- do-renew-certificate!
@@ -785,7 +785,7 @@
         lock-key (domain-cert-lock-key domain)]
     ;; Acquire distributed lock for this domain
     (log/log! {:level :trace :id ::renew-start :data {:domain domain :lock-key lock-key}})
-    (storage/lock! storage nil lock-key)
+    (storage/lock storage nil lock-key)
     (log/log! {:level :trace :id ::renew-acquired-lock :data {:domain domain}})
     (try
       ;; Double-check: another instance may have renewed while we waited
@@ -801,7 +801,7 @@
         ;; No certificate found (shouldn't happen for renewal) - proceed anyway
         (do-renew-certificate! system cmd))
       (finally
-        (storage/unlock! storage nil lock-key)
+        (storage/unlock storage nil lock-key)
         (log/log! {:level :trace :id ::renew-released-lock :data {:domain domain}})))))
 
 ;;; OCSP Fetching
@@ -831,11 +831,11 @@
         meta-key (str ocsp-key ".meta.edn")
         raw-bytes (:raw-bytes ocsp-response)]
     (when raw-bytes
-      (storage/store! storage nil ocsp-key raw-bytes)
-      (storage/store-string! storage nil meta-key
-                             (pr-str {:status (:status ocsp-response)
-                                      :this-update (some-> (:this-update ocsp-response) str)
-                                      :next-update (some-> (:next-update ocsp-response) str)})))))
+      (storage/store storage nil ocsp-key raw-bytes)
+      (storage/store-string storage nil meta-key
+                            (pr-str {:status (:status ocsp-response)
+                                     :this-update (some-> (:this-update ocsp-response) str)
+                                     :next-update (some-> (:next-update ocsp-response) str)})))))
 
 (def ^:private revocation-reason-keywords
   "Map RFC 5280 CRLReason codes to keyword names."
@@ -872,7 +872,7 @@
     (let [storage (:storage system)
           archive-key (config/compromised-key-storage-key domain timestamp)
           key-pem (crypto/encode-private-key-pem private-key)]
-      (storage/store-string! storage nil archive-key key-pem))))
+      (storage/store-string storage nil archive-key key-pem))))
 
 (defn- delete-certificate-from-storage!
   "Remove certificate files from storage."
@@ -880,9 +880,9 @@
   (let [cert-key (config/cert-storage-key issuer-key domain)
         key-key (config/key-storage-key issuer-key domain)
         meta-key (config/meta-storage-key issuer-key domain)]
-    (storage/delete! storage (lease/background) cert-key)
-    (storage/delete! storage (lease/background) key-key)
-    (storage/delete! storage (lease/background) meta-key)))
+    (storage/delete storage (lease/background) cert-key)
+    (storage/delete storage (lease/background) key-key)
+    (storage/delete storage (lease/background) meta-key)))
 
 (defn- update-managed-flag-in-storage!
   "Update the managed flag in certificate metadata for a domain.
@@ -900,7 +900,7 @@
           (let [meta-str (storage/load-string storage nil meta-key)
                 metadata (edn/read-string meta-str)
                 updated (assoc metadata :managed managed?)]
-            (storage/store-string! storage nil meta-key (pr-str updated))))))))
+            (storage/store-string storage nil meta-key (pr-str updated))))))))
 
 (defn- handle-ocsp-revocation!
   "Handle certificate revocation detected via OCSP.
@@ -972,11 +972,11 @@
                        (config/issuer-key-from-url (get-in (first issuers) [:directory-url])))
         ari-key (config/ari-storage-key issuer-key domain)
         [start end] (:suggested-window ari-data)]
-    (storage/store-string! storage nil ari-key
-                           (pr-str {:suggested-window-start (str start)
-                                    :suggested-window-end (str end)
-                                    :selected-time (str (:selected-time ari-data))
-                                    :retry-after (some-> (:retry-after ari-data) str)}))))
+    (storage/store-string storage nil ari-key
+                          (pr-str {:suggested-window-start (str start)
+                                   :suggested-window-end (str end)
+                                   :selected-time (str (:selected-time ari-data))
+                                   :retry-after (some-> (:retry-after ari-data) str)}))))
 
 ;;; Command Execution
 

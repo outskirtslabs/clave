@@ -390,7 +390,7 @@
   - `request-builder` - `HttpRequest$Builder` (timeout will be set from lease)
   - `lease` - Active lease for cancellation tracking"
   [^HttpClient client ^HttpRequest$Builder request-builder lease]
-  (lease/active?! lease)
+  (lease/ensure-active lease)
   (let [request-builder (if-let [remaining (lease/remaining lease)]
                           (.timeout request-builder remaining)
                           request-builder)

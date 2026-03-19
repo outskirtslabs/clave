@@ -42,7 +42,7 @@
             _ (ocsp-harness/set-ocsp-response! "*" :good)
             _ (ocsp-harness/reset-request-count!)
             overrides {ocsp-harness/fake-ocsp-url (ocsp-harness/ocsp-url)}
-            system (automation/create-started! (make-config storage solver overrides))]
+            system (automation/create-started (make-config storage solver overrides))]
         (try
           (let [queue (automation/get-event-queue system)]
             (automation/manage-domains system [domain])
@@ -64,7 +64,7 @@
             _ (ocsp-harness/clear-ocsp-responses!)
             _ (ocsp-harness/set-ocsp-response! "*" :good)
             _ (ocsp-harness/reset-request-count!)
-            system (automation/create-started! (make-config storage solver {}))]
+            system (automation/create-started (make-config storage solver {}))]
         (try
           (let [queue (automation/get-event-queue system)]
             (automation/manage-domains system [domain])

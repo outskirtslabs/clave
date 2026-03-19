@@ -60,7 +60,7 @@
                   :http-client pebble/http-client-opts
                   :ocsp {:enabled false}
                   :ari {:enabled false}}
-          system (automation/create-started! config)
+          system (automation/create-started config)
           queue (automation/get-event-queue system)]
       (try
         ;; Step 1: Start automation and obtain certificate
@@ -85,16 +85,16 @@
               key-key (config/key-storage-key issuer-key domain)
               meta-key (config/meta-storage-key issuer-key domain)]
           ;; Delete all certificate files from storage
-          (storage/delete! test-util/*storage-impl* nil cert-key)
-          (storage/delete! test-util/*storage-impl* nil key-key)
-          (storage/delete! test-util/*storage-impl* nil meta-key)
+          (storage/delete test-util/*storage-impl* nil cert-key)
+          (storage/delete test-util/*storage-impl* nil key-key)
+          (storage/delete test-util/*storage-impl* nil meta-key)
           ;; Verify files are deleted
           (is (not (storage/exists? test-util/*storage-impl* nil cert-key))
               "Certificate file should be deleted from storage")
           (is (not (storage/exists? test-util/*storage-impl* nil key-key))
               "Key file should be deleted from storage"))
         ;; Step 3: Trigger maintenance loop
-        (system/trigger-maintenance! system)
+        (system/trigger-maintenance system)
         ;; Step 4-5: Verify system detects missing storage and re-obtain is triggered
         ;; The re-obtain should emit a certificate-obtained event
         (let [event (poll-until-event-type queue :certificate-obtained 10)]

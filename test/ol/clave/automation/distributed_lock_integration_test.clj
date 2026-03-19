@@ -68,8 +68,8 @@
           ;; Create two separate system instances sharing the same storage
           config1 (assoc base-config :storage test-util/*storage-impl*)
           config2 (assoc base-config :storage test-util/*storage-impl*)
-          system1 (automation/create-started! config1)
-          system2 (automation/create-started! config2)]
+          system1 (automation/create-started config1)
+          system2 (automation/create-started config2)]
 
       (try
         (let [queue1 (automation/get-event-queue system1)

@@ -205,7 +205,7 @@
                      :identifier identifier}
           storage-key (config/challenge-token-storage-key issuer-key identifier)
           json-bytes (.getBytes (pr-str test-data) "UTF-8")]
-      (storage/store! test-util/*storage-impl* nil storage-key json-bytes)
+      (storage/store test-util/*storage-impl* nil storage-key json-bytes)
       (let [result (certificate/lookup-challenge-token
                     test-util/*storage-impl*
                     issuer-key
@@ -316,23 +316,23 @@
 
 (deftest challenge-stats-test
   (testing "untried challenge types return success ratio 1.0"
-    (stats/reset-all!)
+    (stats/reset-all)
     (is (= 1.0 (stats/success-ratio :http-01))))
 
   (testing "records successes and failures correctly"
-    (stats/reset-all!)
-    (stats/record! :http-01 true)
+    (stats/reset-all)
+    (stats/record :http-01 true)
     (is (= {:attempts 1 :successes 1} (stats/get-stats :http-01)))
 
-    (stats/record! :http-01 false)
+    (stats/record :http-01 false)
     (is (= {:attempts 2 :successes 1} (stats/get-stats :http-01))))
 
   (testing "computes ratio correctly"
-    (stats/reset-all!)
-    (stats/record! :dns-01 true)
-    (stats/record! :dns-01 true)
-    (stats/record! :dns-01 false)
-    (stats/record! :dns-01 false)
+    (stats/reset-all)
+    (stats/record :dns-01 true)
+    (stats/record :dns-01 true)
+    (stats/record :dns-01 false)
+    (stats/record :dns-01 false)
     (is (= 0.5 (stats/success-ratio :dns-01)))))
 
 (deftest http01-solver-test

@@ -73,7 +73,7 @@
                            {:type ::invalid-directory
                             :explain-data (s/explain-data ::acme/directory qualified)
                             :response body})))
-         (dc/cache-put! directory-url qualified)
+         (dc/cache-put directory-url qualified)
          (let [session' (-> session
                             (assoc ::acme/directory qualified)
                             (http/push-nonce nonce))]
@@ -402,7 +402,7 @@
     (try
       (loop [session session
              attempts 0]
-        (lease/active?! lease)
+        (lease/ensure-active lease)
         (let [attempts (inc attempts)
               [session order resp] (fetch-order lease session order-url)]
           (cond
@@ -528,7 +528,7 @@
     (try
       (loop [session session
              attempts 0]
-        (lease/active?! lease)
+        (lease/ensure-active lease)
         (let [attempts (inc attempts)
               [session authorization resp] (fetch-authorization lease session authorization-url)]
           (cond

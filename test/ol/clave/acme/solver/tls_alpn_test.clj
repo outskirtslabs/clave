@@ -106,7 +106,7 @@
       (is (fn? (:cleanup solver))))))
 
 (deftest switchable-solver-switch-changes-behavior-test
-  (testing "switch-to-integrated! changes solver behavior"
+  (testing "switch-to-integrated changes solver behavior"
     (let [[_account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           solver (tls-alpn/switchable-solver {:port 59998})
           registry (tls-alpn/challenge-registry solver)
@@ -117,7 +117,7 @@
 
       ;; Switch to integrated mode before calling present
       ;; (otherwise bootstrap would try to bind to port)
-      (tls-alpn/switch-to-integrated! solver)
+      (tls-alpn/switch-to-integrated solver)
 
       ;; Now present should use integrated behavior (register in registry, no server)
       (let [result (present-fn nil challenge account-key)]

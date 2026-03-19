@@ -25,7 +25,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 throwing-solver}
                   :http-client pebble/http-client-opts}
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         (let [queue (automation/get-event-queue system)]
           (automation/manage-domains system [domain1])

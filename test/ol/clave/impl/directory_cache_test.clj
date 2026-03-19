@@ -23,11 +23,11 @@
    :ol.clave.specs/keyChange "https://acme2.example.com/key-change"})
 
 (defn clear-cache-fixture [f]
-  (dc/cache-clear!)
+  (dc/cache-clear)
   (try
     (f)
     (finally
-      (dc/cache-clear!))))
+      (dc/cache-clear))))
 
 (use-fixtures :each clear-cache-fixture)
 
@@ -36,63 +36,63 @@
     (is (nil? (dc/cache-get test-url)))))
 
 (deftest cache-put-get-test
-  (testing "cache-put! stores directory and cache-get retrieves it"
-    (dc/cache-put! test-url test-directory)
+  (testing "cache-put stores directory and cache-get retrieves it"
+    (dc/cache-put test-url test-directory)
     (is (= test-directory (dc/cache-get test-url)))))
 
 (deftest cache-put-returns-directory-test
-  (testing "cache-put! returns the directory"
-    (is (= test-directory (dc/cache-put! test-url test-directory)))))
+  (testing "cache-put returns the directory"
+    (is (= test-directory (dc/cache-put test-url test-directory)))))
 
 (deftest cache-multiple-urls-test
   (testing "cache stores entries separately by URL"
-    (dc/cache-put! test-url test-directory)
-    (dc/cache-put! test-url-2 test-directory-2)
+    (dc/cache-put test-url test-directory)
+    (dc/cache-put test-url-2 test-directory-2)
     (is (= test-directory (dc/cache-get test-url)))
     (is (= test-directory-2 (dc/cache-get test-url-2)))))
 
 (deftest cache-overwrite-test
-  (testing "cache-put! overwrites existing entry"
-    (dc/cache-put! test-url test-directory)
-    (dc/cache-put! test-url test-directory-2)
+  (testing "cache-put overwrites existing entry"
+    (dc/cache-put test-url test-directory)
+    (dc/cache-put test-url test-directory-2)
     (is (= test-directory-2 (dc/cache-get test-url)))))
 
 (deftest cache-ttl-fresh-test
   (testing "cache-get returns entry within TTL"
-    (dc/cache-put! test-url test-directory)
+    (dc/cache-put test-url test-directory)
     (is (= test-directory (dc/cache-get test-url 60000)))))
 
 (deftest cache-ttl-stale-test
   (testing "cache-get returns nil for stale entry"
-    (dc/cache-put! test-url test-directory)
+    (dc/cache-put test-url test-directory)
     (Thread/sleep 50)
     (is (nil? (dc/cache-get test-url 10)))))
 
 (deftest cache-ttl-zero-test
   (testing "cache-get with zero TTL always returns nil"
-    (dc/cache-put! test-url test-directory)
+    (dc/cache-put test-url test-directory)
     (is (nil? (dc/cache-get test-url 0)))))
 
 (deftest cache-clear-test
-  (testing "cache-clear! removes all entries"
-    (dc/cache-put! test-url test-directory)
-    (dc/cache-put! test-url-2 test-directory-2)
-    (dc/cache-clear!)
+  (testing "cache-clear removes all entries"
+    (dc/cache-put test-url test-directory)
+    (dc/cache-put test-url-2 test-directory-2)
+    (dc/cache-clear)
     (is (nil? (dc/cache-get test-url)))
     (is (nil? (dc/cache-get test-url-2)))))
 
 (deftest cache-evict-test
-  (testing "cache-evict! removes single entry"
-    (dc/cache-put! test-url test-directory)
-    (dc/cache-put! test-url-2 test-directory-2)
-    (dc/cache-evict! test-url)
+  (testing "cache-evict removes single entry"
+    (dc/cache-put test-url test-directory)
+    (dc/cache-put test-url-2 test-directory-2)
+    (dc/cache-evict test-url)
     (is (nil? (dc/cache-get test-url)))
     (is (= test-directory-2 (dc/cache-get test-url-2)))))
 
 (deftest cache-evict-nonexistent-test
-  (testing "cache-evict! on missing entry does nothing"
-    (dc/cache-put! test-url test-directory)
-    (dc/cache-evict! test-url-2)
+  (testing "cache-evict on missing entry does nothing"
+    (dc/cache-put test-url test-directory)
+    (dc/cache-evict test-url-2)
     (is (= test-directory (dc/cache-get test-url)))))
 
 (deftest default-ttl-test

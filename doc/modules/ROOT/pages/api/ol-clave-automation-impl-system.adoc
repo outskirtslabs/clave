@@ -104,18 +104,18 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/im
 
 '''
 
-[#trigger-maintenance-BANG-]
-== trigger-maintenance!
+[#trigger-maintenance]
+== trigger-maintenance
 
 
 
 
 [source,clojure]
 ----
-(trigger-maintenance! system)
+(trigger-maintenance system)
 ----
 
-See xref:api/ol-clave-automation.adoc#trigger-maintenance-BANG-[`ol.clave.automation/trigger-maintenance!`]
+See xref:api/ol-clave-automation.adoc#trigger-maintenance[`ol.clave.automation/trigger-maintenance`]
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L388-L391[source,window=_blank]
@@ -140,18 +140,18 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/im
 
 '''
 
-[#start-BANG-]
-== start!
+[#start]
+== start
 
 
 
 
 [source,clojure]
 ----
-(start! system)
+(start system)
 ----
 
-See xref:api/ol-clave-automation.adoc#start-BANG-[`ol.clave.automation/start!`]
+See xref:api/ol-clave-automation.adoc#start[`ol.clave.automation/start`]
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L422-L428[source,window=_blank]

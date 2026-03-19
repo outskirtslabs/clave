@@ -108,13 +108,13 @@
                                      :ssl-context ssl-context
                                      :join? false))]
     (try
-      (auto/start! system)
+      (auto/start system)
       (auto/manage-domains system domains)
       (common/wait-for-certificates system domains)
       (catch Exception e
         (auto/stop system)
         (throw e)))
-    (tls-alpn-solver/switch-to-integrated! tls-alpn-solver)
+    (tls-alpn-solver/switch-to-integrated tls-alpn-solver)
     {:server (jetty/run-jetty wrapped-handler jetty-opts)
      :system system}))
 

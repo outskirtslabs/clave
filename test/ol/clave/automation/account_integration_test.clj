@@ -30,7 +30,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         (let [queue (automation/get-event-queue system)]
           (automation/manage-domains system [domain])
@@ -67,7 +67,7 @@
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}]
       ;; First run: obtain certificate (creates account)
-      (let [system1 (automation/create-started! config)
+      (let [system1 (automation/create-started config)
             queue1 (automation/get-event-queue system1)]
         (try
           (automation/manage-domains system1 [domain])
@@ -80,12 +80,12 @@
       ;; Second run: restart and obtain another certificate
       (let [private-key-key (config/account-private-key-storage-key issuer-key)
             original-key-pem (storage/load-string test-util/*storage-impl* nil private-key-key)
-            system2 (automation/create-started! config)
+            system2 (automation/create-started config)
             queue2 (automation/get-event-queue system2)]
         (try
             ;; Force renewal to create new certificate (with threshold > 1)
           (binding [decisions/*renewal-threshold* 1.01]
-            (automation/trigger-maintenance! system2)
+            (automation/trigger-maintenance system2)
             (let [events (test-util/wait-for-events queue2 {:expected #{:certificate-renewed}
                                                             :timeout-ms 15000})]
               (is (some #(= :certificate-renewed (:type %)) events))))
@@ -115,7 +115,7 @@
                              :email "test@example.com"}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         (let [queue (automation/get-event-queue system)]
           (automation/manage-domains system [domain])

@@ -13,7 +13,7 @@
          :dns-01 {:attempts 0 :successes 0}
          :tls-alpn-01 {:attempts 0 :successes 0}}))
 
-(defn reset-all!
+(defn reset-all
   "Reset all challenge statistics to zero. Primarily for testing."
   []
   (reset! challenge-stats
@@ -35,7 +35,7 @@
       1.0
       (/ (double successes) attempts))))
 
-(defn record!
+(defn record
   "Record a challenge attempt result. Updates process-local statistics."
   [challenge-type success?]
   (swap! challenge-stats update challenge-type

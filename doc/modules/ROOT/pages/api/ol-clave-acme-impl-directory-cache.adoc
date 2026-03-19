@@ -42,15 +42,15 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/dir
 
 '''
 
-[#cache-put-BANG-]
-== cache-put!
+[#cache-put]
+== cache-put
 
 
 
 
 [source,clojure]
 ----
-(cache-put! url directory)
+(cache-put url directory)
 ----
 
 Stores directory in cache with current timestamp. Returns directory.
@@ -60,15 +60,15 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/dir
 
 '''
 
-[#cache-clear-BANG-]
-== cache-clear!
+[#cache-clear]
+== cache-clear
 
 
 
 
 [source,clojure]
 ----
-(cache-clear!)
+(cache-clear)
 ----
 
 Clears entire directory cache. Useful for testing.
@@ -78,15 +78,15 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/dir
 
 '''
 
-[#cache-evict-BANG-]
-== cache-evict!
+[#cache-evict]
+== cache-evict
 
 
 
 
 [source,clojure]
 ----
-(cache-evict! url)
+(cache-evict url)
 ----
 
 Removes single entry from cache.

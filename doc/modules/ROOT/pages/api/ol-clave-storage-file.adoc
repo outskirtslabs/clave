@@ -85,7 +85,7 @@ On non-POSIX systems (Windows), default permissions apply.
 (def storage (fs/file-storage {:root "/var/lib/myapp"}))
 
 ;; Store and retrieve data
-(s/store-string! storage nil "certs/example.com/cert.pem" cert)
+(s/store-string storage nil "certs/example.com/cert.pem" cert)
 (s/load-string storage nil "certs/example.com/cert.pem")
 ----
 

@@ -36,7 +36,7 @@
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
                   :ocsp {:enabled false}}
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         ;; Get event queue before calling manage-domains
         (let [queue (automation/get-event-queue system)]
@@ -172,7 +172,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:tls-alpn-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         ;; Get event queue before calling manage-domains
         (let [queue (automation/get-event-queue system)]

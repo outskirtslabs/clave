@@ -30,7 +30,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 3: Obtain a certificate
@@ -51,7 +51,7 @@
             ;; so needs-renewal? always returns true
             (binding [decisions/*renewal-threshold* 1.01]
               ;; Step 5: Trigger maintenance loop manually
-              (automation/trigger-maintenance! system)
+              (automation/trigger-maintenance system)
               ;; Step 6-7: Wait for renewal to complete
               ;; Note: Maintenance may also trigger OCSP refresh, so we poll until we get
               ;; the certificate-renewed event or timeout
@@ -94,7 +94,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 1: Obtain certificates for multiple domains

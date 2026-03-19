@@ -177,7 +177,7 @@
 
 (deftest manage-domains-test
   (testing "rejects localhost"
-    (let [sys (automation/create-started! (test-config (test-util/temp-storage-dir)))]
+    (let [sys (automation/create-started (test-config (test-util/temp-storage-dir)))]
       (try
         (let [ex (try
                    (automation/manage-domains sys ["localhost"])
@@ -191,7 +191,7 @@
           (automation/stop sys)))))
 
   (testing "rejects .local domains"
-    (let [sys (automation/create-started! (test-config (test-util/temp-storage-dir)))]
+    (let [sys (automation/create-started (test-config (test-util/temp-storage-dir)))]
       (try
         (let [ex (try
                    (automation/manage-domains sys ["test.local"])
@@ -203,14 +203,14 @@
           (automation/stop sys)))))
 
   (testing "accepts valid domains"
-    (let [sys (automation/create-started! (test-config (test-util/temp-storage-dir)))]
+    (let [sys (automation/create-started (test-config (test-util/temp-storage-dir)))]
       (try
         (is (nil? (automation/manage-domains sys ["example.com"])))
         (finally
           (automation/stop sys)))))
 
   (testing "rejects wildcards without dns-01"
-    (let [sys (automation/create-started! (test-config (test-util/temp-storage-dir)))]
+    (let [sys (automation/create-started (test-config (test-util/temp-storage-dir)))]
       (try
         (let [ex (try
                    (automation/manage-domains sys ["*.example.com"])
@@ -224,7 +224,7 @@
           (automation/stop sys)))))
 
   (testing "rejects directory traversal"
-    (let [sys (automation/create-started! (test-config (test-util/temp-storage-dir)))]
+    (let [sys (automation/create-started (test-config (test-util/temp-storage-dir)))]
       (try
         (let [ex (try
                    (automation/manage-domains sys ["../../../etc/passwd"])

@@ -7,7 +7,7 @@
 
   A key with an associated value is a \"file\"; a key with no value that serves
   as a prefix for other keys is a \"directory\".
-  Keys passed to [[load]] and [[store!]] always have file semantics; directories
+  Keys passed to [[load]] and [[store]] always have file semantics; directories
   are implicit from the path structure.
 
   ## Key Format
@@ -35,10 +35,10 @@
 
   ## Locking
 
-  The [[lock!]] and [[unlock!]] methods provide advisory locking to coordinate
+  The [[lock]] and [[unlock]] methods provide advisory locking to coordinate
   expensive operations across processes.
 
-  You do not need to wrap every storage call in a lock; [[store!]], [[load]],
+  You do not need to wrap every storage call in a lock; [[store]], [[load]],
   and other basic operations are already thread-safe.
   Use locking for higher-level operations that need synchronization, such as
   certificate renewal where only one process should attempt issuance at a time.
@@ -55,8 +55,8 @@
 
   Implementations must be safe for concurrent use from multiple threads.
   Methods should block until their operation is complete: [[load]] should
-  always return the value from the last call to [[store!]] for a given key,
-  and concurrent calls to [[store!]] must not corrupt data.
+  always return the value from the last call to [[store]] for a given key,
+  and concurrent calls to [[store]] must not corrupt data.
 
   Callers will typically invoke storage methods from virtual threads, so
   blocking I/O is expected and appropriate.
@@ -73,7 +73,7 @@
 
   (let [storage (fs/file-storage {:root \"/var/acme\"})]
     ;; Store and retrieve data
-    (s/store-string! storage nil \"certs/example.com\" cert-pem)
+    (s/store-string storage nil \"certs/example.com\" cert-pem)
     (s/load-string storage nil \"certs/example.com\")
 
     ;; List with prefix
@@ -129,25 +129,25 @@
   Implementations must be safe for concurrent use.
   Methods should block until their operation is complete.
 
-  [[load]], [[delete!]], [[list]], and [[stat]] should throw
+  [[load]], [[delete]], [[list]], and [[stat]] should throw
   [[java.nio.file.NoSuchFileException]] when the key does not exist."
 
-  (store!
+  (store
     [this lease key value-bytes]
     "Stores `value-bytes` at `key`, creating parent directories as needed.
 
     Overwrites any existing value at this key.
-    Concurrent calls to [[store!]] must not corrupt data.
+    Concurrent calls to [[store]] must not corrupt data.
     Returns `nil`.")
 
   (load
     [this lease key]
     "Returns the bytes stored at `key`.
 
-    Always returns the value from the last successful [[store!]] for this key.
+    Always returns the value from the last successful [[store]] for this key.
     Throws [[java.nio.file.NoSuchFileException]] if `key` does not exist.")
 
-  (delete!
+  (delete
     [this lease key]
     "Deletes `key` and any keys prefixed by it (recursive delete).
 
@@ -177,25 +177,25 @@
 
     Throws [[java.nio.file.NoSuchFileException]] if `key` does not exist.")
 
-  (lock!
+  (lock
     [this lease name]
     "Acquires an advisory lock for `name`, blocking until available.
 
     Only one lock for a given name can exist at a time.
-    A call to [[lock!]] for a name that is already locked blocks until the
+    A call to [[lock]] for a name that is already locked blocks until the
     lock is released or becomes stale.
 
     Lock names are sanitized via [[safe-key]].
     Implementations must honor lease cancellation.
     Returns `nil` when the lock is acquired.")
 
-  (unlock!
+  (unlock
     [this lease name]
     "Releases the advisory lock for `name`.
 
-    This method must only be called after a successful call to [[lock!]], and
+    This method must only be called after a successful call to [[lock]], and
     only after the critical section is finished, even if it threw an exception.
-    [[unlock!]] cleans up any resources allocated during [[lock!]].
+    [[unlock]] cleans up any resources allocated during [[lock]].
 
     Returns `nil`.
     Throws only if the lock could not be released."))
@@ -206,7 +206,7 @@
   Implementations that support non-blocking lock attempts should extend this
   protocol in addition to [[Storage]]."
 
-  (try-lock!
+  (try-lock
     [this lease name]
     "Attempts to acquire the lock for `name` without blocking.
 
@@ -214,7 +214,7 @@
     obtained (e.g., already held by another process).
     Implementations must honor lease cancellation.
 
-    After a successful [[try-lock!]], you must call [[unlock!]] when the
+    After a successful [[try-lock]], you must call [[unlock]] when the
     critical section is finished, even if it threw an exception."))
 
 (defprotocol LockLeaseRenewer
@@ -226,7 +226,7 @@
 
   This is useful for long-running operations that need synchronization."
 
-  (renew-lock-lease!
+  (renew-lock-lease
     [this lease lock-key lease-duration]
     "Extends the lease on `lock-key` by `lease-duration`.
 
@@ -283,28 +283,28 @@
        (remove str/blank?)
        (str/join "/")))
 
-(defn store-string!
+(defn store-string
   "Stores UTF-8 encoded `s` at `key`.
 
-  Convenience wrapper around [[store!]] for text content.
+  Convenience wrapper around [[store]] for text content.
   See [[load-string]] for retrieval."
   [storage lease key ^String s]
-  (store! storage lease key (.getBytes s StandardCharsets/UTF_8)))
+  (store storage lease key (.getBytes s StandardCharsets/UTF_8)))
 
 (defn load-string
   "Loads UTF-8 text from `key`.
 
   Convenience wrapper around [[load]] for text content.
   Throws [[java.nio.file.NoSuchFileException]] if `key` does not exist.
-  See [[store-string!]] for storage."
+  See [[store-string]] for storage."
   [storage lease key]
   (String. ^bytes (load storage lease key) StandardCharsets/UTF_8))
 
 (defn with-lock
   "Executes `f` while holding the lock `lock-name`, releasing on exit.
 
-  Acquires the lock via [[lock!]], runs `f` (a zero-argument function), and
-  releases via [[unlock!]] in a finally block regardless of success or failure.
+  Acquires the lock via [[lock]], runs `f` (a zero-argument function), and
+  releases via [[unlock]] in a finally block regardless of success or failure.
 
   If the lock guards an idempotent operation, `f` should verify that the work
   still needs to be done.
@@ -320,10 +320,10 @@
         (write-certificate!))))
   ```
 
-  See also: [[lock!]], [[unlock!]]"
+  See also: [[lock]], [[unlock]]"
   [storage lease lock-name f]
-  (lock! storage lease lock-name)
+  (lock storage lease lock-name)
   (try
     (f)
     (finally
-      (unlock! storage lease lock-name))))
+      (unlock storage lease lock-name))))

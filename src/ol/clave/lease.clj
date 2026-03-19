@@ -59,10 +59,10 @@
   and stop work promptly and correctly.
 
   At a minimum, check the lease before starting expensive operations.
-  Call [[active?!]] at the top of your function and at natural checkpoints: the
+  Call [[ensure-active]] at the top of your function and at natural checkpoints: the
   start of each loop iteration, before issuing a network request, or after
   returning from a potentially slow sub-call.
-  If the lease has been cancelled, [[active?!]] throws an exception containing
+  If the lease has been cancelled, [[ensure-active]] throws an exception containing
   the cancellation cause, which unwinds the stack cleanly.
 
   For non-throwing checks, use [[active?]] and return early or break out of
@@ -115,7 +115,7 @@
   (deref (l/done-signal lease))
   ```
 
-  See also: [[with-cancel]], [[with-timeout]], [[with-deadline]], [[active?!]]"
+  See also: [[with-cancel]], [[with-timeout]], [[with-deadline]], [[ensure-active]]"
   (:import
    [java.lang.ref WeakReference]
    [java.time Duration]
@@ -453,7 +453,7 @@
   [^Lease parent timeout]
   (with-deadline parent (timeout->deadline timeout)))
 
-(defn active?!
+(defn ensure-active
   "Returns `lease` if active, otherwise throws the cancellation cause.
 
   Use this for explicit cancellation checks that should fail fast.
@@ -462,12 +462,12 @@
 
   ```clojure
   ;; Check and continue
-  (active?! lease)
+  (ensure-active lease)
   (do-next-step)
 
   ;; In a loop
   (loop []
-    (active?! lease)
+    (ensure-active lease)
     (when (more-work?)
       (process-item)
       (recur)))

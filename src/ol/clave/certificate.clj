@@ -96,7 +96,7 @@
                                         :key-authorization key-auth
                                         :identifier identifier}
                         json-bytes (.getBytes (pr-str challenge-data) "UTF-8")]
-                    (ol.clave.storage/store! storage lease storage-key json-bytes)
+                    (ol.clave.storage/store storage lease storage-key json-bytes)
                     ;; Call underlying solver
                     (present-fn lease challenge account-key)))))
       (update :cleanup
@@ -110,7 +110,7 @@
                       (try
                         (let [identifier (get-in challenge [:authorization ::specs/identifier :value])
                               storage-key (storage-key-fn issuer-key identifier)]
-                          (ol.clave.storage/delete! storage lease storage-key))
+                          (ol.clave.storage/delete storage lease storage-key))
                         (catch Exception e
                           (log/log! {:level :warn
                                      :id ::challenge-token-cleanup-failed
@@ -255,7 +255,7 @@
   [the-lease session order-url poll-timeout poll-interval]
   (let [deadline (+ (System/currentTimeMillis) poll-timeout)]
     (loop [session session]
-      (lease/active?! the-lease)
+      (lease/ensure-active the-lease)
       (let [[session ord] (cmd/get-order the-lease session order-url)
             status (::specs/status ord)]
         (cond
@@ -321,7 +321,7 @@
   [the-lease session identifiers cert-keypair solvers opts]
   ;; Phase 1: Validation
   (validate-solvers solvers)
-  (lease/active?! the-lease)
+  (lease/ensure-active the-lease)
 
   (let [account-key (::specs/account-key session)
         {:keys [preferred-challenges poll-interval-ms poll-timeout-ms]} opts
@@ -334,7 +334,7 @@
       (let [order-opts (select-keys opts [:not-before :not-after :profile])
             order-request (order/create identifiers order-opts)
             [session order] (cmd/new-order the-lease session order-request)]
-        (lease/active?! the-lease)
+        (lease/ensure-active the-lease)
 
         ;; Phase 3: Authorization Fetching
         (let [authz-urls (order/authorizations order)]
@@ -401,14 +401,14 @@
                                       (try
                                         (let [authz-url (::specs/authorization-location authz)
                                               [sess _final-authz] (cmd/poll-authorization the-lease sess authz-url)]
-                                          (stats/record! challenge-type true)
+                                          (stats/record challenge-type true)
                                           sess)
                                         (catch Exception e
-                                          (stats/record! challenge-type false)
+                                          (stats/record challenge-type false)
                                           (throw e))))
                                     session
                                     selected)]
-                (lease/active?! the-lease)
+                (lease/ensure-active the-lease)
 
                 ;; Phase 9: Cleanup happens in finally
 
@@ -420,7 +420,7 @@
                       csr-data (csr-impl/create-csr cert-keypair domains)
                       [session order] (cmd/finalize-order the-lease session order csr-data)
                       [session order] (cmd/poll-order the-lease session (order/url order))
-                      _ (lease/active?! the-lease)
+                      _ (lease/ensure-active the-lease)
                       ;; Phase 11: Certificate Download
                       cert-url (order/certificate-url order)
                       [session cert-result] (cmd/get-certificate the-lease session cert-url)

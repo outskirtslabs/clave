@@ -229,7 +229,7 @@
                            :throw false
                            :as :bytes))]
     (try
-      (lease/active?! lease)
+      (lease/ensure-active lease)
       (let [raw-resp (http/request request)
             headers (normalize-headers (:headers raw-resp))
             resp (assoc raw-resp :headers headers)
@@ -272,7 +272,7 @@
   (loop [i 0]
     (when (> i 0)
       (lease/sleep lease traffic-calming-ms))
-    (lease/active?! lease)
+    (lease/ensure-active lease)
     (let [as (:as req)
           {:keys [status headers body-bytes retry? err nonce] :as res}
           (do-http-request lease session (dissoc req :as))]
@@ -383,7 +383,7 @@
          fivexx 0]
     (when (> attempt 1)
       (lease/sleep lease default-traffic-calming-ms))
-    (lease/active?! lease)
+    (lease/ensure-active lease)
     (let [[session nonce] (get-nonce lease session)
           payload-bytes (jws-encode-json private-key kid nonce endpoint payload)
           request-headers (merge {:content-type "application/jose+json"} headers)

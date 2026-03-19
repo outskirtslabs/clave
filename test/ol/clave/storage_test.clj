@@ -74,7 +74,7 @@
         l (lease/background)]
     (try
       (is (thrown? IllegalArgumentException
-                   (storage/store! fs l "../bad" (.getBytes "x" StandardCharsets/UTF_8))))
+                   (storage/store fs l "../bad" (.getBytes "x" StandardCharsets/UTF_8))))
       (finally
         (delete-recursively! dir)))))
 
@@ -94,8 +94,8 @@
         fs (file/file-storage {:root dir})
         l (lease/background)]
     (try
-      (storage/store! fs l "a/file1" (.getBytes "x" StandardCharsets/UTF_8))
-      (storage/store! fs l "a/b/file2" (.getBytes "y" StandardCharsets/UTF_8))
+      (storage/store fs l "a/file1" (.getBytes "x" StandardCharsets/UTF_8))
+      (storage/store fs l "a/b/file2" (.getBytes "y" StandardCharsets/UTF_8))
       (is (= #{"a/file1" "a/b"}
              (set (storage/list fs l "a" false))))
       (is (= #{"a/file1" "a/b" "a/b/file2"}
@@ -108,9 +108,9 @@
         fs (file/file-storage {:root dir})
         l (lease/background)]
     (try
-      (storage/store! fs l "a/file1" (.getBytes "x" StandardCharsets/UTF_8))
-      (storage/store! fs l "a/b/file2" (.getBytes "y" StandardCharsets/UTF_8))
-      (storage/delete! fs l "a")
+      (storage/store fs l "a/file1" (.getBytes "x" StandardCharsets/UTF_8))
+      (storage/store fs l "a/b/file2" (.getBytes "y" StandardCharsets/UTF_8))
+      (storage/delete fs l "a")
       (is (false? (storage/exists? fs l "a/file1")))
       (is (false? (storage/exists? fs l "a/b/file2")))
       (finally
@@ -124,9 +124,9 @@
         stale-ms (- (System/currentTimeMillis) 15000)]
     (try
       (write-lock-meta! lock stale-ms stale-ms)
-      (storage/lock! fs l "stale")
+      (storage/lock fs l "stale")
       (is (Files/exists lock (make-array java.nio.file.LinkOption 0)))
-      (storage/unlock! fs l "stale")
+      (storage/unlock fs l "stale")
       (finally
         (delete-recursively! dir)))))
 
@@ -136,13 +136,13 @@
         l (lease/background)
         lock (lock-file dir "fresh")]
     (try
-      (storage/lock! fs l "fresh")
+      (storage/lock fs l "fresh")
       (let [start-updated (:updated-ms (read-lock-meta lock))
             done? (#'file/update-lockfile-freshness! lock)
             current-updated (:updated-ms (read-lock-meta lock))]
         (is (false? done?))
         (is (< start-updated current-updated)))
-      (storage/unlock! fs l "fresh")
+      (storage/unlock fs l "fresh")
       (finally
         (delete-recursively! dir)))))
 
@@ -159,7 +159,7 @@
           (is (true? ok))
           (is (nil? err))))
       (is (Files/exists lock (make-array java.nio.file.LinkOption 0)))
-      (storage/unlock! fs l "empty")
+      (storage/unlock fs l "empty")
       (finally
         (delete-recursively! dir)))))
 
@@ -169,8 +169,8 @@
         l (lease/background)
         [cancellable cancel] (lease/with-cancel (lease/background))]
     (try
-      (storage/store! fs l "a/file1" (.getBytes "x" StandardCharsets/UTF_8))
-      (storage/store! fs l "a/file2" (.getBytes "y" StandardCharsets/UTF_8))
+      (storage/store fs l "a/file1" (.getBytes "x" StandardCharsets/UTF_8))
+      (storage/store fs l "a/file2" (.getBytes "y" StandardCharsets/UTF_8))
       (cancel)
       (is (thrown? clojure.lang.ExceptionInfo
                    (storage/list fs cancellable "a" true)))
@@ -185,11 +185,11 @@
         a (bytes-filled size 97)
         b (bytes-filled size 98)]
     (try
-      (storage/store! fs l "atomic" a)
+      (storage/store fs l "atomic" a)
       (let [done (promise)]
         (future
           (try
-            (storage/store! fs l "atomic" b)
+            (storage/store fs l "atomic" b)
             (deliver done :ok)
             (catch Throwable t
               (deliver done t))))
@@ -212,7 +212,7 @@
         fs (file/file-storage {:root dir})
         l (lease/background)]
     (try
-      (storage/store! fs l "foo" (.getBytes "bar" java.nio.charset.StandardCharsets/UTF_8))
+      (storage/store fs l "foo" (.getBytes "bar" java.nio.charset.StandardCharsets/UTF_8))
       (is (= "bar" (storage/load-string fs l "foo")))
       (finally
         (delete-recursively! dir)))))
@@ -223,7 +223,7 @@
     (try
       (testing "one-arg constructor accepts opts with :root"
         (let [fs (file/file-storage {:root dir})]
-          (storage/store! fs l "foo" (.getBytes "bar" StandardCharsets/UTF_8))
+          (storage/store fs l "foo" (.getBytes "bar" StandardCharsets/UTF_8))
           (is (= "bar" (storage/load-string fs l "foo")))))
 
       (testing "one-arg constructor requires a valid :root"
@@ -245,10 +245,10 @@
         b (bytes-filled size 98)
         done (promise)]
     (try
-      (storage/store! fs l "foo" a)
+      (storage/store fs l "foo" a)
       (future
         (try
-          (storage/store! fs l "foo" b)
+          (storage/store fs l "foo" b)
           (deliver done :ok)
           (catch Throwable t
             (deliver done t))))
@@ -269,15 +269,15 @@
         [cancelled cancel] (lease/with-cancel (lease/background))]
     (cancel)
     (try
-      (storage/lock! fs l "foo")
+      (storage/lock fs l "foo")
       (with-redefs [file/lock-poll-interval (Duration/ofMillis 5)
                     file/sleep-with-lease! (fn [_ _] nil)]
-        (is (false? (storage/try-lock! fs l "foo"))))
+        (is (false? (storage/try-lock fs l "foo"))))
       (is (thrown? clojure.lang.ExceptionInfo
-                   (storage/lock! fs cancelled "foo")))
-      (storage/unlock! fs l "foo")
-      (is (true? (storage/try-lock! fs l "foo")))
-      (storage/unlock! fs l "foo")
+                   (storage/lock fs cancelled "foo")))
+      (storage/unlock fs l "foo")
+      (is (true? (storage/try-lock fs l "foo")))
+      (storage/unlock fs l "foo")
       (finally
         (delete-recursively! dir)))))
 

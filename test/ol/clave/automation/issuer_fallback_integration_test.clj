@@ -94,7 +94,7 @@
                                  :issuer-selection :in-order
                                  :solvers {:http-01 solver}
                                  :http-client pebble/http-client-opts}
-              system (automation/create-started! automation-config)]
+              system (automation/create-started automation-config)]
           (try
             (let [queue (automation/get-event-queue system)]
               ;; Step 4: Call manage-domains with the blocked domain
@@ -122,7 +122,7 @@
                 (let [old-hash (:hash bundle)]
                   ;; Force renewal by setting threshold > 1.0 (always needs renewal)
                   (binding [decisions/*renewal-threshold* 1.01]
-                    (automation/trigger-maintenance! system)
+                    (automation/trigger-maintenance system)
                     ;; Wait for renewal event, skipping other events (like ocsp-failed)
                     (let [renewal-event (loop [deadline (+ (System/currentTimeMillis) 30000)]
                                           (when (< (System/currentTimeMillis) deadline)
@@ -192,7 +192,7 @@
                                                                :mac-key eab-mac-key}}]
                                  :solvers {:http-01 solver}
                                  :http-client pebble/http-client-opts}
-              system (automation/create-started! automation-config)]
+              system (automation/create-started automation-config)]
           (try
             (let [queue (automation/get-event-queue system)]
               ;; Call manage-domains

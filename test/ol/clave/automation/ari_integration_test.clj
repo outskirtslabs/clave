@@ -38,7 +38,7 @@
                   :http-client pebble/http-client-opts
                   :ocsp {:enabled false}
                   :ari {:enabled true}}
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         (let [queue (automation/get-event-queue system)]
           (automation/manage-domains system [domain])
@@ -84,7 +84,7 @@
           (let [initial-hash (:hash (automation/lookup-cert system domain))]
             (is (some? initial-hash) "Should have initial cert hash")
             (binding [decisions/*renewal-threshold* 1.01]
-              (automation/trigger-maintenance! system)
+              (automation/trigger-maintenance system)
               (let [events (test-util/wait-for-events queue {:expected #{:certificate-renewed}
                                                              :timeout-ms 60000})
                     renewed-event (first (filter #(= :certificate-renewed (:type %)) events))]
@@ -107,7 +107,7 @@
                   :http-client pebble/http-client-opts
                   :ocsp {:enabled false}
                   :ari {:enabled true}}
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         (let [queue (automation/get-event-queue system)]
           (automation/manage-domains system [domain])
@@ -127,7 +127,7 @@
               (let [bundle (automation/lookup-cert system domain)
                     domain-names (:names bundle)]
                   ;; Submit a manual ARI fetch command by triggering maintenance
-                (automation/trigger-maintenance! system)
+                (automation/trigger-maintenance system)
                 ;; Step 5: Wait briefly for any async events
                 (test-util/wait-for-events queue {:timeout-ms 500})
                 ;; Note: Due to how the system works, ARI might not be re-fetched

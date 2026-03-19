@@ -45,7 +45,7 @@
                                   (when (< n 40)
                                     (Thread/sleep 50)
                                     (recur (inc n)))))))]
-      (let [system (automation/create-started! config)]
+      (let [system (automation/create-started config)]
         (try
           (let [queue (automation/get-event-queue system)]
             (automation/manage-domains system [domain])
@@ -73,7 +73,7 @@
           (finally
             (automation/stop system))))
 
-      (let [system (automation/create-started! config)]
+      (let [system (automation/create-started config)]
         (try
           (let [bundle (wait-for-bundle system)
                 ari-data (:ari-data bundle)]
@@ -89,7 +89,7 @@
           (finally
             (automation/stop system))))
 
-      (let [system (automation/create-started! config)]
+      (let [system (automation/create-started config)]
         (try
           (let [queue (automation/get-event-queue system)
                 initial-bundle (wait-for-bundle system)
@@ -100,7 +100,7 @@
             (is (some? initial-selected-time)
                 "Should have initial ARI selected-time")
             (binding [decisions/*renewal-threshold* 1.01]
-              (automation/trigger-maintenance! system)
+              (automation/trigger-maintenance system)
               (let [events (test-util/wait-for-events queue {:expected #{:certificate-renewed}
                                                              :timeout-ms 15000})
                     renewed-event (first (filter #(= :certificate-renewed (:type %)) events))]

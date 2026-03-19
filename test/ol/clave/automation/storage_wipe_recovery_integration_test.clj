@@ -65,7 +65,7 @@
                   :http-client pebble/http-client-opts
                   :ocsp {:enabled false}
                   :ari {:enabled false}}
-          system (automation/create-started! config)
+          system (automation/create-started config)
           queue (automation/get-event-queue system)]
       (try
         ;; Step 1-2: Start system and obtain certificate
@@ -114,7 +114,7 @@
         ;; Step 5: Trigger maintenance loop
         ;; The maintenance cycle checks storage consistency and triggers re-obtain
         (println "Step 5: Triggering maintenance loop")
-        (system/trigger-maintenance! system)
+        (system/trigger-maintenance system)
 
         ;; Step 6-9: Verify system detects missing storage and re-obtains certificate
         ;; Wait for certificate-obtained event

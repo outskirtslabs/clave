@@ -108,24 +108,24 @@
       (is (true? (not (lease/active? child3)))))))
 
 (deftest active-bang-returns-lease-when-active
-  (testing "active?! returns lease when active"
+  (testing "ensure-active returns lease when active"
     (let [[l cancel] (lease/with-cancel (lease/background))]
-      (is (= l (lease/active?! l)))
+      (is (= l (lease/ensure-active l)))
       (cancel))))
 
 (deftest active-bang-throws-when-cancelled
-  (testing "active?! throws cancellation cause"
+  (testing "ensure-active throws cancellation cause"
     (let [[l cancel] (lease/with-cancel (lease/background))]
       (cancel)
       (is (thrown-with-msg? clojure.lang.ExceptionInfo #"cancelled"
-                            (lease/active?! l))))))
+                            (lease/ensure-active l))))))
 
 (deftest active-bang-throws-when-timed-out
-  (testing "active?! throws deadline-exceeded cause"
+  (testing "ensure-active throws deadline-exceeded cause"
     (let [[l _] (lease/with-timeout (lease/background) 10)]
       (Thread/sleep 50)
       (is (thrown-with-msg? clojure.lang.ExceptionInfo #"deadline exceeded"
-                            (lease/active?! l))))))
+                            (lease/ensure-active l))))))
 
 (deftest with-timeout-accepts-duration
   (testing "with-timeout accepts java.time.Duration"

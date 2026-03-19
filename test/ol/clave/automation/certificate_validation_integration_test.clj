@@ -44,7 +44,7 @@
     (let [storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
           domain "chain.localhost"
           solver (make-http01-solver)
-          system (automation/create-started! (make-config storage solver))]
+          system (automation/create-started (make-config storage solver))]
       (try
         (let [queue (automation/get-event-queue system)]
           (automation/manage-domains system [domain])
@@ -83,7 +83,7 @@
                   (.minus now 90 ChronoUnit/DAYS)
                   (.minus now 1 ChronoUnit/DAYS))]
         (test-util/store-test-cert! storage issuer-key domain cert {:managed true})
-        (let [system (automation/create-started! (make-config storage solver))]
+        (let [system (automation/create-started (make-config storage solver))]
           (try
             (let [queue (automation/get-event-queue system)
                   events (test-util/wait-for-events queue {:expected #{:certificate-renewed}
@@ -109,7 +109,7 @@
             failing-solver {:present (fn [_ _ _] (throw (ex-info "Fail" {:type :test})))
                             :cleanup (fn [_ _ _] nil)}]
         (test-util/store-test-cert! storage issuer-key domain cert {:managed true})
-        (let [system (automation/create-started! (make-config storage failing-solver))]
+        (let [system (automation/create-started (make-config storage failing-solver))]
           (try
             (let [queue (automation/get-event-queue system)
                   events (test-util/wait-for-events queue {:expected #{:certificate-failed}
@@ -136,7 +136,7 @@
                 (.plus now 90 ChronoUnit/DAYS))]
       ;; Non-managed cert - just load it
       (test-util/store-test-cert! storage issuer-key domain cert)
-      (let [system (automation/create-started! (make-config storage))]
+      (let [system (automation/create-started (make-config storage))]
         (try
           ;; The cert should be loaded and available via lookup
           (let [bundle (automation/lookup-cert system domain)]
@@ -145,7 +145,7 @@
             (is (.isAfter ^Instant (:not-after bundle) now)))
           ;; Trigger maintenance - should NOT renew a not-yet-valid cert
           (let [queue (automation/get-event-queue system)]
-            (automation/trigger-maintenance! system)
+            (automation/trigger-maintenance system)
             (let [events (test-util/wait-for-events queue {:forbidden #{:certificate-renewed}
                                                            :timeout-ms 500})]
               (is (not (has-event? events :certificate-renewed)))))

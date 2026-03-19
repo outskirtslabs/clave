@@ -38,7 +38,7 @@
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
           ;; Step 1: Obtain a valid certificate first
-          system1 (automation/create-started! config)]
+          system1 (automation/create-started config)]
       (try
         (let [queue1 (automation/get-event-queue system1)]
           (automation/manage-domains system1 [domain])
@@ -57,9 +57,9 @@
       (let [issuer-key (config/issuer-key-from-url (pebble/uri))
             cert-key (config/cert-storage-key issuer-key domain)]
         ;; Overwrite with truncated garbage data
-        (storage/store-string! test-util/*storage-impl* nil cert-key "GARBAGE NOT A PEM"))
+        (storage/store-string test-util/*storage-impl* nil cert-key "GARBAGE NOT A PEM"))
       ;; Step 3-7: Start a new system and verify behavior
-      (let [system2 (automation/create-started! config)
+      (let [system2 (automation/create-started config)
             queue2 (automation/get-event-queue system2)]
         (try
           ;; Step 4: Verify corrupted file is detected
@@ -95,7 +95,7 @@
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
           ;; Step 1: Obtain a valid certificate first
-          system1 (automation/create-started! config)]
+          system1 (automation/create-started config)]
       (try
         (let [queue1 (automation/get-event-queue system1)]
           (automation/manage-domains system1 [domain])
@@ -114,9 +114,9 @@
       (let [issuer-key (config/issuer-key-from-url (pebble/uri))
             key-key (config/key-storage-key issuer-key domain)]
         ;; Overwrite with truncated garbage data
-        (storage/store-string! test-util/*storage-impl* nil key-key "GARBAGE NOT A KEY"))
+        (storage/store-string test-util/*storage-impl* nil key-key "GARBAGE NOT A KEY"))
       ;; Step 3-7: Start a new system and verify behavior
-      (let [system2 (automation/create-started! config)
+      (let [system2 (automation/create-started config)
             queue2 (automation/get-event-queue system2)]
         (try
           ;; Step 4: Verify corrupted file is detected

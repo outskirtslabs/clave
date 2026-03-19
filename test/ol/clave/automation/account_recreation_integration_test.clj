@@ -27,8 +27,8 @@
         public-key-key (config/account-public-key-storage-key issuer-key)
         private-pem (crypto/encode-private-key-pem (.getPrivate keypair))
         public-pem (crypto/encode-public-key-pem (.getPublic keypair))]
-    (storage/store-string! storage nil private-key-key private-pem)
-    (storage/store-string! storage nil public-key-key public-pem)))
+    (storage/store-string storage nil private-key-key private-pem)
+    (storage/store-string storage nil public-key-key public-pem)))
 
 (deftest account-auto-recreated-when-ca-reset
   (testing "Account is automatically recreated when CA no longer has the account"
@@ -54,7 +54,7 @@
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
           ;; Start automation system - will load the pre-existing key and auto-create account
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         (let [queue (automation/get-event-queue system)]
           ;; Step 4: Trigger certificate obtain

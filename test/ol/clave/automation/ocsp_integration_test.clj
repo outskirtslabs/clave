@@ -60,12 +60,12 @@
             domain "shortlived.localhost"
             cert (test-util/generate-test-certificate domain now (.plus now 1 ChronoUnit/DAYS))]
         (test-util/store-test-cert! storage issuer-key domain cert)
-        (let [system (automation/create-started! (make-config storage))]
+        (let [system (automation/create-started (make-config storage))]
           (try
             (let [queue (automation/get-event-queue system)
                   bundle (automation/lookup-cert system domain)]
               (is (decisions/short-lived-cert? bundle))
-              (automation/trigger-maintenance! system)
+              (automation/trigger-maintenance system)
               (is (empty? (ocsp-events (test-util/collect-events queue 20)))))
             (finally
               (automation/stop system))))))
@@ -75,12 +75,12 @@
             domain "sixday.localhost"
             cert (test-util/generate-test-certificate domain now (.plus now 6 ChronoUnit/DAYS))]
         (test-util/store-test-cert! storage issuer-key domain cert)
-        (let [system (automation/create-started! (make-config storage))]
+        (let [system (automation/create-started (make-config storage))]
           (try
             (let [queue (automation/get-event-queue system)
                   bundle (automation/lookup-cert system domain)]
               (is (decisions/short-lived-cert? bundle))
-              (automation/trigger-maintenance! system)
+              (automation/trigger-maintenance system)
               (is (empty? (ocsp-events (test-util/collect-events queue 20)))))
             (finally
               (automation/stop system))))))
@@ -90,12 +90,12 @@
             domain "noocsp.localhost"
             cert (test-util/generate-test-certificate domain now (.plus now 90 ChronoUnit/DAYS))]
         (test-util/store-test-cert! storage issuer-key domain cert)
-        (let [system (automation/create-started! (assoc-in (make-config storage) [:ocsp :enabled] false))]
+        (let [system (automation/create-started (assoc-in (make-config storage) [:ocsp :enabled] false))]
           (try
             (let [queue (automation/get-event-queue system)
                   bundle (automation/lookup-cert system domain)]
               (is (not (decisions/short-lived-cert? bundle)))
-              (automation/trigger-maintenance! system)
+              (automation/trigger-maintenance system)
               (is (empty? (ocsp-events (test-util/collect-events queue 20)))))
             (finally
               (automation/stop system))))))))
@@ -108,7 +108,7 @@
         solver (make-http01-solver)
         _ (ocsp-harness/clear-ocsp-responses!)
         _ (ocsp-harness/set-ocsp-response! "*" :good)
-        system (automation/create-started! (make-config storage solver))]
+        system (automation/create-started (make-config storage solver))]
     (try
       (let [queue (automation/get-event-queue system)]
         (testing "OCSP staple fetched after certificate obtain"
@@ -126,7 +126,7 @@
         (testing "OCSP staple refreshed when past threshold"
           (binding [decisions/*ocsp-refresh-threshold* 0]
             (test-util/wait-for-events queue {:timeout-ms 200})
-            (automation/trigger-maintenance! system)
+            (automation/trigger-maintenance system)
             (let [events (test-util/wait-for-events queue {:expected #{:ocsp-stapled}
                                                            :timeout-ms 10000})]
               (is (has-event? events :ocsp-stapled) (str "Got: " (mapv :type events)))
@@ -142,7 +142,7 @@
         _ (ocsp-harness/clear-ocsp-responses!)
         _ (ocsp-harness/set-ocsp-response! "*" :good)
         config (make-config storage solver)
-        system1 (automation/create-started! config)]
+        system1 (automation/create-started config)]
     (try
       (testing "OCSP staple persisted to storage"
         (let [queue (automation/get-event-queue system1)]
@@ -162,7 +162,7 @@
 
       (testing "OCSP staple loaded from storage on restart"
         (let [config2 (assoc config :ocsp {:enabled false})
-              system2 (automation/create-started! config2)]
+              system2 (automation/create-started config2)]
           (try
             (let [bundle (automation/lookup-cert system2 domain)]
               (is (some? bundle))
@@ -180,7 +180,7 @@
         solver (make-http01-solver)
         _ (ocsp-harness/clear-ocsp-responses!)
         _ (ocsp-harness/set-ocsp-response! "*" :good)
-        system (automation/create-started! (make-config storage solver))]
+        system (automation/create-started (make-config storage solver))]
     (try
       (let [queue (automation/get-event-queue system)]
         (automation/manage-domains system [domain])
@@ -193,7 +193,7 @@
             (ocsp-harness/clear-ocsp-responses!)
             (ocsp-harness/set-ocsp-response! "*" {:revoked :unspecified})
             (binding [decisions/*ocsp-refresh-threshold* 0]
-              (automation/trigger-maintenance! system)
+              (automation/trigger-maintenance system)
               (let [events (test-util/wait-for-events queue {:expected #{:certificate-revoked
                                                                          :certificate-obtained}
                                                              :timeout-ms 15000})
@@ -206,7 +206,7 @@
             (ocsp-harness/clear-ocsp-responses!)
             (ocsp-harness/set-ocsp-response! "*" {:revoked :key-compromise})
             (binding [decisions/*ocsp-refresh-threshold* 0]
-              (automation/trigger-maintenance! system)
+              (automation/trigger-maintenance system)
               (let [events (test-util/wait-for-events queue {:expected #{:certificate-revoked
                                                                          :certificate-obtained}
                                                              :timeout-ms 15000})

@@ -30,19 +30,19 @@
      (when (fresh? entry ttl-ms)
        (:directory entry)))))
 
-(defn cache-put!
+(defn cache-put
   "Stores directory in cache with current timestamp. Returns directory."
   [url directory]
   (swap! directory-cache assoc url {:directory  directory
                                     :fetched-at (now-ms)})
   directory)
 
-(defn cache-clear!
+(defn cache-clear
   "Clears entire directory cache. Useful for testing."
   []
   (reset! directory-cache {}))
 
-(defn cache-evict!
+(defn cache-evict
   "Removes single entry from cache."
   [url]
   (swap! directory-cache dissoc url))

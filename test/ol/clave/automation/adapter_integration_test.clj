@@ -50,7 +50,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts}
-          system (automation/create-started! config)]
+          system (automation/create-started config)]
       (try
         ;; Step 3: Get event queue for adapter consumption
         (let [queue (automation/get-event-queue system)]
@@ -100,7 +100,7 @@
                 ;; Step 10: Force certificate renewal
                 ;; Override threshold to trigger immediate renewal
                 (binding [decisions/*renewal-threshold* 1.01]
-                  (automation/trigger-maintenance! system)
+                  (automation/trigger-maintenance system)
 
                   ;; Step 11: Adapter receives :certificate-renewed event
                   (let [renewal-events (collect-events-until

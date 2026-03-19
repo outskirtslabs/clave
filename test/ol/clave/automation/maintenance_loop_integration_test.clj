@@ -58,7 +58,7 @@
                                          :solvers {:http-01 (make-solver)}
                                          :http-client pebble/http-client-opts})
               queue (automation/get-event-queue system)]
-          (automation/start! system)
+          (automation/start system)
           (try
             (let [events (test-util/wait-for-events queue {:expected #{:certificate-renewed}
                                                            :timeout-ms 8000})
@@ -85,14 +85,14 @@
                           (throw (ex-info "Simulated failure" {:domain domain})))
                         nil)]
         (binding [decisions/*renewal-threshold* 1.01]
-          (let [system (automation/create-started! {:storage storage
-                                                    :issuers [{:directory-url (pebble/uri)}]
-                                                    :solvers {:http-01 (make-solver)}
-                                                    :http-client pebble/http-client-opts
-                                                    :config-fn config-fn})]
+          (let [system (automation/create-started {:storage storage
+                                                   :issuers [{:directory-url (pebble/uri)}]
+                                                   :solvers {:http-01 (make-solver)}
+                                                   :http-client pebble/http-client-opts
+                                                   :config-fn config-fn})]
             (try
               (let [queue (automation/get-event-queue system)]
-                (automation/trigger-maintenance! system)
+                (automation/trigger-maintenance system)
                 (let [events (test-util/wait-for-events queue {:timeout-ms 1000})
                       renewed (->> events
                                    (filter #(= :certificate-renewed (:type %)))
@@ -127,14 +127,14 @@
                                     {:managed true}))
       (binding [system/*config-fn-timeout-ms* 100
                 decisions/*renewal-threshold* 1.01]
-        (let [system (automation/create-started! {:storage storage
-                                                  :issuers [{:directory-url (pebble/uri)}]
-                                                  :solvers {:http-01 (make-solver)}
-                                                  :http-client pebble/http-client-opts
-                                                  :config-fn config-fn})]
+        (let [system (automation/create-started {:storage storage
+                                                 :issuers [{:directory-url (pebble/uri)}]
+                                                 :solvers {:http-01 (make-solver)}
+                                                 :http-client pebble/http-client-opts
+                                                 :config-fn config-fn})]
           (try
             (let [queue (automation/get-event-queue system)]
-              (automation/trigger-maintenance! system)
+              (automation/trigger-maintenance system)
               (let [events (test-util/wait-for-events queue {:timeout-ms 1000})]
                 (is (some #(= domain-ok (get-in % [:data :domain])) events))
                 (is (not (some #(and (= :certificate-renewed (:type %))
@@ -170,10 +170,10 @@
                                                                        (.minus now 80 ChronoUnit/DAYS)
                                                                        (.plus now 10 ChronoUnit/DAYS))
                                   {:managed true})
-      (let [system (automation/create-started! {:storage storage
-                                                :issuers [{:directory-url (pebble/uri)}]
-                                                :solvers {:http-01 (make-solver)}
-                                                :http-client pebble/http-client-opts})]
+      (let [system (automation/create-started {:storage storage
+                                               :issuers [{:directory-url (pebble/uri)}]
+                                               :solvers {:http-01 (make-solver)}
+                                               :http-client pebble/http-client-opts})]
         (try
           (is (some? (automation/lookup-cert system d-valid)))
           (is (some? (automation/lookup-cert system d-expired)))

@@ -22,7 +22,7 @@
   (jetty-ext/sni-alpn-ssl-context lookup-fn (tls-alpn/challenge-registry solver))
 
   ;; After TLS server starts, switch to integrated mode for renewals
-  (tls-alpn/switch-to-integrated! solver)
+  (tls-alpn/switch-to-integrated solver)
   ```"
   (:require
    [ol.clave.acme.challenge :as challenge]
@@ -204,7 +204,7 @@
   Use [[challenge-registry]] to get the registry for `sni-alpn-ssl-context`.
 
   Starts in bootstrap mode (starts temporary server for initial cert).
-  Call [[switch-to-integrated!]] after your TLS server starts so renewals
+  Call [[switch-to-integrated]] after your TLS server starts so renewals
   use the integrated solver (registers in registry for KeyManager to serve).
 
   | name   | description                            |
@@ -222,7 +222,7 @@
   (jetty-ext/sni-alpn-ssl-context lookup-fn (challenge-registry solver))
 
   ;; After TLS server starts
-  (switch-to-integrated! solver)
+  (switch-to-integrated solver)
   ```"
   [{:keys [port] :or {port 443}}]
   (let [bootstrap (bootstrap-solver {:port port})
@@ -236,7 +236,7 @@
                               (log/log! {:level :debug
                                          :id    ::switched-to-integrated}))}))
 
-(defn switch-to-integrated!
+(defn switch-to-integrated
   "Switch a switchable solver from bootstrap to integrated mode.
 
   Call this after your TLS server has started.

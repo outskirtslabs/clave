@@ -26,7 +26,7 @@ The automation layer manages TLS certificate lifecycle automatically:
 (def queue (auto/get-event-queue system))
 
 ;; Start the maintenance loop
-(auto/start! system)
+(auto/start system)
 
 ;; Add domains to manage
 (auto/manage-domains system ["example.com"])
@@ -73,22 +73,22 @@ Returns a system handle that is not yet started.
 
 Throws if configuration is invalid or storage cannot be initialized.
 
-After calling this function you might be interested in <<get-event-queue,`get-event-queue`>> and <<start-BANG-,`start!`>>.
+After calling this function you might be interested in <<get-event-queue,`get-event-queue`>> and <<start,`start`>>.
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L58-L67[source,window=_blank]
 
 '''
 
-[#start-BANG-]
-== start!
+[#start]
+== start
 
 
 
 
 [source,clojure]
 ----
-(start! system)
+(start system)
 ----
 
 Starts the maintenance loop on a created system.
@@ -328,7 +328,7 @@ know when to stop polling.
 
 | key      | description                  |
 |----------|------------------------------|
-| `system` | System handle from `start` |
+| `system` | System handle from <<start,`start`>> |
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L180-L197[source,window=_blank]
@@ -403,15 +403,15 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.cl
 
 '''
 
-[#trigger-maintenance-BANG-]
-== trigger-maintenance!
+[#trigger-maintenance]
+== trigger-maintenance
 
 
 
 
 [source,clojure]
 ----
-(trigger-maintenance! system)
+(trigger-maintenance system)
 ----
 
 Manually triggers a maintenance cycle.

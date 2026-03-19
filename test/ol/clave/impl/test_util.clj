@@ -323,13 +323,13 @@
   ([storage issuer-key domain test-cert]
    (store-test-cert! storage issuer-key domain test-cert {}))
   ([storage issuer-key domain test-cert {:keys [managed] :or {managed false}}]
-   (storage/store-string! storage nil (config/cert-storage-key issuer-key domain)
-                          (:certificate-pem test-cert))
-   (storage/store-string! storage nil (config/key-storage-key issuer-key domain)
-                          (:private-key-pem test-cert))
-   (storage/store-string! storage nil (config/meta-storage-key issuer-key domain)
-                          (pr-str (cond-> {:names [domain] :issuer issuer-key}
-                                    managed (assoc :managed true))))))
+   (storage/store-string storage nil (config/cert-storage-key issuer-key domain)
+                         (:certificate-pem test-cert))
+   (storage/store-string storage nil (config/key-storage-key issuer-key domain)
+                         (:private-key-pem test-cert))
+   (storage/store-string storage nil (config/meta-storage-key issuer-key domain)
+                         (pr-str (cond-> {:names [domain] :issuer issuer-key}
+                                   managed (assoc :managed true))))))
 
 (defn collect-events
   "Collect events from a queue until max-attempts reached or queue is empty.

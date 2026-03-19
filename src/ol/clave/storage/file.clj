@@ -82,7 +82,7 @@
   (def storage (fs/file-storage {:root \"/var/lib/myapp\"}))
 
   ;; Store and retrieve data
-  (s/store-string! storage nil \"certs/example.com/cert.pem\" cert)
+  (s/store-string storage nil \"certs/example.com/cert.pem\" cert)
   (s/load-string storage nil \"certs/example.com/cert.pem\")
   ```
 
@@ -125,7 +125,7 @@
 (defn- ensure-active! [lease]
   (cond
     (nil? lease) nil
-    (satisfies? lease/ILease lease) (lease/active?! lease)
+    (satisfies? lease/ILease lease) (lease/ensure-active lease)
     :else (throw (ex-info "lease must satisfy ILease" {:lease lease}))))
 
 (defn- sleep-with-lease! [lease ^Duration duration]
@@ -356,7 +356,7 @@
 
 (defrecord FileStorage [^Path root]
   storage/Storage
-  (store! [_ lease key value-bytes]
+  (store [_ lease key value-bytes]
     (ensure-active! lease)
     (let [path (key->path root key)
           dir (.getParent path)]
@@ -368,7 +368,7 @@
     (ensure-active! lease)
     (Files/readAllBytes (key->path root key)))
 
-  (delete! [_ lease key]
+  (delete [_ lease key]
     (ensure-active! lease)
     (delete-recursively! (key->path root key))
     nil)
@@ -391,20 +391,20 @@
                          (.size attrs)
                          (not is-dir))))
 
-  (lock! [_ lease name]
+  (lock [_ lease name]
     (let [[ok err] (obtain-lock! root lease name -1)]
       (cond
         err (throw err)
         (not ok) (throw (ex-info "unable to obtain lock" {:name name}))
         :else nil)))
 
-  (unlock! [_ lease name]
+  (unlock [_ lease name]
     (ensure-active! lease)
     (Files/deleteIfExists (lock-filename root name))
     nil)
 
   storage/TryLocker
-  (try-lock! [_ lease name]
+  (try-lock [_ lease name]
     (let [[ok err] (obtain-lock! root lease name 2)]
       (if err (throw err) ok)))
 

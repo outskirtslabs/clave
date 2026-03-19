@@ -61,10 +61,10 @@ The caller trusts that if they cancel the lease, your function will notice
 and stop work promptly and correctly.
 
 At a minimum, check the lease before starting expensive operations.
-Call <<active-QMARK--BANG-,`active?!`>> at the top of your function and at natural checkpoints: the
+Call <<ensure-active,`ensure-active`>> at the top of your function and at natural checkpoints: the
 start of each loop iteration, before issuing a network request, or after
 returning from a potentially slow sub-call.
-If the lease has been cancelled, <<active-QMARK--BANG-,`active?!`>> throws an exception containing
+If the lease has been cancelled, <<ensure-active,`ensure-active`>> throws an exception containing
 the cancellation cause, which unwinds the stack cleanly.
 
 For non-throwing checks, use <<active-QMARK-,`active?`>> and return early or break out of
@@ -118,7 +118,7 @@ Only the first cancellation wins; subsequent calls are no-ops.
 (deref (l/done-signal lease))
 ----
 
-See also: <<with-cancel,`with-cancel`>>, <<with-timeout,`with-timeout`>>, <<with-deadline,`with-deadline`>>, <<active-QMARK--BANG-,`active?!`>>
+See also: <<with-cancel,`with-cancel`>>, <<with-timeout,`with-timeout`>>, <<with-deadline,`with-deadline`>>, <<ensure-active,`ensure-active`>>
 
 [#ILease]
 == ILease
@@ -364,15 +364,15 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/lease.clj#L42
 
 '''
 
-[#active-QMARK--BANG-]
-== active?!
+[#ensure-active]
+== ensure-active
 
 
 
 
 [source,clojure]
 ----
-(active?! lease)
+(ensure-active lease)
 ----
 
 Returns `lease` if active, otherwise throws the cancellation cause.
@@ -384,12 +384,12 @@ The thrown exception is the same value returned by <<cause,`cause`>>, containing
 [source,clojure]
 ----
 ;; Check and continue
-(active?! lease)
+(ensure-active lease)
 (do-next-step)
 
 ;; In a loop
 (loop []
-  (active?! lease)
+  (ensure-active lease)
   (when (more-work?)
     (process-item)
     (recur)))

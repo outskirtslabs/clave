@@ -304,7 +304,9 @@
           (if (= mt "application/problem+json")
             (let [problem (parse-problem-json body-bytes)
                   problem-data (util/qualify-keys 'problem problem)
-                  data (merge {:status status} problem-data)]
+                  data (merge {:status status
+                               :nonce nonce}
+                              problem-data)]
               (if (and (<= 500 status) (< status 600) (not has-request-body?) (< (inc i) max-attempts))
                 (recur (inc i))
                 (throw (errors/ex errors/problem (or (:problem/title data)
@@ -396,18 +398,23 @@
                            status (:status data)
                            ptype (:problem/type data)]
                        (cond
-                         (= ptype "urn:ietf:params:acme:error:badNonce") ::bad-nonce
-                         (and status (<= 500 status) (< status 600)) ::server-5xx
+                         (= ptype "urn:ietf:params:acme:error:badNonce")
+                         {:retry ::bad-nonce
+                          :nonce (:nonce data)}
+
+                         (and status (<= 500 status) (< status 600))
+                         {:retry ::server-5xx}
+
                          :else (throw ex)))))]
       (cond
-        (= result ::bad-nonce)
+        (= ::bad-nonce (:retry result))
         (if (< attempt max-attempts)
-          (recur session (inc attempt) fivexx)
+          (recur (push-nonce session (:nonce result)) (inc attempt) fivexx)
           (throw (errors/ex errors/server-error
                             "Too many badNonce retries"
                             {:attempts attempt})))
 
-        (= result ::server-5xx)
+        (= ::server-5xx (:retry result))
         (if (and (< fivexx max-5xx) (< attempt max-attempts))
           (recur session (inc attempt) (inc fivexx))
           (throw (errors/ex errors/server-error

@@ -1,9 +1,16 @@
 (ns ol.clave.acme.impl.http-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.acme.impl.http :as http])
+   [ol.clave.acme.impl.http :as http]
+   [ol.clave.errors :as errors]
+   [ol.clave.lease :as lease]
+   [ol.clave.specs :as acme])
   (:import
+   [java.nio.charset StandardCharsets]
    [java.time Duration Instant]))
+
+(defn- body->nonce [req]
+  (String. ^bytes (:body req) StandardCharsets/UTF_8))
 
 (deftest header-normalization-case-insensitive
   (testing "normalize-headers lowercases keys"
@@ -101,3 +108,86 @@
       (with-redefs [http/now (fn [] future-now)]
         (is (= fallback
                (http/retry-after {:headers {"retry-after" "soon"}} fallback)))))))
+
+(deftest http-post-jws-retries-badnonce-with-server-supplied-replay-nonce
+  (testing "retries with the Replay-Nonce returned by the badNonce response"
+    (let [used-nonces (atom [])
+          responses (atom [:bad-nonce :ok])]
+      (with-redefs [http/jws-encode-json
+                    (fn [_private-key _kid nonce _endpoint _payload]
+                      (.getBytes nonce StandardCharsets/UTF_8))
+
+                    http/new-nonce
+                    (fn [_lease session]
+                      (let [nonce "fallback-nonce"]
+                        [(http/push-nonce session nonce) nonce]))
+
+                    http/http-req
+                    (fn [_lease _session req _opts]
+                      (swap! used-nonces conj (body->nonce req))
+                      (let [response (first @responses)]
+                        (swap! responses rest)
+                        (case response
+                          :bad-nonce
+                          (throw (errors/ex errors/problem
+                                            "bad nonce"
+                                            {:status 400
+                                             :problem/type errors/pt-bad-nonce
+                                             :nonce "retry-nonce"}))
+
+                          :ok
+                          {:status 200
+                           :headers {}
+                           :body-bytes nil
+                           :body nil
+                           :nonce "result-nonce"})))]
+        (let [[_session result] (http/http-post-jws (lease/background)
+                                                    {::acme/nonces '("initial-nonce")}
+                                                    nil
+                                                    nil
+                                                    "https://acme.test/order/123"
+                                                    {:foo :bar}
+                                                    {})]
+          (is (= ["initial-nonce" "retry-nonce"] @used-nonces))
+          (is (= "result-nonce" (:nonce result))))))))
+
+(deftest http-post-jws-fetches-new-nonce-when-badnonce-response-lacks-one
+  (testing "falls back to newNonce when the badNonce response has no Replay-Nonce"
+    (let [used-nonces (atom [])
+          responses (atom [:bad-nonce :ok])]
+      (with-redefs [http/jws-encode-json
+                    (fn [_private-key _kid nonce _endpoint _payload]
+                      (.getBytes nonce StandardCharsets/UTF_8))
+
+                    http/new-nonce
+                    (fn [_lease session]
+                      (let [nonce "fresh-nonce"]
+                        [(http/push-nonce session nonce) nonce]))
+
+                    http/http-req
+                    (fn [_lease _session req _opts]
+                      (swap! used-nonces conj (body->nonce req))
+                      (let [response (first @responses)]
+                        (swap! responses rest)
+                        (case response
+                          :bad-nonce
+                          (throw (errors/ex errors/problem
+                                            "bad nonce"
+                                            {:status 400
+                                             :problem/type errors/pt-bad-nonce}))
+
+                          :ok
+                          {:status 200
+                           :headers {}
+                           :body-bytes nil
+                           :body nil
+                           :nonce "result-nonce"})))]
+        (let [[_session result] (http/http-post-jws (lease/background)
+                                                    {::acme/nonces '("initial-nonce")}
+                                                    nil
+                                                    nil
+                                                    "https://acme.test/order/123"
+                                                    {:foo :bar}
+                                                    {})]
+          (is (= ["initial-nonce" "fresh-nonce"] @used-nonces))
+          (is (= "result-nonce" (:nonce result))))))))

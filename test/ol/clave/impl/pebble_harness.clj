@@ -144,8 +144,8 @@
                    (and use-dnsserver? (:dns-port *pebble-ports*))
                    (conj "-dnsserver" (str "127.0.0.1:" (:dns-port *pebble-ports*))))]
      (p/process command
-                (cond-> {:out :inherit
-                         :err :inherit}
+                (cond-> {:out :str
+                         :err :out}
                   env (assoc :extra-env env))))))
 
 (defn pebble-stop
@@ -165,8 +165,8 @@
               "-http01" (str ":" (:http-port *pebble-ports*))
               "-https01" ""
               "-tlsalpn01" (str ":" (:tls-port *pebble-ports*))]
-             {:out :inherit
-              :err :inherit}))
+             {:out :str
+              :err :out}))
 
 (defn challtestsrv-stop
   "Stops the Pebble challenge test server."

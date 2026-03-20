@@ -132,17 +132,16 @@
 
 (deftest file-storage-lock-freshener-updates-meta
   (let [dir (Path/of (test-util/temp-storage-dir) (make-array String 0))
-        fs (file/file-storage {:root dir})
-        l (lease/background)
-        lock (lock-file dir "fresh")]
+        lock (lock-file dir "fresh")
+        initial-created-ms 1000
+        initial-updated-ms 1000]
     (try
-      (storage/lock fs l "fresh")
-      (let [start-updated (:updated-ms (read-lock-meta lock))
-            done? (#'file/update-lockfile-freshness! lock)
-            current-updated (:updated-ms (read-lock-meta lock))]
+      (write-lock-meta! lock initial-created-ms initial-updated-ms)
+      (let [done? (#'file/update-lockfile-freshness! lock)
+            {:keys [created-ms updated-ms]} (read-lock-meta lock)]
         (is (false? done?))
-        (is (< start-updated current-updated)))
-      (storage/unlock fs l "fresh")
+        (is (= initial-created-ms created-ms))
+        (is (< initial-updated-ms updated-ms)))
       (finally
         (delete-recursively! dir)))))
 

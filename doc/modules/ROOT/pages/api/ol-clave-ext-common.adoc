@@ -24,10 +24,12 @@ Create an in-memory PKCS12 KeyStore from a clave certificate bundle.
 
 No disk I/O - purely in-memory operation suitable for TLS handshakes.
 
-| key        | description                                                 |
-|------------|-------------------------------------------------------------|
-| `bundle`   | Certificate bundle from xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`] |
-| `password` | Optional keystore password (default "changeit")           |
+[options="header"]
+|===
+| key | description
+| `bundle` | Certificate bundle from xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`]
+| `password` | Optional keystore password (default "changeit")
+|===
 
 Returns a `java.security.KeyStore` ready for use with TLS servers.
 Returns nil if bundle is nil (no certificate available yet).
@@ -59,9 +61,11 @@ Check if an event indicates a certificate change.
 Returns true for `:certificate-obtained`, `:certificate-renewed`, and
 `:certificate-loaded` events.
 
-| key   | description                                        |
-|-------|----------------------------------------------------|
-| `evt` | Event from xref:api/ol-clave-automation.adoc#get-event-queue[`ol.clave.automation/get-event-queue`] |
+[options="header"]
+|===
+| key | description
+| `evt` | Event from xref:api/ol-clave-automation.adoc#get-event-queue[`ol.clave.automation/get-event-queue`]
+|===
 
 [source,clojure]
 ----
@@ -89,9 +93,11 @@ Extract the domain name from a certificate event.
 
 Returns the domain string or nil if event has no domain.
 
-| key   | description |
-|-------|-------------|
-| `evt` | Event map   |
+[options="header"]
+|===
+| key | description
+| `evt` | Event map
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L64-L73[source,window=_blank]
@@ -112,10 +118,12 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.cl
 
 Ring middleware that redirects HTTP requests to HTTPS.
 
-| key        | description                                        |
-|------------|----------------------------------------------------|
-| `handler`  | Ring handler to wrap                               |
-| `opts`     | Options map with `:ssl-port`                       |
+[options="header"]
+|===
+| key | description
+| `handler` | Ring handler to wrap
+| `opts` | Options map with `:ssl-port`
+|===
 
 Options:
 - `:ssl-port` - HTTPS port for redirect URL.
@@ -177,10 +185,12 @@ Polls xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-
 are available for every domain. Blocks indefinitely until the automation
 system obtains all certificates or throws an error.
 
-| key       | description                     |
-|-----------|---------------------------------|
-| `system`  | clave automation system         |
-| `domains` | Vector of domains to wait for   |
+[options="header"]
+|===
+| key | description
+| `system` | clave automation system
+| `domains` | Vector of domains to wait for
+|===
 
 Returns nil once all certificates are available.
 

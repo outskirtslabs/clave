@@ -71,12 +71,14 @@ On `:cleanup`: calls underlying solver cleanup, then deletes from storage.
 The stored data is a JSON map containing the full challenge plus key-authorization,
 enabling any instance to reconstruct and serve the response.
 
-| key | description |
-|-----|-------------|
-| `storage` | Storage implementation for persisting challenge tokens |
-| `issuer-key` | Issuer identifier for storage key namespacing |
-| `storage-key-fn` | Function `(fn [issuer-key identifier]) -> storage-key` |
-| `solver` | The underlying solver map to wrap |
+[options="header"]
+|===
+| key | description
+| `storage` | Storage implementation for persisting challenge tokens
+| `issuer-key` | Issuer identifier for storage key namespacing
+| `storage-key-fn` | Function `(fn [issuer-key identifier]) -> storage-key`
+| `solver` | The underlying solver map to wrap
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L67-L118[source,window=_blank]
@@ -96,12 +98,14 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.c
 
 Wraps all solvers in a map for distributed challenge solving.
 
-| key | description |
-|-----|-------------|
-| `storage` | Storage implementation |
-| `issuer-key` | Issuer identifier |
-| `storage-key-fn` | Function to generate storage keys |
-| `solvers` | Map of challenge-type -> solver |
+[options="header"]
+|===
+| key | description
+| `storage` | Storage implementation
+| `issuer-key` | Issuer identifier
+| `storage-key-fn` | Function to generate storage keys
+| `solvers` | Map of challenge-type -> solver
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L120-L134[source,window=_blank]
@@ -123,12 +127,14 @@ Lookup a stored challenge token from shared storage.
 
 Returns the challenge data map if found, nil otherwise.
 
-| key | description |
-|-----|-------------|
-| `storage` | Storage implementation |
-| `issuer-key` | Issuer identifier |
-| `storage-key-fn` | Function to generate storage keys |
-| `identifier` | Domain or IP being validated |
+[options="header"]
+|===
+| key | description
+| `storage` | Storage implementation
+| `issuer-key` | Issuer identifier
+| `storage-key-fn` | Function to generate storage keys
+| `identifier` | Domain or IP being validated
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L136-L150[source,window=_blank]
@@ -154,33 +160,39 @@ and downloading the issued certificate.
 
 Parameters:
 
-| name          | description                                                |
-|---------------|------------------------------------------------------------|
-| `the-lease`   | Lease for cancellation and timeout control                 |
-| `session`     | Authenticated ACME session with account key and KID        |
-| `identifiers` | Vector of identifier maps from `order/create-identifier` |
-| `cert-keypair`| KeyPair for the certificate (distinct from account key)    |
-| `solvers`     | Map of challenge type keyword to solver map                |
-| `opts`        | Optional configuration map                                 |
+[options="header"]
+|===
+| name | description
+| `the-lease` | Lease for cancellation and timeout control
+| `session` | Authenticated ACME session with account key and KID
+| `identifiers` | Vector of identifier maps from `order/create-identifier`
+| `cert-keypair` | KeyPair for the certificate (distinct from account key)
+| `solvers` | Map of challenge type keyword to solver map
+| `opts` | Optional configuration map
+|===
 
 Options map:
 
-| key                     | description                                        |
-|-------------------------|----------------------------------------------------|
-| `:not-before`           | Requested validity start (java.time.Instant)       |
-| `:not-after`            | Requested validity end (java.time.Instant)         |
-| `:profile`              | ACME profile name when CA supports profiles        |
-| `:preferred-challenges` | Vector of challenge types in preference order      |
-| `:poll-interval-ms`     | Polling interval for authorization/order           |
-| `:poll-timeout-ms`      | Polling timeout                                    |
+[options="header"]
+|===
+| key | description
+| `:not-before` | Requested validity start (java.time.Instant)
+| `:not-after` | Requested validity end (java.time.Instant)
+| `:profile` | ACME profile name when CA supports profiles
+| `:preferred-challenges` | Vector of challenge types in preference order
+| `:poll-interval-ms` | Polling interval for authorization/order
+| `:poll-timeout-ms` | Polling timeout
+|===
 
 Returns `[updated-session result]` where result is a map:
 
-| key            | description                                              |
-|----------------|----------------------------------------------------------|
-| `:order`       | Final order map with status "valid"                    |
-| `:certificates`| Vector of certificate maps                               |
-| `:attempts`    | Number of order creation attempts made                   |
+[options="header"]
+|===
+| key | description
+| `:order` | Final order map with status "valid"
+| `:certificates` | Vector of certificate maps
+| `:attempts` | Number of order creation attempts made
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L285-L443[source,window=_blank]
@@ -234,14 +246,16 @@ Automatically creates identifiers from SAN strings.
 
 Parameters:
 
-| name         | description                                    |
-|--------------|------------------------------------------------|
-| `the-lease`  | Lease for cancellation/timeout                 |
-| `session`    | Authenticated ACME session                     |
-| `sans`       | Vector of SAN strings (domains, IPs)           |
-| `cert-key`   | KeyPair for certificate                        |
-| `solvers`    | Map of challenge type keyword to solver map    |
-| `opts`       | Optional configuration map (see <<obtain,`obtain`>>)    |
+[options="header"]
+|===
+| name | description
+| `the-lease` | Lease for cancellation/timeout
+| `session` | Authenticated ACME session
+| `sans` | Vector of SAN strings (domains, IPs)
+| `cert-key` | KeyPair for certificate
+| `solvers` | Map of challenge type keyword to solver map
+| `opts` | Optional configuration map (see <<obtain,`obtain`>>)
+|===
 
 Returns `[updated-session result]` as with `obtain-certificate`.
 

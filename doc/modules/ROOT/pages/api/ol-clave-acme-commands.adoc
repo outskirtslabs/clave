@@ -55,12 +55,14 @@ Parameters:
 - `opts` — optional map configuring the session. Recognised keys are
   summarised below.
 
-| Key            | Type                    | Description                                                              |
-|----------------|-------------------------|--------------------------------------------------------------------------|
-| `:http-client` | map                     | Passed to `ol.clave.impl.http/http-client` to build the transport layer. |
-| `:account-key` | `java.security.KeyPair` | Injects an existing key pair into the session.                           |
-| `:account-kid` | string                  | Stores a known account URL for authenticated calls.                      |
-| `:scope`       | scope token             | Overrides the default cancellation/timeout scope.                        |
+[options="header"]
+|===
+| Key | Type | Description
+| `:http-client` | map | Passed to `ol.clave.impl.http/http-client` to build the transport layer.
+| `:account-key` | `java.security.KeyPair` | Injects an existing key pair into the session.
+| `:account-kid` | string | Stores a known account URL for authenticated calls.
+| `:scope` | scope token | Overrides the default cancellation/timeout scope.
+|===
 
 Returns `[session nil]`, where `session` is a qualified map of
 `::ol.clave.specs/*` keys suitable for subsequent commands.
@@ -103,10 +105,12 @@ Parameters:
 
 Options:
 
-| key       | description                                |
-|-----------|------------------------------------------- |
-| `:force`  | Bypass cache, fetch fresh from CA.         |
-| `:ttl-ms` | Custom cache TTL in milliseconds.          |
+[options="header"]
+|===
+| key | description
+| `:force` | Bypass cache, fetch fresh from CA.
+| `:ttl-ms` | Custom cache TTL in milliseconds.
+|===
 
 Returns `[updated-session directory]`, where `directory` is the qualified map
 described by `::ol.clave.specs/directory` and `updated-session` has the
@@ -150,10 +154,12 @@ Parameters:
 
 Options:
 
-| key            | description                                  |
-|----------------|----------------------------------------------|
-| `:interval-ms` | Default poll interval fallback (ms).         |
-| `:timeout-ms`  | Default overall poll timeout (ms).           |
+[options="header"]
+|===
+| key | description
+| `:interval-ms` | Default poll interval fallback (ms).
+| `:timeout-ms` | Default overall poll timeout (ms).
+|===
 
 Returns the updated session with new polling defaults.
 
@@ -263,9 +269,11 @@ Parameters:
 - `account` — account data using `::ol.clave.specs/*` keys.
 - `opts` — optional map supporting the keys listed below.
 
-| Key | Description |
-| --- | --- |
-| `:external-account` | `{:kid string :mac-key bytes-or-base64}` enabling External Account Binding. |
+[options="header"]
+|===
+| Key | Description
+| `:external-account` | `{:kid string :mac-key bytes-or-base64}` enabling External Account Binding.
+|===
 
 Returns `[updated-session normalized-account]`. The session gains the account
 KID and the response account is merged onto the supplied `account` map.
@@ -489,9 +497,11 @@ Parameters:
 
 Options:
 
-| key        | description |
-|------------|-------------|
-| `:profile` | Optional profile name as a string when the directory advertises `:profiles`. |
+[options="header"]
+|===
+| key | description
+| `:profile` | Optional profile name as a string when the directory advertises `:profiles`.
+|===
 
 Returns `[updated-session order]` where `order` is the normalized order map
 including `::ol.clave.specs/order-location`.
@@ -762,9 +772,11 @@ Parameters:
 
 Options:
 
-| key        | description                          |
-|------------|--------------------------------------|
-| `:payload` | Override the default `{}` payload.   |
+[options="header"]
+|===
+| key | description
+| `:payload` | Override the default `{}` payload.
+|===
 
 Returns `[updated-session challenge]`.
 
@@ -795,10 +807,12 @@ Parameters:
 
 Options:
 
-| key            | description                                              |
-|----------------|----------------------------------------------------------|
-| `:reason`      | RFC 5280 reason code integer (0-6, 8-10).                |
-| `:signing-key` | `java.security.KeyPair` for certificate-key authorization. |
+[options="header"]
+|===
+| key | description
+| `:reason` | RFC 5280 reason code integer (0-6, 8-10).
+| `:signing-key` | `java.security.KeyPair` for certificate-key authorization.
+|===
 
 When `:signing-key` is provided, uses certificate-key authorization with
 JWK-embedded JWS. Otherwise uses account-key authorization requiring an

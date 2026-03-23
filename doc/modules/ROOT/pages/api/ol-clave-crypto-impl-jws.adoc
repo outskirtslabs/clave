@@ -9,12 +9,14 @@
 
 Return the JWS `alg` header value for a key.
 
-| Key Type | Result    |
-|----------|-----------|
-| P-256    | "ES256" |
-| P-384    | "ES384" |
-| Ed25519  | "EdDSA" |
-| RSA      | "RS256" |
+[options="header"]
+|===
+| Key Type | Result
+| P-256 | "ES256"
+| P-384 | "ES384"
+| Ed25519 | "EdDSA"
+| RSA | "RS256"
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jws.clj#L123-L132[source,window=_blank]

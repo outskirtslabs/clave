@@ -238,11 +238,13 @@ first path.
 
 Platform defaults when no environment variable is set:
 
-| platform | path                                |
-|----------|-------------------------------------|
-| Linux    | `$HOME/.local/state`                |
-| macOS    | `$HOME/Library/Application Support` |
-| Windows  | `%LOCALAPPDATA%`                    |
+[options="header"]
+|===
+| platform | path
+| Linux | `$HOME/.local/state`
+| macOS | `$HOME/Library/Application Support`
+| Windows | `%LOCALAPPDATA%`
+|===
 
 Returns `nil` if a suitable directory cannot be determined.
 
@@ -291,11 +293,13 @@ function returns the first path.
 
 Platform defaults when no environment variable is set:
 
-| platform | path                        |
-|----------|-----------------------------|
-| Linux    | `$HOME/.config`             |
-| macOS    | `$HOME/Library/Preferences` |
-| Windows  | `%APPDATA%`                 |
+[options="header"]
+|===
+| platform | path
+| Linux | `$HOME/.config`
+| macOS | `$HOME/Library/Preferences`
+| Windows | `%APPDATA%`
+|===
 
 Returns `nil` if a suitable directory cannot be determined.
 
@@ -342,11 +346,13 @@ first path.
 
 Platform defaults when no environment variable is set:
 
-| platform | path                   |
-|----------|------------------------|
-| Linux    | `$HOME/.cache`         |
-| macOS    | `$HOME/Library/Caches` |
-| Windows  | `%LOCALAPPDATA%`       |
+[options="header"]
+|===
+| platform | path
+| Linux | `$HOME/.cache`
+| macOS | `$HOME/Library/Caches`
+| Windows | `%LOCALAPPDATA%`
+|===
 
 Returns `nil` if a suitable directory cannot be determined.
 
@@ -396,11 +402,13 @@ first path.
 
 Platform defaults when no environment variable is set:
 
-| platform | path                                |
-|----------|-------------------------------------|
-| Linux    | `$HOME/.local/share`                |
-| macOS    | `$HOME/Library/Application Support` |
-| Windows  | `%LOCALAPPDATA%`                    |
+[options="header"]
+|===
+| platform | path
+| Linux | `$HOME/.local/share`
+| macOS | `$HOME/Library/Application Support`
+| Windows | `%LOCALAPPDATA%`
+|===
 
 Returns `nil` if a suitable directory cannot be determined.
 

@@ -18,10 +18,12 @@ the global config with any per-domain overrides from config-fn.
 
 If config-fn is nil or returns nil, returns the global config unchanged.
 
-| key      | description                                               |
-|----------|-----------------------------------------------------------|
-| `system` | System map containing `:config` and optional `:config-fn` |
-| `domain` | Domain name to resolve configuration for                  |
+[options="header"]
+|===
+| key | description
+| `system` | System map containing `:config` and optional `:config-fn`
+| `domain` | Domain name to resolve configuration for
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L12-L30[source,window=_blank]
@@ -45,9 +47,11 @@ Returns the issuers in the appropriate order based on `:issuer-selection`:
 - `:in-order` (default) - return issuers in original order
 - `:shuffle` - return issuers in random order
 
-| key      | description                                                    |
-|----------|----------------------------------------------------------------|
-| `config` | Configuration with `:issuers` and optional `:issuer-selection` |
+[options="header"]
+|===
+| key | description
+| `config` | Configuration with `:issuers` and optional `:issuer-selection`
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L32-L47[source,window=_blank]
@@ -109,9 +113,11 @@ Extract issuer key from directory URL.
 
 Returns a unique identifier for the issuer based on the URL's host and path.
 
-| key   | description        |
-|-------|--------------------|
-| `url` | ACME directory URL |
+[options="header"]
+|===
+| key | description
+| `url` | ACME directory URL
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L92-L116[source,window=_blank]
@@ -133,10 +139,12 @@ Generate storage key for a certificate PEM file.
 
 Format: `certificates/{issuer-key}/{domain}/{domain}.crt`
 
-| key          | description                                     |
-|--------------|-------------------------------------------------|
-| `issuer-key` | Issuer identifier (hostname from directory URL) |
-| `domain`     | Primary domain name                             |
+[options="header"]
+|===
+| key | description
+| `issuer-key` | Issuer identifier (hostname from directory URL)
+| `domain` | Primary domain name
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L118-L130[source,window=_blank]
@@ -158,10 +166,12 @@ Generate storage key for a private key PEM file.
 
 Format: `certificates/{issuer-key}/{domain}/{domain}.key`
 
-| key | description |
-|-----|-------------|
-| `issuer-key` | Issuer identifier (hostname from directory URL) |
-| `domain` | Primary domain name |
+[options="header"]
+|===
+| key | description
+| `issuer-key` | Issuer identifier (hostname from directory URL)
+| `domain` | Primary domain name
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L132-L144[source,window=_blank]
@@ -183,10 +193,12 @@ Generate storage key for certificate metadata EDN file.
 
 Format: `certificates/{issuer-key}/{domain}/{domain}.edn`
 
-| key | description |
-|-----|-------------|
-| `issuer-key` | Issuer identifier (hostname from directory URL) |
-| `domain` | Primary domain name |
+[options="header"]
+|===
+| key | description
+| `issuer-key` | Issuer identifier (hostname from directory URL)
+| `domain` | Primary domain name
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L146-L158[source,window=_blank]
@@ -208,9 +220,11 @@ Generate storage prefix for listing certificates under an issuer.
 
 Format: `certificates/{issuer-key}`
 
-| key          | description                                     |
-|--------------|-------------------------------------------------|
-| `issuer-key` | Issuer identifier (hostname from directory URL) |
+[options="header"]
+|===
+| key | description
+| `issuer-key` | Issuer identifier (hostname from directory URL)
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L160-L169[source,window=_blank]
@@ -232,9 +246,11 @@ Generate storage key for an account private key PEM file.
 
 Format: `accounts/{issuer-key}/account.key`
 
-| key          | description                                     |
-|--------------|-------------------------------------------------|
-| `issuer-key` | Issuer identifier (hostname from directory URL) |
+[options="header"]
+|===
+| key | description
+| `issuer-key` | Issuer identifier (hostname from directory URL)
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L171-L180[source,window=_blank]
@@ -254,9 +270,11 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/im
 
 Generate storage key for an account public key PEM file.
 
-| key          | description                                     |
-|--------------|-------------------------------------------------|
-| `issuer-key` | Issuer identifier (hostname from directory URL) |
+[options="header"]
+|===
+| key | description
+| `issuer-key` | Issuer identifier (hostname from directory URL)
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L182-L189[source,window=_blank]
@@ -303,10 +321,12 @@ Format: `certificates/{issuer-key}/{domain}/{domain}.ocsp`
 
 The OCSP staple is stored as raw DER-encoded bytes.
 
-| key          | description                                     |
-|--------------|-------------------------------------------------|
-| `issuer-key` | Issuer identifier (hostname from directory URL) |
-| `domain`     | Primary domain name                             |
+[options="header"]
+|===
+| key | description
+| `issuer-key` | Issuer identifier (hostname from directory URL)
+| `domain` | Primary domain name
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L201-L215[source,window=_blank]
@@ -330,10 +350,12 @@ Format: `keys/{domain}.compromised.{timestamp}`
 
 Compromised keys are archived for audit purposes and never reused.
 
-| key         | description                                        |
-|-------------|----------------------------------------------------|
-| `domain`    | Primary domain name                                |
-| `timestamp` | ISO-8601 timestamp when key was marked compromised |
+[options="header"]
+|===
+| key | description
+| `domain` | Primary domain name
+| `timestamp` | ISO-8601 timestamp when key was marked compromised
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L217-L231[source,window=_blank]
@@ -358,10 +380,12 @@ Format: `certificates/{issuer-key}/{domain}/{domain}.ari.edn`
 The ARI data is stored as EDN containing suggested-window, selected-time,
 and retry-after.
 
-| key          | description                                     |
-|--------------|-------------------------------------------------|
-| `issuer-key` | Issuer identifier (hostname from directory URL) |
-| `domain`     | Primary domain name                             |
+[options="header"]
+|===
+| key | description
+| `issuer-key` | Issuer identifier (hostname from directory URL)
+| `domain` | Primary domain name
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L233-L248[source,window=_blank]
@@ -386,10 +410,12 @@ Format: `challenge_tokens/{issuer-key}/{identifier}.edn`
 Used to store challenge data so any instance in a cluster can serve
 the challenge response for HTTP-01 or TLS-ALPN-01 validation.
 
-| key          | description                                     |
-|--------------|-------------------------------------------------|
-| `issuer-key` | Issuer identifier (hostname from directory URL) |
-| `identifier` | Domain or IP address being validated            |
+[options="header"]
+|===
+| key | description
+| `issuer-key` | Issuer identifier (hostname from directory URL)
+| `identifier` | Domain or IP address being validated
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L250-L265[source,window=_blank]
@@ -417,10 +443,12 @@ Preferences:
 Returns nil if chains is empty.
 Falls back to first chain if root name not found.
 
-| key          | description                                                   |
-|--------------|---------------------------------------------------------------|
-| `preference` | Chain preference (`:any`, `:shortest`, or `{:root name}`)     |
-| `chains`     | Sequence of chain maps with `:chain` (certs) and `:root-name` |
+[options="header"]
+|===
+| key | description
+| `preference` | Chain preference (`:any`, `:shortest`, or `{:root name}`)
+| `chains` | Sequence of chain maps with `:chain` (certs) and `:root-name`
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L267-L299[source,window=_blank]

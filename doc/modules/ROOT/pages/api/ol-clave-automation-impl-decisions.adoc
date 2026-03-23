@@ -151,11 +151,13 @@ miss the renewal window if maintenance runs just after the selected time.
 
 Returns false if no ARI data or no selected-time is present.
 
-| key                       | description                                  |
-|---------------------------|----------------------------------------------|
-| `bundle`                  | Certificate bundle with optional `:ari-data` |
-| `now`                     | Current instant                              |
-| `maintenance-interval-ms` | Maintenance loop interval in milliseconds    |
+[options="header"]
+|===
+| key | description
+| `bundle` | Certificate bundle with optional `:ari-data`
+| `now` | Current instant
+| `maintenance-interval-ms` | Maintenance loop interval in milliseconds
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L56-L76[source,window=_blank]
@@ -176,10 +178,12 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/im
 
 Calculate a random time within the ARI suggested renewal window.
 
-| key        | description                                                   |
-|------------|---------------------------------------------------------------|
-| `ari-data` | ARI data with `:suggested-window` [start-instant end-instant] |
-| `rng`      | `java.util.Random` instance for random selection (optional)   |
+[options="header"]
+|===
+| key | description
+| `ari-data` | ARI data with `:suggested-window` [start-instant end-instant]
+| `rng` | `java.util.Random` instance for random selection (optional)
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L78-L93[source,window=_blank]
@@ -261,11 +265,13 @@ Returns false if:
 Short-lived certificates don't benefit from OCSP stapling because
 the certificate will expire before the OCSP response provides value.
 
-| key      | description                                              |
-|----------|----------------------------------------------------------|
-| `bundle` | Certificate bundle with optional `:ocsp-staple`          |
-| `config` | Configuration with `:ocsp` map containing `:enabled` key |
-| `now`    | Current instant                                          |
+[options="header"]
+|===
+| key | description
+| `bundle` | Certificate bundle with optional `:ocsp-staple`
+| `config` | Configuration with `:ocsp` map containing `:enabled` key
+| `now` | Current instant
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L169-L196[source,window=_blank]
@@ -288,12 +294,14 @@ Returns commands needed for this certificate.
 Pure function that examines certificate state and returns a vector
 of command descriptors. Does not perform any I/O.
 
-| key                       | description                               |
-|---------------------------|-------------------------------------------|
-| `bundle`                  | Certificate bundle from cache             |
-| `config`                  | Resolved configuration for this domain    |
-| `now`                     | Current instant                           |
-| `maintenance-interval-ms` | Maintenance loop interval in milliseconds |
+[options="header"]
+|===
+| key | description
+| `bundle` | Certificate bundle from cache
+| `config` | Resolved configuration for this domain
+| `now` | Current instant
+| `maintenance-interval-ms` | Maintenance loop interval in milliseconds
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L198-L221[source,window=_blank]
@@ -317,9 +325,11 @@ Returns a vector of [command-type domain] that uniquely identifies
 a command. Commands with the same key are considered duplicates
 and can be deduplicated by the job queue.
 
-| key   | description                                           |
-|-------|-------------------------------------------------------|
-| `cmd` | Command descriptor with `:command` and `:domain` keys |
+[options="header"]
+|===
+| key | description
+| `cmd` | Command descriptor with `:command` and `:domain` keys
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L223-L234[source,window=_blank]
@@ -339,9 +349,11 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/im
 
 Check if a command is fast.
 
-| key   | description                            |
-|-------|----------------------------------------|
-| `cmd` | Command descriptor with `:command` key |
+[options="header"]
+|===
+| key | description
+| `cmd` | Command descriptor with `:command` key
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L240-L247[source,window=_blank]
@@ -370,9 +382,11 @@ Categories:
 - `:storage-error` - I/O and storage failures
 - `:unknown` - unrecognized exceptions
 
-| key  | description           |
-|------|-----------------------|
-| `ex` | Exception to classify |
+[options="header"]
+|===
+| key | description
+| `ex` | Exception to classify
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L261-L302[source,window=_blank]
@@ -429,10 +443,12 @@ Event types by command and status:
 - `:fetch-ocsp` success -> `:ocsp-stapled`
 - `:fetch-ocsp` error -> `:ocsp-failed`
 
-| key      | description                                        |
-|----------|----------------------------------------------------|
-| `cmd`    | Command descriptor with `:command` and `:domain`   |
-| `result` | Result map with `:status` (`:success` or `:error`) |
+[options="header"]
+|===
+| key | description
+| `cmd` | Command descriptor with `:command` and `:domain`
+| `result` | Result map with `:status` (`:success` or `:error`)
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L326-L410[source,window=_blank]

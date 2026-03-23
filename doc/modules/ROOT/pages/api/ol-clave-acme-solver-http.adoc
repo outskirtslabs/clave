@@ -80,10 +80,12 @@ Other requests pass through to the wrapped handler.
 
 Parameters:
 
-| name      | description                  |
-|-----------|------------------------------|
-| `handler` | The Ring handler to wrap     |
-| `solver`  | Solver created by <<solver,`solver`>> |
+[options="header"]
+|===
+| name | description
+| `handler` | The Ring handler to wrap
+| `solver` | Solver created by <<solver,`solver`>>
+|===
 
 Response behavior:
 - Returns 200 with key-authorization as plain text if token found
@@ -123,9 +125,11 @@ integrating with an existing application.
 
 Parameters:
 
-| name     | description                  |
-|----------|------------------------------|
-| `solver` | Solver created by <<solver,`solver`>> |
+[options="header"]
+|===
+| name | description
+| `solver` | Solver created by <<solver,`solver`>>
+|===
 
 Returns a Ring handler function.
 

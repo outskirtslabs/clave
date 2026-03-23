@@ -60,17 +60,21 @@ Use <<stop,`stop`>> to shut down the server instead.
 Calling this function signifies acceptance of the CA's Subscriber Agreement
 and/or Terms of Service.
 
-| key       | description                                                                   |
-|-----------|-------------------------------------------------------------------------------|
-| `handler` | Ring handler                                                                  |
-| `opts`    | Options map, see `ring.adapter.jetty/run-jetty` for jetty-adapter's options |
+[options="header"]
+|===
+| key | description
+| `handler` | Ring handler
+| `opts` | Options map, see `ring.adapter.jetty/run-jetty` for jetty-adapter's options
+|===
 
 Clave config is provided via the `:ol.clave.ext.ring-jetty-adapter/config` key in `opts`:
 
-| key               | description                             | default   |
-|-------------------|-----------------------------------------|-----------|
-| `:domains`        | Domains to manage certs for (required)  |           |
-| `:redirect-http?` | Wrap handler with HTTP->HTTPS redirect  | true      |
+[options="header"]
+|===
+| key | description | default
+| `:domains` | Domains to manage certs for (required) | 
+| `:redirect-http?` | Wrap handler with HTTP->HTTPS redirect | true
+|===
 
 Additional automation config keys (e.g., `:issuers`, `:storage` etc.) are passed through to xref:api/ol-clave-automation.adoc#create[`ol.clave.automation/create`].
 

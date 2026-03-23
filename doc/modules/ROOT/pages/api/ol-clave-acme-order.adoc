@@ -40,11 +40,13 @@ Construct an order map with the supplied identifiers and options.
 
 Options:
 
-| key           | description                                   |
-|---------------|-----------------------------------------------|
-| `:not-before` | Optional notBefore instant or RFC3339 string. |
-| `:not-after`  | Optional notAfter instant or RFC3339 string.  |
-| `:profile`    | Optional profile name as a string.            |
+[options="header"]
+|===
+| key | description
+| `:not-before` | Optional notBefore instant or RFC3339 string.
+| `:not-after` | Optional notAfter instant or RFC3339 string.
+| `:profile` | Optional profile name as a string.
+|===
 
 
 [.api-source]

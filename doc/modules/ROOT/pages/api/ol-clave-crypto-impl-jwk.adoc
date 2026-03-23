@@ -27,11 +27,13 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/j
 
 Return the public key as a JWK map.
 
-| Key Type | JWK kty |
-|----------|---------|
-| EC       | "EC"  |
-| Ed25519  | "OKP" |
-| RSA      | "RSA" |
+[options="header"]
+|===
+| Key Type | JWK kty
+| EC | "EC"
+| Ed25519 | "OKP"
+| RSA | "RSA"
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/crypto/impl/jwk.clj#L59-L67[source,window=_blank]

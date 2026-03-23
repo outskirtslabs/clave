@@ -23,9 +23,11 @@ Extract OCSP responder URLs from a certificate's AIA extension.
 
 Returns a vector of OCSP URLs, or empty vector if none found.
 
-| key | description |
-|-----|-------------|
-| `cert` | X509Certificate to extract OCSP URLs from |
+[options="header"]
+|===
+| key | description
+| `cert` | X509Certificate to extract OCSP URLs from
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/ocsp.clj#L61-L90[source,window=_blank]
@@ -94,12 +96,14 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/i
 
 Fetch OCSP response for a certificate from the specified responder.
 
-| key | description |
-|-----|-------------|
-| `cert` | The X509Certificate to check |
-| `issuer` | The issuer certificate |
-| `responder-url` | URL of the OCSP responder |
-| `http-opts` | HTTP client options map |
+[options="header"]
+|===
+| key | description
+| `cert` | The X509Certificate to check
+| `issuer` | The issuer certificate
+| `responder-url` | URL of the OCSP responder
+| `http-opts` | HTTP client options map
+|===
 
 Returns a result map:
 - On success: `{:status :success :ocsp-response {...}}`
@@ -126,11 +130,13 @@ Fetch OCSP response for a certificate bundle.
 Extracts the OCSP URL from the leaf certificate and fetches the response.
 Supports responder URL overrides for testing.
 
-| key | description |
-|-----|-------------|
-| `bundle` | Certificate bundle with `:certificate` chain |
-| `http-opts` | HTTP client options |
-| `responder-overrides` | Optional map of original-url -> override-url |
+[options="header"]
+|===
+| key | description
+| `bundle` | Certificate bundle with `:certificate` chain
+| `http-opts` | HTTP client options
+| `responder-overrides` | Optional map of original-url -> override-url
+|===
 
 Returns a result map:
 - On success: `{:status :success :ocsp-response {...}}`

@@ -32,10 +32,12 @@ Security validations:
   - localhost, .local, .internal, .test TLDs
   - private IP addresses
 
-| key      | description                     |
-|----------|---------------------------------|
-| `domain` | Domain name to validate         |
-| `config` | Configuration with :solvers map |
+[options="header"]
+|===
+| key | description
+| `domain` | Domain name to validate
+| `config` | Configuration with :solvers map
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/domain.clj#L100-L156[source,window=_blank]

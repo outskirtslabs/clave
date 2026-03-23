@@ -40,10 +40,12 @@ Return the DNS-01 key authorization digest.
 When called with a `challenge` map and `account-key`, computes the
 key authorization first.
 
-| arity                     | description                                  |
-|---------------------------|----------------------------------------------|
-| `[key-authorization]`     | digest the provided key authorization string |
-| `[challenge account-key]` | compute key authorization then digest        |
+[options="header"]
+|===
+| arity | description
+| `[key-authorization]` | digest the provided key authorization string
+| `[challenge account-key]` | compute key authorization then digest
+|===
 
 
 [.api-source]
@@ -222,16 +224,18 @@ Convenience arity `[authorization challenge account-key]`:
 
 Returns a map with:
 
-| key                | description                                 |
-|--------------------|---------------------------------------------|
-| `:certificate-der` | DER-encoded certificate bytes               |
-| `:certificate-pem` | PEM-encoded certificate string              |
-| `:private-key-der` | DER-encoded private key bytes (PKCS#8)      |
-| `:private-key-pem` | PEM-encoded private key string (PKCS#8)     |
-| `:x509`            | Parsed `java.security.cert.X509Certificate` |
-| `:keypair`         | The generated `java.security.KeyPair`       |
-| `:identifier-type` | The identifier type from input              |
-| `:identifier-value`| The identifier value from input             |
+[options="header"]
+|===
+| key | description
+| `:certificate-der` | DER-encoded certificate bytes
+| `:certificate-pem` | PEM-encoded certificate string
+| `:private-key-der` | DER-encoded private key bytes (PKCS#8)
+| `:private-key-pem` | PEM-encoded private key string (PKCS#8)
+| `:x509` | Parsed `java.security.cert.X509Certificate`
+| `:keypair` | The generated `java.security.KeyPair`
+| `:identifier-type` | The identifier type from input
+| `:identifier-value` | The identifier value from input
+|===
 
 The certificate contains:
 - Subject and Issuer: CN=ACME challenge

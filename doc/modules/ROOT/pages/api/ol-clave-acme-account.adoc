@@ -109,9 +109,11 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/account.
 Generate a new ACME account keypair.
 
 Options map:
-| key    | description                             | default |
-|--------|-----------------------------------------|---------|
-| :algo  | key algorithm (:p256, :p384, :ed25519)  | :p256   |
+[options="header"]
+|===
+| key | description | default
+| :algo | key algorithm (:p256, :p384, :ed25519) | :p256
+|===
 
 [.api-source]
 link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/account.clj#L36-L45[source,window=_blank]

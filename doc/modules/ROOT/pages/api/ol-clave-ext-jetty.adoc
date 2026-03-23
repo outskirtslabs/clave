@@ -27,9 +27,11 @@ Create an X509ExtendedKeyManager that looks up certificates by SNI hostname.
 On each TLS handshake, extracts the SNI hostname from the ClientHello and
 calls `lookup-fn` to retrieve the certificate bundle for that hostname.
 
-| key         | description                                             |
-|-------------|---------------------------------------------------------|
-| `lookup-fn` | Function `(fn [hostname] bundle)` returning cert bundle |
+[options="header"]
+|===
+| key | description
+| `lookup-fn` | Function `(fn [hostname] bundle)` returning cert bundle
+|===
 
 The `lookup-fn` receives the SNI hostname and should return a certificate
 bundle map with `:certificate` (vector of X509Certificate) and `:private-key`.
@@ -57,9 +59,11 @@ Uses `lookup-fn` to fetch certificates during TLS handshake based on
 the client's requested hostname (SNI). Certificates are looked up fresh
 on each handshake, so renewals take effect immediately.
 
-| key         | description                                             |
-|-------------|---------------------------------------------------------|
-| `lookup-fn` | Function `(fn [hostname] bundle)` returning cert bundle |
+[options="header"]
+|===
+| key | description
+| `lookup-fn` | Function `(fn [hostname] bundle)` returning cert bundle
+|===
 
 Returns a `javax.net.ssl.SSLContext` ready for use with Jetty.
 
@@ -97,10 +101,12 @@ This does NOT interfere with HTTP/2 (h2) negotiation because:
 - Regular clients offer ["h2", "http/1.1"] -> normal cert via SNI lookup
 - ACME servers offer ["acme-tls/1"] exclusively -> challenge cert
 
-| key                  | description                                       |
-|----------------------|---------------------------------------------------|
-| `lookup-fn`          | Function `(fn [hostname] bundle)` for SNI lookup  |
-| `challenge-registry` | Atom with domain->challenge-cert-data map         |
+[options="header"]
+|===
+| key | description
+| `lookup-fn` | Function `(fn [hostname] bundle)` for SNI lookup
+| `challenge-registry` | Atom with domain->challenge-cert-data map
+|===
 
 The challenge-registry contains maps as returned by `tlsalpn01-challenge-cert`:
 - `:x509` - The X509Certificate to serve
@@ -127,10 +133,12 @@ Create an SSLContext with SNI cert selection and ALPN challenge support.
 For normal HTTPS traffic: looks up certs by SNI hostname via lookup-fn.
 For ACME TLS-ALPN-01 challenges: serves challenge cert when ALPN is 'acme-tls/1'.
 
-| key               | description                                      |
-|-------------------|--------------------------------------------------|
-| `lookup-fn`       | Function `(fn [hostname] bundle)` for SNI lookup |
-| `tls-alpn-solver` | TLS-ALPN solver with `:registry` key )           |
+[options="header"]
+|===
+| key | description
+| `lookup-fn` | Function `(fn [hostname] bundle)` for SNI lookup
+| `tls-alpn-solver` | TLS-ALPN solver with `:registry` key )
+|===
 
 Returns a `javax.net.ssl.SSLContext` ready for use with Jetty.
 

@@ -46,9 +46,11 @@ Starts an SSLServerSocket during `:present`, stops it during `:cleanup`.
 
 Options:
 
-| key     | description               | default |
-|---------|---------------------------|---------|
-| `:port` | Port for challenge server | 443     |
+[options="header"]
+|===
+| key | description | default
+| `:port` | Port for challenge server | 443
+|===
 
 Returns a solver map with `:present` and `:cleanup` functions.
 
@@ -118,9 +120,11 @@ Starts in bootstrap mode (starts temporary server for initial cert).
 Call <<switch-to-integrated,`switch-to-integrated`>> after your TLS server starts so renewals
 use the integrated solver (registers in registry for KeyManager to serve).
 
-| name   | description                            |
-|--------|----------------------------------------|
-| `opts` | Options map with `:port` (default 443) |
+[options="header"]
+|===
+| name | description
+| `opts` | Options map with `:port` (default 443)
+|===
 
 [source,clojure]
 ----

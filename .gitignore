@@ -16,3 +16,5 @@ prompts/PROMPTS.md
 .tmuxb_session
 .claude/
 .brepl/
+*.md
+prompts/

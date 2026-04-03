@@ -7,7 +7,6 @@ ____
 image:https://img.shields.io/badge/doc-outskirtslabs-orange.svg[doc,link=https://docs.outskirtslabs.com/ol.clave/next/]
 image:https://img.shields.io/badge/status-experimental-red.svg[status: experimental,link=https://docs.outskirtslabs.com/open-source-vital-signs#experimental]
 image:https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fgarnix.io%2Fapi%2Fbadges%2Foutskirtslabs%2Fclave[alt=built with garnix,link=https://garnix.io/repo/outskirtslabs/clave]
-https://clojars.org/com.outskirtslabs/clave[image:https://img.shields.io/clojars/v/com.outskirtslabs/clave.svg[Clojars Project]]
 
 `ol.clave` is an https://datatracker.ietf.org/doc/html/rfc8555[ACME client] for Clojure.
 

@@ -31,13 +31,14 @@ Project status: *https://docs.outskirtslabs.com/open-source-vital-signs#experime
 
 == Installation
 
+Use `deps.edn` git coordinates:
+
 [source,clojure]
 ----
 ;; deps.edn
-{:deps {com.outskirtslabs/clave {:mvn/version "0.0.0"}}}
-
-;; Leiningen
-[com.outskirtslabs/clave "0.0.0"]
+{:deps {com.outskirtslabs/clave
+        {:git/url "https://github.com/outskirtslabs/clave.git"
+         :git/sha "612125730b82f472cbb1484010979cd3d334dce5"}}}
 ----
 
 == Quick Start

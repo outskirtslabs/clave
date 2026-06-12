@@ -1,8 +1,8 @@
 {:paths   ["src"]
  :deps    {com.taoensso/trove {:mvn/version "1.1.0"}
            org.babashka/json  {:mvn/version "0.1.6"}}
- :aliases {:kaocha {:extra-deps {cheshire/cheshire   {:mvn/version "6.1.0"}
-                                 mvxcvi/alphabase    {:mvn/version "3.0.185"}}
+ :aliases {:kaocha {:extra-deps {cheshire/cheshire {:mvn/version "6.1.0"}
+                                 mvxcvi/alphabase  {:mvn/version "3.0.185"}}
                     :main-opts  ["-m" "kaocha.runner"]}
            :dev    {:extra-paths ["test" "dev" "examples"]
                     :extra-deps  {lambdaisland/kaocha                      {:mvn/version "1.91.1392"}
@@ -17,7 +17,7 @@
                                   babashka/fs                              {:mvn/version "0.5.27"}
                                   org.bouncycastle/bcpkix-jdk18on          {:mvn/version "1.83"}
                                   com.clojure-goes-fast/clj-async-profiler {:mvn/version "1.7.0"}}}
-           :build  {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.12"}
+           :build  {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.14"}
                                  slipset/deps-deploy           {:mvn/version "0.2.2"}}
                     :ns-default build}
 

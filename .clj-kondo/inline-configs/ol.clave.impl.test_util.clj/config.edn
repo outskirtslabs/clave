@@ -1,0 +1,1 @@
+{:lint-as {ol.clave.impl.test-util/with-pebble clojure.core/with-open, ol.clave.impl.test-util/use-pebble clojure.core/do}}

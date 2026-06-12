@@ -1,5 +1,12 @@
 {
-  "git": {},
+  "git": {
+    "outskirtslabs/bb-tasks/e868e28b18a0496ec4d39878f0307cb1df17da22": {
+      "common_dir": "https/github.com/outskirtslabs/bb-tasks",
+      "rev": "e868e28b18a0496ec4d39878f0307cb1df17da22",
+      "sha256": "1490l417pp032p6b3ghcnij443qy4pq9kadm72v1g2pn6ylpbsxb",
+      "url": "https://github.com/outskirtslabs/bb-tasks"
+    }
+  },
   "maven": {
     "aero/aero/1.1.6/aero-1.1.6.jar": {
       "sha256": "f4b0a9272da50c8091c5529c9fe355c47234f1eeb95fe92296e2c23f787f3d22"
@@ -804,6 +811,12 @@
     },
     "org/bouncycastle/bcutil-jdk18on/1.83/bcutil-jdk18on-1.83.pom": {
       "sha256": "35069f488f075e059d55ede3a8a82c8be166396a91d93e7a16f7b85d3f444a22"
+    },
+    "org/clojure/clojure/1.12.4/clojure-1.12.4.jar": {
+      "sha256": "4b81e9ba6da38c45d9cc58023c674062b8c9f0714f33ff00ded22e6a949da177"
+    },
+    "org/clojure/clojure/1.12.4/clojure-1.12.4.pom": {
+      "sha256": "c51879062e41ff9f21afa0e409b199ffe9f2a3c6ae722cdfec5fd9dba05e4172"
     },
     "org/clojure/clojure/1.12.5/clojure-1.12.5.jar": {
       "sha256": "dfdee131460216a84fef22e537bb0d0579965f8f70338d748323dff26f8e5a8b"

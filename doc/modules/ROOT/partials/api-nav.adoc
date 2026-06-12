@@ -48,6 +48,7 @@
 **** xref:api/ol-clave-ext-common.adoc[common]
 **** xref:api/ol-clave-ext-jetty.adoc[jetty]
 **** xref:api/ol-clave-ext-ring-jetty-adapter.adoc[ring-jetty-adapter]
+*** xref:api/ol-clave-issuers.adoc[issuers]
 *** xref:api/ol-clave-lease.adoc[lease]
 *** xref:api/ol-clave-specs.adoc[specs]
 *** xref:api/ol-clave-storage.adoc[storage]

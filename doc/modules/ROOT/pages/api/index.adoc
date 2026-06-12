@@ -1,6 +1,6 @@
 = API Reference
 
-This release publishes 43 namespaces.
+This release publishes 44 namespaces.
 
 [cols="1,3",options="header",stripes=hover]
 |===
@@ -122,6 +122,9 @@ This release publishes 43 namespaces.
 
 | xref:api/ol-clave-ext-ring-jetty-adapter.adoc[`ol.clave.ext.ring-jetty-adapter`]
 | Ring Jetty adapter integration for clave automation.
+
+| xref:api/ol-clave-issuers.adoc[`ol.clave.issuers`]
+| Convenience ACME directory URLs for well-known certificate authorities.
 
 | xref:api/ol-clave-lease.adoc[`ol.clave.lease`]
 | Cooperative cancellation and deadline propagation for concurrent operations.

@@ -26,9 +26,15 @@
           version = "0.0.0";
           src = ./.;
           prefetchAliases = [ "dev:test:kaocha" ];
-          checkCommand = "clojure -Srepro -M:dev:test:kaocha";
+          checkCommand = ''
+            cljfmt check src test
+            clj-kondo --lint src test
+            clojure -Srepro -M:dev:test:kaocha
+          '';
           gitRev = clj-helpers.lib.gitRev self;
           nativeBuildInputs = [
+            pkgs.cljfmt
+            pkgs.clj-kondo
             pkgs.cfssl
             pkgs.pebble
           ];
@@ -44,9 +50,7 @@
         default = package;
         locker = pkgs: (package pkgs).locker;
       };
-      checks = {
-        tests = pkgs: self.packages.${pkgs.system}.default;
-      };
+
       devShell =
         pkgs:
         pkgs.devshell.mkShell {

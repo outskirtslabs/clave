@@ -6,118 +6,46 @@
     devshell.inputs.nixpkgs.follows = "nixpkgs";
     devenv.url = "github:ramblurr/nix-devenv";
     devenv.inputs.nixpkgs.follows = "nixpkgs";
-    clj-nix.url = "github:jlesquembre/clj-nix";
-    clj-nix.inputs.nixpkgs.follows = "nixpkgs";
+    clj-helpers.url = "github:outskirtslabs/clojure-nix-locker-helpers";
+    clj-helpers.inputs.nixpkgs.follows = "nixpkgs";
   };
   outputs =
     inputs@{
       self,
-      clj-nix,
       devenv,
       devshell,
+      clj-helpers,
       ...
     }:
+    let
+      package =
+        pkgs:
+        clj-helpers.lib.mkCljLib {
+          inherit pkgs;
+          name = "clave";
+          version = "0.0.0";
+          src = ./.;
+          prefetchAliases = [ "dev:test:kaocha" ];
+          checkCommand = "clojure -Srepro -M:dev:test:kaocha";
+          gitRev = clj-helpers.lib.gitRev self;
+          nativeBuildInputs = [
+            pkgs.cfssl
+            pkgs.pebble
+          ];
+        };
+    in
     devenv.lib.mkFlake ./. {
       inherit inputs;
       withOverlays = [
         devshell.overlays.default
         devenv.overlays.default
-        clj-nix.overlays.default
       ];
       packages = {
-        default =
-          pkgs:
-          let
-            root = toString ./.;
-            gitRev =
-              if self ? rev then
-                self.rev
-              else if self ? dirtyRev then
-                self.dirtyRev
-              else
-                "dirty";
-            projectSrc = pkgs.lib.cleanSourceWith {
-              src = ./.;
-              filter =
-                path: _type:
-                let
-                  rel = pkgs.lib.removePrefix (root + "/") (toString path);
-                  base = builtins.baseNameOf path;
-                in
-                !(
-                  base == ".git"
-                  || rel == "result"
-                  || pkgs.lib.hasPrefix "target/" rel
-                );
-            };
-          in
-          pkgs.mkCljLib {
-            inherit projectSrc;
-            name = "com.outskirtslabs/clave";
-            version = "0.0.0";
-            nativeBuildInputs = [
-              pkgs.coreutils
-            ];
-            GIT_REV = gitRev;
-            JAVA_HOME = pkgs.jdk25.home;
-            buildCommand = ''
-              export JAVA_HOME="${pkgs.jdk25.home}"
-              export JAVA_CMD="${pkgs.jdk25}/bin/java"
-              clojure -T:build jar
-            '';
-          };
+        default = package;
+        locker = pkgs: (package pkgs).locker;
       };
       checks = {
-        tests =
-          pkgs:
-          let
-            root = toString ./.;
-            projectSrc = pkgs.lib.cleanSourceWith {
-              src = ./.;
-              filter =
-                path: _type:
-                let
-                  rel = pkgs.lib.removePrefix (root + "/") (toString path);
-                  base = builtins.baseNameOf path;
-                in
-                !(
-                  base == ".git"
-                  || rel == "result"
-                  || pkgs.lib.hasPrefix "target/" rel
-                );
-            };
-            depsCache = pkgs.mk-deps-cache {
-              lockfile = projectSrc + "/deps-lock.json";
-            };
-          in
-          pkgs.runCommand "clave-test-suite"
-            {
-              allowSubstitutes = false;
-              nativeBuildInputs = [
-                pkgs.cfssl
-                pkgs.jdk25
-                (pkgs.clojure.override { jdk = pkgs.jdk25; })
-                pkgs.pebble
-              ];
-              preferLocalBuild = true;
-            }
-            ''
-              export HOME="${depsCache}"
-              export JAVA_HOME="${pkgs.jdk25.home}"
-              export JAVA_CMD="${pkgs.jdk25}/bin/java"
-              export JAVA_TOOL_OPTIONS="-Duser.home=${depsCache}"
-              export CLJ_CONFIG="$HOME/.clojure"
-              export CLJ_CACHE="$TMPDIR/clj-cache"
-              export GITLIBS="$HOME/.gitlibs"
-
-              cp -r ${projectSrc} source
-              chmod -R u+w source
-              cd source
-
-              clojure -M:dev:test:kaocha --timing-edn-file "$TMPDIR/test-timings.edn"
-
-              touch "$out"
-            '';
+        tests = pkgs: self.packages.${pkgs.system}.default;
       };
       devShell =
         pkgs:
@@ -131,10 +59,9 @@
             { package = pkgs.pebble; }
           ];
           packages = [
-            pkgs.deps-lock
+            self.packages.${pkgs.system}.locker
             pkgs.jdk25
           ];
-
         };
     };
 }

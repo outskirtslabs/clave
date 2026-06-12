@@ -17,8 +17,7 @@
                                   babashka/fs                              {:mvn/version "0.5.27"}
                                   org.bouncycastle/bcpkix-jdk18on          {:mvn/version "1.83"}
                                   com.clojure-goes-fast/clj-async-profiler {:mvn/version "1.7.0"}}}
-           :build  {:deps       {io.github.clojure/tools.build {:git/tag "v0.10.12"
-                                                                :git/sha "97c5562"}
+           :build  {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.12"}
                                  slipset/deps-deploy           {:mvn/version "0.2.2"}}
                     :ns-default build}
 

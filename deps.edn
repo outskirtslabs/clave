@@ -18,7 +18,7 @@
                                   org.bouncycastle/bcpkix-jdk18on          {:mvn/version "1.83"}
                                   com.clojure-goes-fast/clj-async-profiler {:mvn/version "1.7.0"}}}
            :build  {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.14"}
-                                 slipset/deps-deploy           {:mvn/version "0.2.2"}}
+                                 slipset/deps-deploy           {:mvn/version "0.2.5"}}
                     :ns-default build}
 
            :neil {:project {:name        com.outskirtslabs/clave

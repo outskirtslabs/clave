@@ -9,8 +9,7 @@
    [ol.clave.automation.impl.decisions :as decisions]
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]
-   [ol.clave.specs :as specs]
-   [ol.clave.storage.file :as file-storage])
+   [ol.clave.specs :as specs])
   (:import
    [java.time Instant]))
 

@@ -12,8 +12,7 @@
    [ol.clave.impl.pebble-harness :as pebble]
    [ol.clave.impl.test-util :as test-util]
    [ol.clave.specs :as specs]
-   [ol.clave.storage :as storage]
-   [ol.clave.storage.file :as file-storage])
+   [ol.clave.storage :as storage])
   (:import
    [java.util.concurrent TimeUnit]))
 

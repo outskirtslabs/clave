@@ -3,7 +3,6 @@
 ;; This is a slimmed version of babashka's http-client library
 ;; https://github.com/babashka/http-client/releases/tag/v0.4.23
 (ns ^:no-doc ol.clave.acme.impl.http.impl
-  (:refer-clojure :exclude [send get])
   (:require
    [clojure.java.io :as io]
    [clojure.string :as str]

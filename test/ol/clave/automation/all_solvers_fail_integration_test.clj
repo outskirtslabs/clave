@@ -11,8 +11,7 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.automation :as automation]
    [ol.clave.impl.pebble-harness :as pebble]
-   [ol.clave.impl.test-util :as test-util]
-   [ol.clave.storage.file :as file-storage])
+   [ol.clave.impl.test-util :as test-util])
   (:import
    [java.util.concurrent TimeUnit]))
 

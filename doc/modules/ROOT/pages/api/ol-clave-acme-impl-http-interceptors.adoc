@@ -13,7 +13,7 @@
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L21-L31[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L20-L30[source,window=_blank]
 
 '''
 
@@ -27,7 +27,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/htt
 Request: adds `:accept` header. Only supported value is `:json`.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L55-L67[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L54-L66[source,window=_blank]
 
 '''
 
@@ -46,7 +46,7 @@ We can't use the URI constructor because it encodes all arguments for us.
 See https://stackoverflow.com/a/77971448/6264
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L85-L99[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L84-L98[source,window=_blank]
 
 '''
 
@@ -60,7 +60,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/htt
 Request: encodes `:query-params` map and appends to `:uri`.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L101-L110[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L100-L109[source,window=_blank]
 
 '''
 
@@ -74,7 +74,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/htt
 Request: encodes `:form-params` map and adds `:body`.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L123-L133[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L122-L132[source,window=_blank]
 
 '''
 
@@ -88,7 +88,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/htt
 Response: decompresses body based on  "content-encoding" header. Valid values: `gzip` and `deflate`.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L177-L184[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L176-L183[source,window=_blank]
 
 '''
 
@@ -102,7 +102,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/htt
 Response: based on the value of `:as` in request, decodes as `:string`, `:stream` or `:bytes`. Defaults to `:string`.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L191-L203[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L190-L202[source,window=_blank]
 
 '''
 
@@ -116,7 +116,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/htt
 Request: construct uri from map
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L205-L212[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L204-L211[source,window=_blank]
 
 '''
 
@@ -130,7 +130,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/htt
 Request: normalize :method option
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L214-L221[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L213-L220[source,window=_blank]
 
 '''
 
@@ -143,7 +143,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/htt
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L223-L224[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L222-L223[source,window=_blank]
 
 '''
 
@@ -157,7 +157,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/htt
 Response: throw on exceptional status codes
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L226-L235[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L225-L234[source,window=_blank]
 
 '''
 
@@ -170,7 +170,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/htt
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L237-L251[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L236-L250[source,window=_blank]
 
 '''
 
@@ -184,4 +184,4 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/htt
 Default interceptor chain. Interceptors are called in order for request and in reverse order for response.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L253-L263[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/impl/http/interceptors.clj#L252-L262[source,window=_blank]

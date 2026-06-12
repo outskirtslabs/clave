@@ -388,11 +388,11 @@ Returns the directory for persistent application data.
 This is the recommended directory for ACME certificates and keys because they
 are valuable cryptographic material with rate limits on reissuance.
 
-With no arguments, returns the base directory (caller appends app name).
-With `app-name`, appends it as a subdirectory (unless systemd provides one).
+With no arguments, returns the base directory.
+With `app-name`, appends it as a subdirectory.
 
 Checks environment variables in order:
-1. `$STATE_DIRECTORY` - set by systemd (`StateDirectory=` maps to `/var/lib/` which is semantically correct)
+1. `$STATE_DIRECTORY` - set by systemd for the host application
 2. `$XDG_DATA_HOME` - XDG base directory spec
 3. Platform default
 
@@ -417,15 +417,15 @@ Returns `nil` if a suitable directory cannot be determined.
 (data-dir)           ; => "/home/user/.local/share"
 (data-dir "myapp")  ; => "/home/user/.local/share/myapp"
 
-;; Under systemd system unit with StateDirectory=myapp:
-(data-dir)           ; => "/var/lib/myapp"
-(data-dir "myapp")  ; => "/var/lib/myapp" (no double append)
+;; Under systemd system unit with StateDirectory=my-app:
+(data-dir)                ; => "/var/lib/my-app"
+(data-dir "ol.clave")     ; => "/var/lib/my-app/ol.clave"
 
-(file-storage {:root (data-dir "myapp")})
+(file-storage {:root (data-dir "ol.clave")})
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/storage/file.clj#L600-L652[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/storage/file.clj#L600-L649[source,window=_blank]
 
 '''
 
@@ -467,4 +467,4 @@ Example:
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/storage/file.clj#L654-L692[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/storage/file.clj#L651-L689[source,window=_blank]

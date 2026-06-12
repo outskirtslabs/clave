@@ -37,7 +37,7 @@ Use `deps.edn` git coordinates:
 ;; deps.edn
 {:deps {com.outskirtslabs/clave
         {:git/url "https://github.com/outskirtslabs/clave.git"
-         :git/sha "9ed6fd26886496675d5c9ebbcf193a02077dfc9e"}}}
+         :git/sha "8ae16bc3d6431e6a03d96a6a041e64c24e76376a"}}}
 ----
 
 == Quick Start

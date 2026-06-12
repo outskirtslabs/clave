@@ -603,11 +603,11 @@
   This is the recommended directory for ACME certificates and keys because they
   are valuable cryptographic material with rate limits on reissuance.
 
-  With no arguments, returns the base directory (caller appends app name).
-  With `app-name`, appends it as a subdirectory (unless systemd provides one).
+  With no arguments, returns the base directory.
+  With `app-name`, appends it as a subdirectory.
 
   Checks environment variables in order:
-  1. `$STATE_DIRECTORY` - set by systemd (`StateDirectory=` maps to `/var/lib/` which is semantically correct)
+  1. `$STATE_DIRECTORY` - set by systemd for the host application
   2. `$XDG_DATA_HOME` - XDG base directory spec
   3. Platform default
 
@@ -629,11 +629,11 @@
   (data-dir)           ; => \"/home/user/.local/share\"
   (data-dir \"myapp\")  ; => \"/home/user/.local/share/myapp\"
 
-  ;; Under systemd system unit with StateDirectory=myapp:
-  (data-dir)           ; => \"/var/lib/myapp\"
-  (data-dir \"myapp\")  ; => \"/var/lib/myapp\" (no double append)
+  ;; Under systemd system unit with StateDirectory=my-app:
+  (data-dir)                ; => \"/var/lib/my-app\"
+  (data-dir \"ol.clave\")     ; => \"/var/lib/my-app/ol.clave\"
 
-  (file-storage {:root (data-dir \"myapp\")})
+  (file-storage {:root (data-dir \"ol.clave\")})
   ```"
   ([]
    (or (first-path (System/getenv "STATE_DIRECTORY"))
@@ -645,11 +645,8 @@
            :linux (str home "/.local/share")
            (str home "/.local/share")))))
   ([app-name]
-   ;; If systemd set STATE_DIRECTORY, use it directly (already app-specific)
-   (if-let [systemd-dir (first-path (System/getenv "STATE_DIRECTORY"))]
-     systemd-dir
-     (when-let [base (data-dir)]
-       (str base "/" app-name)))))
+   (when-let [base (data-dir)]
+     (str base "/" app-name))))
 
 (defn file-storage
   "Creates a [[FileStorage]].

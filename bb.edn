@@ -77,6 +77,10 @@
          {:doc  "Generate all Antora documentation"
           :task (gen-docs/generate!)}
 
+         lockfile
+         {:doc "Update the clojure nix lockfile"
+          :task (shell "nix run .#locker")}
+
          qa
          {:doc     "Run full quality assurance: format, lint, and test"
           :depends [fmt lint test:parallel]}

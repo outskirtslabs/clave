@@ -1,0 +1,80 @@
+= ol.clave.ext.netty
+
+
+Netty TLS integration for Clave certificate automation.
+
+This namespace provides a dynamic Netty SSL context backed by Clave
+certificate bundles and Aleph-compatible manual TLS server options.
+Certificate material is selected by SNI during each handshake, so renewals
+take effect for new connections without replacing the server context.
+
+[#ssl-context]
+== ssl-context
+
+
+
+
+[source,clojure]
+----
+(ssl-context lookup-fn)
+(ssl-context lookup-fn {:keys [http-versions tls-alpn-solver protocols ciphers client-auth trust-managers session-cache-size session-timeout secure-random] :or {http-versions [:http1] client-auth :none}})
+----
+
+Creates a Netty JDK SSL context backed by `lookup-fn`.
+
+`lookup-fn` receives an SNI hostname and must return the bundle shape from
+xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`], or `nil` when no certificate matches.
+The context snapshots the selected bundle so its certificate chain and
+private key always come from the same lookup result.
+This integration uses Netty's JDK provider because it wraps a dynamic JSSE
+key manager.
+
+Options:
+
+[options="header"]
+|===
+| key | description | default
+| `:http-versions` | Aleph HTTP versions in ALPN preference order | `[:http1]`
+| `:tls-alpn-solver` | Solver containing a domain-keyed `:registry` atom | `nil`
+| `:protocols` | Enabled TLS protocol names | JDK default
+| `:ciphers` | Enabled cipher-suite names | JDK default
+| `:client-auth` | `:none`, `:optional`, or `:require` | `:none`
+| `:trust-managers` | TrustManager or sequence for client certificates | JDK default
+| `:session-cache-size` | TLS server-session cache size | JDK default
+| `:session-timeout` | TLS server-session timeout in seconds | JDK default
+| `:secure-random` | SecureRandom used to initialize JSSE | new default
+|===
+
+Unknown or absent SNI fails the handshake.
+TLS-ALPN-01 challenge selection uses the SNI hostname, so concurrent domain
+validations receive their own challenge certificates.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/netty.clj#L195-L248[source,window=_blank]
+
+'''
+
+[#server-options]
+== server-options
+
+
+
+
+[source,clojure]
+----
+(server-options opts ssl-context)
+----
+
+Adds Clave-managed manual TLS to Aleph server `opts`.
+
+The returned options install `ssl-context` before Aleph's protocol handlers.
+A completed `acme-tls/1` handshake closes before Aleph tries to interpret it
+as HTTP, while HTTP/1.1 and HTTP/2 handshake events continue normally.
+
+The caller may provide `:initial-pipeline-transform`; it runs after Clave's
+TLS handlers are installed.
+The caller must not provide `:ssl-context` or `:manual-ssl?`, because this
+function owns those Aleph hooks.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/netty.clj#L270-L290[source,window=_blank]

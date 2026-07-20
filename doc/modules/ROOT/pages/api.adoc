@@ -1,6 +1,6 @@
 = API Reference
 
-This release publishes 44 namespaces.
+This release publishes 46 namespaces.
 
 [cols="1,3",options="header",stripes=hover]
 |===
@@ -114,11 +114,17 @@ This release publishes 44 namespaces.
 | xref:api/ol-clave-errors.adoc[`ol.clave.errors`]
 | Shared error keyword definitions and helpers for ex-info payloads.
 
+| xref:api/ol-clave-ext-aleph.adoc[`ol.clave.ext.aleph`]
+| Aleph server integration for automatic Clave certificates.
+
 | xref:api/ol-clave-ext-common.adoc[`ol.clave.ext.common`]
 | Common utilities for clave server extensions.
 
 | xref:api/ol-clave-ext-jetty.adoc[`ol.clave.ext.jetty`]
 | Jetty integration for clave automation.
+
+| xref:api/ol-clave-ext-netty.adoc[`ol.clave.ext.netty`]
+| Netty TLS integration for Clave certificate automation.
 
 | xref:api/ol-clave-ext-ring-jetty-adapter.adoc[`ol.clave.ext.ring-jetty-adapter`]
 | Ring Jetty adapter integration for clave automation.

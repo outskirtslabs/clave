@@ -14,7 +14,10 @@ It gives you a lower-level API for implementing the ACME protocol itself when yo
 
 And if you do not want to live at RFC altitude all day, it also gives you a higher-level API for provisioning certificates from application code, managing them over time, and keeping them up to date. That is the part most people actually want. Ask for a cert. Renew the cert. Repeat.
 
-`ol.clave` also includes adapters for wiring ACME into Jetty-based applications, plus helpers for HTTP-01 and TLS-ALPN-01 validation. For DNS validation, it gives you the hooks you need, but it does not ship DNS provider integrations by default. DNS provider integrations are future work. (If you are interested in that, https://casey.link/about[get in touch].)
+`ol.clave` also includes adapters for wiring ACME into Jetty and Aleph applications, plus helpers for HTTP-01 and TLS-ALPN-01 validation.
+For DNS validation, it gives you the hooks you need, but it does not ship DNS provider integrations by default.
+DNS provider integrations are future work.
+If you are interested in that, https://casey.link/about[get in touch].
 
 One of the design goals for `ol.clave` was as few dependencies as possible and avoid dragging in a bunch of Java ecosystem baggage.
 
@@ -40,6 +43,14 @@ Use `deps.edn` git coordinates:
          :git/sha "8ae16bc3d6431e6a03d96a6a041e64c24e76376a"}}}
 ----
 
+Aleph remains an optional dependency.
+Add the tested Aleph version alongside Clave when using `ol.clave.ext.aleph`:
+
+[source,clojure]
+----
+{:deps {aleph/aleph {:mvn/version "0.9.10"}}}
+----
+
 == Quick Start
 
 Start with one of the runnable examples in this repository:
@@ -47,6 +58,7 @@ Start with one of the runnable examples in this repository:
 * https://github.com/outskirtslabs/clave/blob/main/examples/certificate.clj[`examples/certificate.clj`] for the higher-level certificate acquisition flow.
 * https://github.com/outskirtslabs/clave/blob/main/examples/acme.clj[`examples/acme.clj`] for a lower-level step-by-step ACME transaction.
 * https://github.com/outskirtslabs/clave/blob/main/examples/ring_jetty.clj[`examples/ring_jetty.clj`] for auto-renewing HTTPS with `ring-jetty-adapter`.
+* https://github.com/outskirtslabs/clave/blob/main/examples/aleph.clj[`examples/aleph.clj`] for auto-renewing HTTPS with Aleph.
 
 These examples use https://github.com/letsencrypt/pebble[Pebble] for local ACME testing.
 

@@ -1,9 +1,9 @@
 {
   "git": {
-    "outskirtslabs/bb-tasks/e868e28b18a0496ec4d39878f0307cb1df17da22": {
+    "outskirtslabs/bb-tasks/9dbc6d77384b51ffde69007e98a0420b3cf6a0a7": {
       "common_dir": "https/github.com/outskirtslabs/bb-tasks",
-      "rev": "e868e28b18a0496ec4d39878f0307cb1df17da22",
-      "sha256": "1490l417pp032p6b3ghcnij443qy4pq9kadm72v1g2pn6ylpbsxb",
+      "rev": "9dbc6d77384b51ffde69007e98a0420b3cf6a0a7",
+      "sha256": "0b2iqd8l7x25h75agxb9f37kyv2lywpp4ffh7jccjgpxgz8yyxx3",
       "url": "https://github.com/outskirtslabs/bb-tasks"
     }
   },
@@ -13,6 +13,12 @@
     },
     "aero/aero/1.1.6/aero-1.1.6.pom": {
       "sha256": "5945cf8ead780f7497e86f298963f278681d519ae9b21be949fac5420f05d350"
+    },
+    "aleph/aleph/0.9.10/aleph-0.9.10.jar": {
+      "sha256": "b1b6a0f9ff26142c85eb7749246aa145c014af1aca7951e4b28a15e5e8df42f5"
+    },
+    "aleph/aleph/0.9.10/aleph-0.9.10.pom": {
+      "sha256": "8a0aab73b4ce072cb71240dbf8273b260734ba98f70ce3f066ca924fb4fa2513"
     },
     "babashka/fs/0.5.27/fs-0.5.27.jar": {
       "sha256": "64d92932627e2af0f008069417beb00ba30838186654054a14133c4df885921b"
@@ -25,6 +31,18 @@
     },
     "babashka/process/0.6.25/process-0.6.25.pom": {
       "sha256": "e1b491fd9d20e2b5d5c2fdaee9ef6b9282fc7759d5e5bf62348b3f536a3c97c6"
+    },
+    "borkdude/dynaload/0.3.5/dynaload-0.3.5.jar": {
+      "sha256": "0887c0cdb9afcecd7c496ea258a32e43aa72e766f3f0632e1bd0f5245ca8c24c"
+    },
+    "borkdude/dynaload/0.3.5/dynaload-0.3.5.pom": {
+      "sha256": "5c1c228f1a29b06d0a7d03490f5e64faf713a3c6167298ba171cffc33cf9ed18"
+    },
+    "borkdude/edamame/1.5.37/edamame-1.5.37.jar": {
+      "sha256": "4ee6060d5252d0b94a70839dbd0cbaf7d7cc4e81d9c277d2b3552f280b97c5a8"
+    },
+    "borkdude/edamame/1.5.37/edamame-1.5.37.pom": {
+      "sha256": "00b6c6a5941f676088456e5551ecf938b06127e9520cf63ba316f55303e1c86e"
     },
     "ch/qos/logback/logback-classic/1.0.12/logback-classic-1.0.12.jar": {
       "sha256": "bb5437dc692a5c5af75b2fed36a4431e834b234399372c6c1f2dad9d9b072551"
@@ -395,11 +413,14 @@
     "expound/expound/0.9.0/expound-0.9.0.pom": {
       "sha256": "90948e0c3dccbc4f1a0af680056b9ed898b301cbed2dde3ff42479796997c5d9"
     },
-    "fipp/fipp/0.6.26/fipp-0.6.26.jar": {
-      "sha256": "f7cb696cce55afd74c838d5441419c7e5f6d491af185a8e563dfa79796857283"
-    },
     "fipp/fipp/0.6.26/fipp-0.6.26.pom": {
       "sha256": "a7ec6357b81321132fd07c2f57efeb02114415594363d83a14313a194f5f5535"
+    },
+    "fipp/fipp/0.6.29/fipp-0.6.29.jar": {
+      "sha256": "db6789a035c013ce11a991eb3818882d68d47fa6a9eee4627b2e0d9e1bef05f2"
+    },
+    "fipp/fipp/0.6.29/fipp-0.6.29.pom": {
+      "sha256": "3aa5f4ad18fbeda949e1f6bc84ddd11e09dceab47f254c0908963aa382f009c5"
     },
     "hawk/hawk/0.2.11/hawk-0.2.11.jar": {
       "sha256": "e943f2f0c487c6c5a6b20e70ce91dd5f31e40489570917bba13fcea73c9a7a43"
@@ -425,8 +446,134 @@
     "io/methvin/directory-watcher/0.17.3/directory-watcher-0.17.3.pom": {
       "sha256": "63f0b8cd1d4da349b60df93891d1e00c5d3fd2c9bd33d8e5beed075a28cd8854"
     },
+    "io/netty/incubator/netty-incubator-transport-classes-io_uring/0.0.26.Final/netty-incubator-transport-classes-io_uring-0.0.26.Final.jar": {
+      "sha256": "b4e3edf982a148ee997a9763a4e6d2d168d15cbf1b16294671f35a99ca2071fd"
+    },
+    "io/netty/incubator/netty-incubator-transport-classes-io_uring/0.0.26.Final/netty-incubator-transport-classes-io_uring-0.0.26.Final.pom": {
+      "sha256": "05b1275f1b3183285d5db244fb49653f026711e0841419a6c8c076149d6599bf"
+    },
+    "io/netty/incubator/netty-incubator-transport-native-io_uring/0.0.26.Final/netty-incubator-transport-native-io_uring-0.0.26.Final-linux-aarch_64.jar": {
+      "sha256": "4b4cd629e681052b0b89590ab137ba15d30d99ec5654f31e8c02bdf16d75f74b"
+    },
+    "io/netty/incubator/netty-incubator-transport-native-io_uring/0.0.26.Final/netty-incubator-transport-native-io_uring-0.0.26.Final-linux-x86_64.jar": {
+      "sha256": "b463d8e005fa634b94da5ab027d616c4c74ad6efc5c8b7c93f46c53ca4748bd0"
+    },
+    "io/netty/incubator/netty-incubator-transport-native-io_uring/0.0.26.Final/netty-incubator-transport-native-io_uring-0.0.26.Final.pom": {
+      "sha256": "90151d4f1bdd0107d630df78eae650edae29abf5366de3c5bbd284786dd7e958"
+    },
+    "io/netty/incubator/netty-incubator-transport-parent-io_uring/0.0.26.Final/netty-incubator-transport-parent-io_uring-0.0.26.Final.pom": {
+      "sha256": "bd55d7a13bdd438e9d4f120c8e8d947aa9245bc651a9a0338be7163da79b3b6c"
+    },
     "io/netty/netty-bom/4.2.0.Final/netty-bom-4.2.0.Final.pom": {
       "sha256": "faad06217912e2a7cb993b45200a79cbd251c97b04333b8b9b99e370af157db9"
+    },
+    "io/netty/netty-buffer/4.1.136.Final/netty-buffer-4.1.136.Final.jar": {
+      "sha256": "c88f13fc41156fde5df918c7b240038dfbe97ac57576163f208630391789b5d5"
+    },
+    "io/netty/netty-buffer/4.1.136.Final/netty-buffer-4.1.136.Final.pom": {
+      "sha256": "5b4ddbc5f43c63a4498a66e355714730697c00b8986ed63d484d8a4f2a77ca8b"
+    },
+    "io/netty/netty-codec-dns/4.1.136.Final/netty-codec-dns-4.1.136.Final.jar": {
+      "sha256": "89bddc4ec42756c41a0195a50a1323a324836162b6712a843c3de5c29096c93b"
+    },
+    "io/netty/netty-codec-dns/4.1.136.Final/netty-codec-dns-4.1.136.Final.pom": {
+      "sha256": "5382dbdb318b94af2cf22289a421a7c5708350145242dac69822f569947eaebc"
+    },
+    "io/netty/netty-codec-http/4.1.136.Final/netty-codec-http-4.1.136.Final.jar": {
+      "sha256": "ffd1e1b19a533bc6e47ef2cbc1290374ff4a7cb53a280defa3df392538214948"
+    },
+    "io/netty/netty-codec-http/4.1.136.Final/netty-codec-http-4.1.136.Final.pom": {
+      "sha256": "5a7002acdc3f2b0588ac9de5626d639655855aacdc2dcba24494358167b78562"
+    },
+    "io/netty/netty-codec-http2/4.1.136.Final/netty-codec-http2-4.1.136.Final.jar": {
+      "sha256": "14f67ae095c056b062aa0ee2c7b01f6b78004cf3620a6e9061bcb637f079387a"
+    },
+    "io/netty/netty-codec-http2/4.1.136.Final/netty-codec-http2-4.1.136.Final.pom": {
+      "sha256": "12cb4cd0e09ffe327369ad5f568ef5be5de471c70e264a2fb5e861038c4ba9a3"
+    },
+    "io/netty/netty-codec-socks/4.1.136.Final/netty-codec-socks-4.1.136.Final.jar": {
+      "sha256": "341f47dbaac667a6e7e6cad4114218025f9755ced641bb0740fb69e34d29b421"
+    },
+    "io/netty/netty-codec-socks/4.1.136.Final/netty-codec-socks-4.1.136.Final.pom": {
+      "sha256": "f80928b898e99b9006e144d0e1092721c79ea518a3d24e2425e3e8abffe7c716"
+    },
+    "io/netty/netty-codec/4.1.136.Final/netty-codec-4.1.136.Final.jar": {
+      "sha256": "2de4fc13005c7740b46427a47ee04265a19779c147d53e583f441889b1148159"
+    },
+    "io/netty/netty-codec/4.1.136.Final/netty-codec-4.1.136.Final.pom": {
+      "sha256": "2dfa10b55be7842630989b5352081f829287832f949a73de4541d6097c8efa63"
+    },
+    "io/netty/netty-common/4.1.136.Final/netty-common-4.1.136.Final.jar": {
+      "sha256": "e2f73be7ec359b46583ad875521137000eff520bafd320e730846ec9974f3be6"
+    },
+    "io/netty/netty-common/4.1.136.Final/netty-common-4.1.136.Final.pom": {
+      "sha256": "1c7b8b7e726a65000f6bad997759d05719a88a234ae1f3b2420669b471473018"
+    },
+    "io/netty/netty-handler-proxy/4.1.136.Final/netty-handler-proxy-4.1.136.Final.jar": {
+      "sha256": "47400551f0444dea33629ee0c52d4e30856b2ddf00b12adf1881902957e74cf2"
+    },
+    "io/netty/netty-handler-proxy/4.1.136.Final/netty-handler-proxy-4.1.136.Final.pom": {
+      "sha256": "684c6ec2ad1919fdfbf5bd63af2e6092613e4220e565255f9b037f1e8d583e8e"
+    },
+    "io/netty/netty-handler/4.1.136.Final/netty-handler-4.1.136.Final.jar": {
+      "sha256": "54bb1a59f46a3aefd117942e6acee09e555b756776bad731fc06159d89c2da28"
+    },
+    "io/netty/netty-handler/4.1.136.Final/netty-handler-4.1.136.Final.pom": {
+      "sha256": "584c16cb512756a16101bade5a62ce51dba26b4150b33aa705dd887da5f0e26e"
+    },
+    "io/netty/netty-parent/4.1.136.Final/netty-parent-4.1.136.Final.pom": {
+      "sha256": "a3a0d1042290f0679dc15874603c3d78e961f7a845873a754fc02d3fc2702106"
+    },
+    "io/netty/netty-resolver-dns/4.1.136.Final/netty-resolver-dns-4.1.136.Final.jar": {
+      "sha256": "9c05a9b18b5d54fcc1569c48b93958019cf3dde5ae7011f8a46451ee05e7daff"
+    },
+    "io/netty/netty-resolver-dns/4.1.136.Final/netty-resolver-dns-4.1.136.Final.pom": {
+      "sha256": "1a98e33607fd26bc455a646f3da2b0f787fbabcd38d2974732cf754b2dbe0111"
+    },
+    "io/netty/netty-resolver/4.1.136.Final/netty-resolver-4.1.136.Final.jar": {
+      "sha256": "e64972fec474f5b9bd086b738154d190a923e82c4923ac550aff4f5ea9e98600"
+    },
+    "io/netty/netty-resolver/4.1.136.Final/netty-resolver-4.1.136.Final.pom": {
+      "sha256": "0b3e27eadb478a0c0de5ad42d84d3749e629c1d7e96b1b5dca6827c2d1cf25a2"
+    },
+    "io/netty/netty-transport-classes-epoll/4.1.136.Final/netty-transport-classes-epoll-4.1.136.Final.jar": {
+      "sha256": "f6a0b631b98667f131daf4ca07a9cae1072d58e259dcbc0f8c6a053d843449c6"
+    },
+    "io/netty/netty-transport-classes-epoll/4.1.136.Final/netty-transport-classes-epoll-4.1.136.Final.pom": {
+      "sha256": "857b642411ce94ef526cfb6cb6ac97d4e5714fa601f3bec808804e7c328f3cc7"
+    },
+    "io/netty/netty-transport-classes-kqueue/4.1.136.Final/netty-transport-classes-kqueue-4.1.136.Final.jar": {
+      "sha256": "4ed7ee5cb8c611e879d0d6621e8a1b4255e7ba5a31e5f7828d635682ef244a20"
+    },
+    "io/netty/netty-transport-classes-kqueue/4.1.136.Final/netty-transport-classes-kqueue-4.1.136.Final.pom": {
+      "sha256": "89df20e835b4ade6ee2e9100fed13b0867a356370106e534bf21136c27a3b4ce"
+    },
+    "io/netty/netty-transport-native-epoll/4.1.136.Final/netty-transport-native-epoll-4.1.136.Final-linux-aarch_64.jar": {
+      "sha256": "f264cf4bcc1e97ad148cd4f0d8777eacf404cd4ed80830de3f8a2359f60edc38"
+    },
+    "io/netty/netty-transport-native-epoll/4.1.136.Final/netty-transport-native-epoll-4.1.136.Final-linux-x86_64.jar": {
+      "sha256": "c3956f90241582bbbad5612c3159cffeb7c3533324759f3c3bd778ca9b176cae"
+    },
+    "io/netty/netty-transport-native-epoll/4.1.136.Final/netty-transport-native-epoll-4.1.136.Final.pom": {
+      "sha256": "edb025669303eb1d304b94bbe56992dcd5a819e88abec5f6f66f07bec4cadbf0"
+    },
+    "io/netty/netty-transport-native-kqueue/4.1.136.Final/netty-transport-native-kqueue-4.1.136.Final-osx-x86_64.jar": {
+      "sha256": "22aef11d1927cf80078c120936885c37fd1f7ad2ccfcafba10903ed241563f2d"
+    },
+    "io/netty/netty-transport-native-kqueue/4.1.136.Final/netty-transport-native-kqueue-4.1.136.Final.pom": {
+      "sha256": "fe1a45c2087900876f7b4e7963da801c3a5b826f6e703093a6fc62bb83679688"
+    },
+    "io/netty/netty-transport-native-unix-common/4.1.136.Final/netty-transport-native-unix-common-4.1.136.Final.jar": {
+      "sha256": "7e014c9b13defd9d254d4e5a5edd8ab6dde17533e1152f99699a6b28b2967a8a"
+    },
+    "io/netty/netty-transport-native-unix-common/4.1.136.Final/netty-transport-native-unix-common-4.1.136.Final.pom": {
+      "sha256": "943574b27adfa0de2303e8b94f86b486ac1b97fbf1caa73bdc8cfacf43af2131"
+    },
+    "io/netty/netty-transport/4.1.136.Final/netty-transport-4.1.136.Final.jar": {
+      "sha256": "b92881ea925721ed42fee5122a42b8bce4b84da737dbc3ca2d84dfaca52c28b6"
+    },
+    "io/netty/netty-transport/4.1.136.Final/netty-transport-4.1.136.Final.pom": {
+      "sha256": "2b0587688ec63e13684e5dd985ae4665126f4b5cf64bf27052fabaea135f691a"
     },
     "jakarta/platform/jakarta.jakartaee-bom/9.1.0/jakarta.jakartaee-bom-9.1.0.pom": {
       "sha256": "df98e0266219fdbb82562826d79a3a20776a8ba02aa787f0f0765a538654c8a4"
@@ -476,11 +623,23 @@
     "lambdaisland/tools.namespace/0.3.256/tools.namespace-0.3.256.pom": {
       "sha256": "9fee3a0578f2e7b03cf3df045e0ca9944cb2a9ffd2e6aa1c7f5e3465b82557ae"
     },
+    "manifold/manifold/0.5.0/manifold-0.5.0.jar": {
+      "sha256": "2c168c74e56bb0fea92f834b0fff1d670a3d15f157a10ef68878465302c99e61"
+    },
+    "manifold/manifold/0.5.0/manifold-0.5.0.pom": {
+      "sha256": "edb2316a8b215b4b67a9de11186ba2e9d0289dc6d8eff85144e01c4b796ac120"
+    },
     "meta-merge/meta-merge/1.0.0/meta-merge-1.0.0.jar": {
       "sha256": "d7fee2e3e3d706e0e54562e72aa3712108d70186a12cbc090e10680582eb02c7"
     },
     "meta-merge/meta-merge/1.0.0/meta-merge-1.0.0.pom": {
       "sha256": "b00a20658fcecc2bd1341031f394f52d68c53fb480c4454134ccaac204ea5931"
+    },
+    "metosin/malli/0.20.1/malli-0.20.1.jar": {
+      "sha256": "45a68c238b6c5d197629750f1a63cc5aa6d045456b0a945c8c9d5ac8067d81de"
+    },
+    "metosin/malli/0.20.1/malli-0.20.1.pom": {
+      "sha256": "07e7c43ad54c32e25af0c663375d1c762c2e644ff82db6fd9c29fa2d821a6bc8"
     },
     "mvxcvi/alphabase/3.0.185/alphabase-3.0.185.jar": {
       "sha256": "265eff15014b50205ab354a5f264dfa74792eeea573d0960c8dc9d2818e5213d"
@@ -812,6 +971,24 @@
     "org/bouncycastle/bcutil-jdk18on/1.83/bcutil-jdk18on-1.83.pom": {
       "sha256": "35069f488f075e059d55ede3a8a82c8be166396a91d93e7a16f7b85d3f444a22"
     },
+    "org/clj-commons/byte-streams/0.3.4/byte-streams-0.3.4.jar": {
+      "sha256": "8d1ce785de2619e692e42eb8d302639d9a4077171c69b3675fc8bbc8a251f799"
+    },
+    "org/clj-commons/byte-streams/0.3.4/byte-streams-0.3.4.pom": {
+      "sha256": "d3241acf6f0d7f4345f719196a1a2fdcc919d95bbbb97ed23245ab30e323ac0b"
+    },
+    "org/clj-commons/dirigiste/1.0.4/dirigiste-1.0.4.jar": {
+      "sha256": "5593e405d83854a4612c962b37aa9eed2e20e9f7e06aa4ec8b9b817a1a57086d"
+    },
+    "org/clj-commons/dirigiste/1.0.4/dirigiste-1.0.4.pom": {
+      "sha256": "5327ea4bbd4de025893b1125baa73064135755acffbe8a9045e55202f4c16316"
+    },
+    "org/clj-commons/primitive-math/1.0.1/primitive-math-1.0.1.jar": {
+      "sha256": "a6678d83735ae9b082636ab0668871fcf47ff24250920700b67a356363e57441"
+    },
+    "org/clj-commons/primitive-math/1.0.1/primitive-math-1.0.1.pom": {
+      "sha256": "65618aec1662b1a70878c6c82dee1d68cc42d242cf8b17d46a21134520a50602"
+    },
     "org/clojure/clojure/1.12.4/clojure-1.12.4.jar": {
       "sha256": "4b81e9ba6da38c45d9cc58023c674062b8c9f0714f33ff00ded22e6a949da177"
     },
@@ -908,6 +1085,12 @@
     "org/clojure/spec.alpha/0.5.238/spec.alpha-0.5.238.pom": {
       "sha256": "3cba7e0dcc085c4ce92dddffea226124ffac178be79bd0379b5b2e30a969cbea"
     },
+    "org/clojure/test.check/1.1.3/test.check-1.1.3.jar": {
+      "sha256": "8b0637b13982734742fb3f4d129f0a9d9e3d752b1aec0c6f65ced4555f72b649"
+    },
+    "org/clojure/test.check/1.1.3/test.check-1.1.3.pom": {
+      "sha256": "a4f21feb2386fbfcd42a52200d14c0f78bbef6899f748ccefcb0a4499e0fdec5"
+    },
     "org/clojure/tools.analyzer.jvm/1.3.2/tools.analyzer.jvm-1.3.2.jar": {
       "sha256": "d8a2d59205a21281f305f3d5439ffc302182c307f9be962a76ce814a6620693d"
     },
@@ -968,11 +1151,14 @@
     "org/clojure/tools.namespace/1.5.1/tools.namespace-1.5.1.pom": {
       "sha256": "ac4d5d17976dabcadc68d8383d087c5ec2808ce2a5bbac5138a207352e2430f2"
     },
-    "org/clojure/tools.reader/1.3.6/tools.reader-1.3.6.jar": {
-      "sha256": "11d1b31f2c65c3355b292bb9b44b8fcafda54b44da63e34ab97b79a8ab3bb8e0"
-    },
     "org/clojure/tools.reader/1.3.6/tools.reader-1.3.6.pom": {
       "sha256": "aef5ee828b7cb14a1c58f45b9f8a10ff340c5769925ea0ef5c35d1e49d920bea"
+    },
+    "org/clojure/tools.reader/1.5.2/tools.reader-1.5.2.jar": {
+      "sha256": "cb96ed0efdf0b8bc362632cb74067ef225f6b03f3f478c8ba44182f6a17a37b6"
+    },
+    "org/clojure/tools.reader/1.5.2/tools.reader-1.5.2.pom": {
+      "sha256": "b9996f5c9b57e234863f395fce64f97d3050b4f58530a6215a5969b082d214e7"
     },
     "org/clojure/tools.reader/1.6.0/tools.reader-1.6.0.jar": {
       "sha256": "036dc155f3b62548df3da934791aa9d8ec36572a9c664ce2cc7f6551856436be"
@@ -1319,6 +1505,9 @@
     "org/sonatype/oss/oss-parent/7/oss-parent-7.pom": {
       "sha256": "b51f8867c92b6a722499557fc3a1fdea77bdf9ef574722fe90ce436a29559454"
     },
+    "org/sonatype/oss/oss-parent/9/oss-parent-9.pom": {
+      "sha256": "fb40265f982548212ff82e362e59732b2187ec6f0d80182885c14ef1f982827a"
+    },
     "org/springframework/build/aws-maven/4.8.0.RELEASE/aws-maven-4.8.0.RELEASE.jar": {
       "sha256": "00dec69ddcddf05c947fb0a87d5178d986baab053471f80d52699590e1fb3ba8"
     },
@@ -1334,11 +1523,23 @@
     "org/testcontainers/testcontainers-bom/1.21.3/testcontainers-bom-1.21.3.pom": {
       "sha256": "2ce717226d1d67b5b1df9707ed98022a366ac892d9e496c5f0173f1ab78a0965"
     },
+    "potemkin/potemkin/0.4.9/potemkin-0.4.9.jar": {
+      "sha256": "53da97f00b44bb934af4ce92dc800d31e4a548a449de129fd4a74f2ef679963a"
+    },
+    "potemkin/potemkin/0.4.9/potemkin-0.4.9.pom": {
+      "sha256": "e53b9eb7d5fee3bcb2fe930ec5438175f888646df8b46f9e450251380f017dd8"
+    },
     "progrock/progrock/0.1.2/progrock-0.1.2.jar": {
       "sha256": "0259feb5b02476eb300b7d64e543eb54ce4ac3dcae5398310f1642768fd53f2a"
     },
     "progrock/progrock/0.1.2/progrock-0.1.2.pom": {
       "sha256": "eab50b723c9e78490f583cb99fb1d46bc280ff11fd5f8523b9bed76a64eaf023"
+    },
+    "riddley/riddley/0.2.0/riddley-0.2.0.jar": {
+      "sha256": "7db27ee8f512933213457498c460d71d80d52b576463fb91e88ab15d0b228c68"
+    },
+    "riddley/riddley/0.2.0/riddley-0.2.0.pom": {
+      "sha256": "438382976e60761e956bea1a67374bb836156cd9ec6bcd1e10a30cabda8b2c50"
     },
     "ring/ring-codec/1.3.0/ring-codec-1.3.0.jar": {
       "sha256": "a3176d58f2b9e2e4e2c6c75c06d1df2b162247ee09ba98d525547e9e59c880ef"

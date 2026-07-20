@@ -45,8 +45,10 @@
 ***** xref:api/ol-clave-crypto-impl-util.adoc[util]
 *** xref:api/ol-clave-errors.adoc[errors]
 *** ext
+**** xref:api/ol-clave-ext-aleph.adoc[aleph]
 **** xref:api/ol-clave-ext-common.adoc[common]
 **** xref:api/ol-clave-ext-jetty.adoc[jetty]
+**** xref:api/ol-clave-ext-netty.adoc[netty]
 **** xref:api/ol-clave-ext-ring-jetty-adapter.adoc[ring-jetty-adapter]
 *** xref:api/ol-clave-issuers.adoc[issuers]
 *** xref:api/ol-clave-lease.adoc[lease]

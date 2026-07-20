@@ -1,0 +1,94 @@
+= ol.clave.ext.aleph
+
+
+Aleph server integration for automatic Clave certificates.
+
+<<start-server,`start-server`>> owns a Clave automation system, an Aleph HTTPS listener, and
+an optional Aleph HTTP listener for HTTP-01 and redirects.
+Both listeners start before initial certificate acquisition, which lets
+HTTP-01 and integrated TLS-ALPN-01 solve the first order without a temporary
+listener or server restart.
+
+Consumers must add `aleph/aleph` separately.
+This adapter is tested with Aleph 0.9.10.
+
+[#start-server]
+== start-server
+
+
+
+
+[source,clojure]
+----
+(start-server handler {::keys [config] :as opts})
+----
+
+Serves `handler` with automatically managed HTTPS certificates.
+
+`opts` are ordinary `aleph.http/start-server` HTTPS options.
+The HTTPS listener defaults to port 443.
+Provide the optional cleartext listener through
+`:ol.clave.ext.aleph/http-options`; it defaults to `{:port 80}` and serves
+HTTP-01 before applying the optional HTTPS redirect.
+
+Clave configuration belongs under `:ol.clave.ext.aleph/config`.
+Calling this function signifies acceptance of the CA's Subscriber Agreement
+and Terms of Service.
+
+Clave options:
+
+[options="header"]
+|===
+| key | description | default
+| `:domains` | Domain names to manage | required
+| `:redirect-http?` | Redirect non-challenge HTTP requests to HTTPS | `true`
+| `:challenge-types` | Adapter-managed challenge solvers | `#{:http-01 :tls-alpn-01}`
+| `:startup-timeout-ms` | Initial certificate timeout, or `nil` to disable | `120000`
+| `:startup-poll-interval-ms` | Initial certificate polling interval | `100`
+|===
+
+Other configuration keys pass to xref:api/ol-clave-automation.adoc#create[`ol.clave.automation/create`].
+User solvers such as DNS-01 are preserved.
+A user solver whose type is also in `:challenge-types` is rejected instead of
+being silently replaced.
+
+Optional JDK TLS policy belongs under `:ol.clave.ext.aleph/tls-options`; see
+xref:api/ol-clave-ext-netty.adoc#ssl-context[`ol.clave.ext.netty/ssl-context`] for supported keys.
+Required client authentication cannot be combined with adapter-managed
+TLS-ALPN-01; use HTTP-01 or DNS-01 until separate challenge TLS policy is
+supported.
+
+Both listeners start before xref:api/ol-clave-automation.adoc#manage-domains[`ol.clave.automation/manage-domains`].
+This function blocks until every initial certificate is available or the
+startup timeout expires.
+
+Returns a map-like Aleph server for <<stop,`stop`>> with `:server`, `:https-server`,
+`:http-server`, and `:system`.
+The result implements `java.io.Closeable` and `aleph.netty/AlephServer`,
+so it works with `with-open`, `aleph.netty/port`, and
+`aleph.netty/wait-for-close`.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/aleph.clj#L204-L309[source,window=_blank]
+
+'''
+
+[#stop]
+== stop
+
+
+
+
+[source,clojure]
+----
+(stop context)
+----
+
+Stops a context returned by <<start-server,`start-server`>>.
+
+Stop is idempotent.
+It first stops certificate automation while challenge listeners remain
+available, then closes the HTTP and HTTPS listeners.
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/aleph.clj#L311-L318[source,window=_blank]

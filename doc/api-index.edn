@@ -527,6 +527,9 @@
     "value-too-large" "value-too-large",
     "wildcard-identifier-not-allowed"
     "wildcard-identifier-not-allowed"}},
+  "ol.clave.ext.aleph"
+  {:page "api/ol-clave-ext-aleph.adoc",
+   :vars {"start-server" "start-server", "stop" "stop"}},
   "ol.clave.ext.common"
   {:page "api/ol-clave-ext-common.adoc",
    :vars
@@ -543,6 +546,10 @@
     "sni-alpn-ssl-context" "sni-alpn-ssl-context",
     "sni-key-manager" "sni-key-manager",
     "sni-ssl-context" "sni-ssl-context"}},
+  "ol.clave.ext.netty"
+  {:page "api/ol-clave-ext-netty.adoc",
+   :vars
+   {"server-options" "server-options", "ssl-context" "ssl-context"}},
   "ol.clave.ext.ring-jetty-adapter"
   {:page "api/ol-clave-ext-ring-jetty-adapter.adoc",
    :vars {"run-jetty" "run-jetty", "stop" "stop"}},

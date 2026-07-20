@@ -5,7 +5,8 @@
                                  mvxcvi/alphabase  {:mvn/version "3.0.185"}}
                     :main-opts  ["-m" "kaocha.runner"]}
            :dev    {:extra-paths ["test" "dev" "examples"]
-                    :extra-deps  {lambdaisland/kaocha                      {:mvn/version "1.91.1392"}
+                    :extra-deps  {aleph/aleph                              {:mvn/version "0.9.10"}
+                                  lambdaisland/kaocha                      {:mvn/version "1.91.1392"}
                                   dev.weavejester/hashp                    {:mvn/version "0.5.1"}
                                   org.slf4j/slf4j-nop                      {:mvn/version "2.0.17"}
                                   com.github.seancorfield/expectations     {:mvn/version "2.2.214"}

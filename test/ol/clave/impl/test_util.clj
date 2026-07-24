@@ -336,7 +336,7 @@
   Returns early on first nil (no event within timeout).
 
   Arguments:
-  - queue: LinkedBlockingQueue from automation/get-event-queue
+  - queue: LinkedBlockingQueue from automation/subscribe-events
   - max-attempts: Maximum number of poll attempts
   - poll-ms: Timeout per poll in milliseconds (default 100)
 
@@ -357,7 +357,7 @@
   Use for async tests where events may arrive with gaps.
 
   Arguments:
-  - queue: LinkedBlockingQueue from automation/get-event-queue
+  - queue: LinkedBlockingQueue from automation/subscribe-events
   - max-count: Number of poll iterations (continues on nil)
   - poll-ms: Timeout per poll in milliseconds
 

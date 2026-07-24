@@ -32,7 +32,7 @@
                   :http-client pebble/http-client-opts}
           system (automation/create-started config)]
       (try
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           (automation/manage-domains system [domain])
           (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
                                                          :timeout-ms 10000})]
@@ -68,7 +68,7 @@
                   :http-client pebble/http-client-opts}]
       ;; First run: obtain certificate (creates account)
       (let [system1 (automation/create-started config)
-            queue1 (automation/get-event-queue system1)]
+            queue1 (automation/subscribe-events system1)]
         (try
           (automation/manage-domains system1 [domain])
           (let [events (test-util/wait-for-events queue1 {:expected #{:certificate-obtained}
@@ -81,7 +81,7 @@
       (let [private-key-key (config/account-private-key-storage-key issuer-key)
             original-key-pem (storage/load-string test-util/*storage-impl* nil private-key-key)
             system2 (automation/create-started config)
-            queue2 (automation/get-event-queue system2)]
+            queue2 (automation/subscribe-events system2)]
         (try
             ;; Force renewal to create new certificate (with threshold > 1)
           (binding [decisions/*renewal-threshold* 1.01]
@@ -117,7 +117,7 @@
                   :http-client pebble/http-client-opts}
           system (automation/create-started config)]
       (try
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           (automation/manage-domains system [domain])
           (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
                                                          :timeout-ms 10000})]

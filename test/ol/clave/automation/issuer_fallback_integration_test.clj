@@ -95,7 +95,7 @@
                                  :http-client pebble/http-client-opts}
               system (automation/create-started automation-config)]
           (try
-            (let [queue (automation/get-event-queue system)]
+            (let [queue (automation/subscribe-events system)]
               ;; Step 4: Call manage-domains with the blocked domain
               (automation/manage-domains system [test-domain])
               ;; Consume domain-added event
@@ -193,7 +193,7 @@
                                  :http-client pebble/http-client-opts}
               system (automation/create-started automation-config)]
           (try
-            (let [queue (automation/get-event-queue system)]
+            (let [queue (automation/subscribe-events system)]
               ;; Call manage-domains
               (automation/manage-domains system [test-domain])
               ;; Consume domain-added event

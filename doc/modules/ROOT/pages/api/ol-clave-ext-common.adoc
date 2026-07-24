@@ -58,13 +58,12 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.cl
 
 Check if an event indicates a certificate change.
 
-Returns true for `:certificate-obtained`, `:certificate-renewed`, and
-`:certificate-loaded` events.
+Returns true for `:certificate-obtained` and `:certificate-renewed` events.
 
 [options="header"]
 |===
 | key | description
-| `evt` | Event from xref:api/ol-clave-automation.adoc#get-event-queue[`ol.clave.automation/get-event-queue`]
+| `evt` | Event from xref:api/ol-clave-automation.adoc#subscribe-events[`ol.clave.automation/subscribe-events`]
 |===
 
 [source,clojure]
@@ -74,7 +73,7 @@ Returns true for `:certificate-obtained`, `:certificate-renewed`, and
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L46-L62[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L46-L61[source,window=_blank]
 
 '''
 
@@ -100,7 +99,7 @@ Returns the domain string or nil if event has no domain.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L64-L73[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L63-L72[source,window=_blank]
 
 '''
 
@@ -138,7 +137,7 @@ Passes through requests that are already HTTPS (by `:scheme` or `x-forwarded-pro
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L75-L106[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L74-L105[source,window=_blank]
 
 '''
 
@@ -164,7 +163,7 @@ Useful with `PEBBLE_VA_ALWAYS_VALID=1` where challenge validation is skipped.
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L108-L119[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L107-L118[source,window=_blank]
 
 '''
 
@@ -201,4 +200,4 @@ Returns nil once all certificates are available.
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L121-L146[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L120-L145[source,window=_blank]

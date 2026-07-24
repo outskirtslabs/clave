@@ -71,8 +71,8 @@
           system2 (automation/create-started config2)]
 
       (try
-        (let [queue1 (automation/get-event-queue system1)
-              queue2 (automation/get-event-queue system2)]
+        (let [queue1 (automation/subscribe-events system1)
+              queue2 (automation/subscribe-events system2)]
 
             ;; Trigger certificate obtain on both instances nearly simultaneously
             ;; Using futures for concurrent execution

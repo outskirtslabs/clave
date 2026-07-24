@@ -42,7 +42,7 @@
                   :key-type :p384}
           system (automation/create-started config)]
       (try
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           ;; Request certificate for domain A (should use P256)
           (automation/manage-domains system [domain-a])
 

@@ -78,7 +78,7 @@
   (let [solver (make-http01-solver)
         storage (file-storage/file-storage {:root (test-util/temp-storage-dir)})
         system (automation/create-started (make-config storage solver))
-        queue (automation/get-event-queue system)]
+        queue (automation/subscribe-events system)]
     (try
       (let [first-revoked?
             (testing "revoke sends revocation request to CA"

@@ -22,8 +22,8 @@ The automation layer manages TLS certificate lifecycle automatically:
                                      :email "admin@example.com"}]
                           :solvers {:http-01 my-http-solver}}))
 
-;; Optionally get the event queue before starting
-(def queue (auto/get-event-queue system))
+;; Optionally subscribe to bounded lifecycle events before starting
+(def events (auto/subscribe-events system))
 
 ;; Start the maintenance loop
 (auto/start system)
@@ -34,7 +34,8 @@ The automation layer manages TLS certificate lifecycle automatically:
 ;; Look up certificate for TLS handshake
 (auto/lookup-cert system "example.com")
 
-;; Stop the system
+;; Release the subscription and stop the system
+(auto/unsubscribe-events system events)
 (auto/stop system)
 ----
 
@@ -75,10 +76,10 @@ Returns a system handle that is not yet started.
 
 Throws if configuration is invalid or storage cannot be initialized.
 
-After calling this function you might be interested in <<get-event-queue,`get-event-queue`>> and <<start,`start`>>.
+After calling this function you might be interested in <<subscribe-events,`subscribe-events`>> and <<start,`start`>>.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L58-L67[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L59-L68[source,window=_blank]
 
 '''
 
@@ -103,7 +104,7 @@ Returns the system handle.
 See also <<create,`create`>>.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L69-L79[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L70-L80[source,window=_blank]
 
 '''
 
@@ -130,7 +131,7 @@ and releases resources.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L86-L96[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L87-L97[source,window=_blank]
 
 '''
 
@@ -154,7 +155,7 @@ Returns true if the system is in started state.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L98-L105[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L99-L106[source,window=_blank]
 
 '''
 
@@ -182,7 +183,7 @@ Throws with `:errors` in ex-data if any domain is invalid.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L107-L118[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L108-L119[source,window=_blank]
 
 '''
 
@@ -210,7 +211,7 @@ Certificates remain in storage but are no longer actively managed.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L120-L131[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L121-L132[source,window=_blank]
 
 '''
 
@@ -238,7 +239,7 @@ Returns the certificate bundle or nil if not found.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L133-L144[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L134-L145[source,window=_blank]
 
 '''
 
@@ -264,7 +265,7 @@ Returns a vector of maps with `:domain`, `:status`, and `:not-after`.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L146-L155[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L147-L156[source,window=_blank]
 
 '''
 
@@ -292,7 +293,7 @@ Returns a map with `:domain`, `:status`, `:not-after`, `:issuer`,
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L157-L168[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L158-L169[source,window=_blank]
 
 '''
 
@@ -317,41 +318,83 @@ Returns true if the system has a valid certificate for the domain.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L170-L178[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L171-L179[source,window=_blank]
 
 '''
 
-[#get-event-queue]
-== get-event-queue
+[#subscribe-events]
+== subscribe-events
 
 
 
 
 [source,clojure]
 ----
-(get-event-queue system)
+(subscribe-events system)
+(subscribe-events system opts)
 ----
 
-Gets the event queue handle for monitoring.
+Creates an independent bounded event subscription.
 
-The queue is created lazily on first call. Subsequent calls return
-the same queue instance.
+Every active subscription receives every live event published after it is
+created.
+Events are not replayed.
+The returned `java.util.concurrent.LinkedBlockingQueue` supports `.take`,
+`.poll`, and `.poll(timeout, unit)` directly.
 
-Returns a `java.util.concurrent.LinkedBlockingQueue`
-Poll with `.poll`, `.poll(timeout, unit)`, or `.take`.
+Options:
 
-When the system is stopped via <<stop,`stop`>>, a `:ol.clave/shutdown` keyword
-is placed on the queue. Consumers should check for this sentinel to
-know when to stop polling.
+[options="header"]
+|===
+| key | description | default
+| `:capacity` | Any positive queue capacity up to JVM limits | `1024`
+|===
+
+A subscriber that fills its queue receives `:subscription-overflow` and is
+disconnected without affecting automation or other subscribers.
+Call <<unsubscribe-events,`unsubscribe-events`>> when the consumer stops before system shutdown.
+
+System shutdown places a `:system-stopped` event in every active queue.
 
 [options="header"]
 |===
 | key | description
-| `system` | System handle from <<start,`start`>>
+| `system` | System handle from <<create,`create`>>
+| `opts` | Optional subscription options
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L180-L197[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L181-L209[source,window=_blank]
+
+'''
+
+[#unsubscribe-events]
+== unsubscribe-events
+
+
+
+
+[source,clojure]
+----
+(unsubscribe-events system queue)
+----
+
+Removes one event subscription.
+
+The removed queue receives a `:subscription-closed` event so a blocked
+consumer can exit.
+This function is idempotent and returns true only when it removes an active
+subscription.
+
+[options="header"]
+|===
+| key | description
+| `system` | System handle from <<create,`create`>>
+| `queue` | Queue returned by <<subscribe-events,`subscribe-events`>>
+|===
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L211-L224[source,window=_blank]
 
 '''
 
@@ -383,7 +426,7 @@ Returns the number of certificates queued for renewal.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L199-L214[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L226-L241[source,window=_blank]
 
 '''
 
@@ -425,7 +468,7 @@ Returns `{:status :success}` on successful revocation,
 or `{:status :error :message ...}` on failure.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L216-L239[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L243-L266[source,window=_blank]
 
 '''
 
@@ -452,4 +495,4 @@ maintenance loop runs automatically at regular intervals.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L241-L251[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L268-L278[source,window=_blank]

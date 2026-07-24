@@ -119,3 +119,81 @@
         (finally
           (stop context))))
     (is (= :implemented :missing))))
+
+(deftest reports-a-permanent-initial-certificate-failure-immediately
+  (if-let [{:keys [start-server stop]} (sut-vars)]
+    (let [domain "blocked-domain.example"
+          {:keys [http-port tls-port]} pebble/*pebble-ports*
+          created-system_ (atom nil)
+          original-create auto/create
+          listener-closed?
+          (fn [port]
+            (try
+              (with-open [_socket (java.net.Socket. "127.0.0.1" (int port))]
+                false)
+              (catch java.net.ConnectException _
+                true)))
+          started-at (System/currentTimeMillis)
+          result
+          (with-redefs [auto/create
+                        (fn [config]
+                          (let [system (original-create config)]
+                            (reset! created-system_ system)
+                            system))]
+            (try
+              (start-server
+               (constantly {:status 200 :body "unreachable"})
+               {:port tls-port
+                :http-versions [:http1]
+                :shutdown-timeout 0
+                :ol.clave.ext.aleph/http-options
+                {:port http-port :shutdown-timeout 0}
+                :ol.clave.ext.aleph/config
+                (assoc (adapter-config #{:http-01})
+                       :domains [domain]
+                       :startup-timeout-ms 5000)})
+              (catch Exception e
+                e)))
+          elapsed-ms (- (System/currentTimeMillis) started-at)]
+      (when (map? result)
+        (stop result))
+      (let [data (some-> result ex-data)
+            failure (:failure data)]
+        (is (= {:automation-created? true
+                :automation-stopped? true
+                :elapsed-before-timeout? true
+                :exception? true
+                :failure
+                {:domain domain
+                 :error
+                 "Acme Server Error urn:ietf:params:acme:error:rejectedIdentifier"
+                 :error-data
+                 {:problem/status 400
+                  :problem/type
+                  "urn:ietf:params:acme:error:rejectedIdentifier"
+                  :status 400
+                  :type :ol.clave.errors/problem}
+                 :exception-class "clojure.lang.ExceptionInfo"
+                 :operation :obtain-certificate
+                 :reason :acme-error
+                 :terminal? true}
+                :message "Initial certificate acquisition failed"
+                :listeners-closed? true
+                :missing-domains [domain]}
+               {:automation-created? (some? @created-system_)
+                :automation-stopped? (not (auto/started? @created-system_))
+                :elapsed-before-timeout? (< elapsed-ms 4000)
+                :exception? (instance? clojure.lang.ExceptionInfo result)
+                :failure
+                (-> (select-keys failure
+                                 [:domain :error :exception-class :operation
+                                  :reason :terminal?])
+                    (assoc :error-data
+                           (select-keys (:error-data failure)
+                                        [:problem/status :problem/type :status
+                                         :type])))
+                :message (some-> result ex-message)
+                :listeners-closed? (and (listener-closed? http-port)
+                                        (listener-closed? tls-port))
+                :missing-domains (:missing-domains data)}))))
+    (is (= :implemented :missing))))

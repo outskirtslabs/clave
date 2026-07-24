@@ -11,6 +11,7 @@
    [ol.clave.automation.impl.cache :as cache]
    [ol.clave.automation.impl.config :as config]
    [ol.clave.automation.impl.decisions :as decisions]
+   [ol.clave.automation.impl.events :as events]
    [ol.clave.automation.impl.domain :as domain]
    [ol.clave.certificate :as certificate]
    [ol.clave.certificate.impl.keygen :as keygen]
@@ -27,7 +28,7 @@
    [java.security.spec PKCS8EncodedKeySpec]
    [java.time Instant]
    [java.util Base64]
-   [java.util.concurrent ConcurrentHashMap Executors LinkedBlockingQueue Semaphore]))
+   [java.util.concurrent ConcurrentHashMap Executors Semaphore]))
 
 (set! *warn-on-reflection* true)
 
@@ -93,7 +94,7 @@
   "Creates the initial system state map."
   [config]
   {:cache (atom {:certs {} :index {} :capacity (:cache-capacity config)})
-   :event-queue (atom nil)  ;; Lazily created
+   :events (events/create-bus)
    :shutdown? (atom false)
    :started? (atom false)
    :executor (Executors/newVirtualThreadPerTaskExecutor)
@@ -294,10 +295,9 @@
 ;;; Event Emission
 
 (defn- emit-event!
-  "Emit an event to the event queue if it exists."
+  "Publish an event to every active subscription."
   [system event]
-  (when-let [^LinkedBlockingQueue queue @(:event-queue system)]
-    (.add queue (update event :timestamp #(or % (Instant/now))))))
+  (events/publish! (:events system) event))
 
 (defn- create-domain-added-event
   "Create a :domain-added event."
@@ -438,9 +438,7 @@
     (when-let [^java.util.concurrent.ExecutorService executor (:executor system)]
       (.shutdown executor)
       (.awaitTermination executor *shutdown-timeout-ms* java.util.concurrent.TimeUnit/MILLISECONDS))
-    (when-let [queue @(:event-queue system)]
-      (.offer ^LinkedBlockingQueue queue :ol.clave/shutdown)
-      (reset! (:event-queue system) nil))
+    (events/close! (:events system))
     nil))
 
 (defn started?
@@ -681,6 +679,7 @@
                        (catch Exception e
                          {:status :error
                           :message (ex-message e)
+                          :exception e
                           :reason (decisions/classify-error e)}))]
           (if (= :success (:status result))
             result
@@ -761,6 +760,7 @@
                        (catch Exception e
                          {:status :error
                           :message (ex-message e)
+                          :exception e
                           :reason (decisions/classify-error e)}))]
           (if (= :success (:status result))
             result
@@ -1182,6 +1182,7 @@
                                          (on-command-complete! system cmd
                                                                {:status :error
                                                                 :message (ex-message e)
+                                                                :exception e
                                                                 :reason (decisions/classify-error e)}))
                                        (finally
                                          (.release ^Semaphore semaphore)))
@@ -1271,15 +1272,17 @@
   [system domain]
   (some? (lookup-cert system domain)))
 
-(defn get-event-queue
-  "See [[ol.clave.automation/get-event-queue]]"
-  [system]
-  (let [queue-atom (:event-queue system)]
-    (or @queue-atom
-        (let [queue (LinkedBlockingQueue.)]
-          (if (compare-and-set! queue-atom nil queue)
-            queue
-            @queue-atom)))))
+(defn subscribe-events
+  "See [[ol.clave.automation/subscribe-events]]."
+  ([system]
+   (events/subscribe! (:events system)))
+  ([system opts]
+   (events/subscribe! (:events system) opts)))
+
+(defn unsubscribe-events
+  "See [[ol.clave.automation/unsubscribe-events]]."
+  [system queue]
+  (events/unsubscribe! (:events system) queue))
 
 (defn renew-managed
   "See [[ol.clave.automation/renew-managed]]"

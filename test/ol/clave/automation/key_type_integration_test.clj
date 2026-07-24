@@ -52,7 +52,7 @@
                 :key-type key-type}
         system (automation/create-started config)]
     (try
-      (let [queue (automation/get-event-queue system)]
+      (let [queue (automation/subscribe-events system)]
         (automation/manage-domains system [domain])
         ;; consume domain-added event
         (.poll queue 2 TimeUnit/SECONDS)

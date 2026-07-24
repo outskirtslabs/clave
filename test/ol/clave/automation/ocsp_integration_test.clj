@@ -62,7 +62,7 @@
         (test-util/store-test-cert! storage issuer-key domain cert)
         (let [system (automation/create-started (make-config storage))]
           (try
-            (let [queue (automation/get-event-queue system)
+            (let [queue (automation/subscribe-events system)
                   bundle (automation/lookup-cert system domain)]
               (is (decisions/short-lived-cert? bundle))
               (automation/trigger-maintenance system)
@@ -77,7 +77,7 @@
         (test-util/store-test-cert! storage issuer-key domain cert)
         (let [system (automation/create-started (make-config storage))]
           (try
-            (let [queue (automation/get-event-queue system)
+            (let [queue (automation/subscribe-events system)
                   bundle (automation/lookup-cert system domain)]
               (is (decisions/short-lived-cert? bundle))
               (automation/trigger-maintenance system)
@@ -92,7 +92,7 @@
         (test-util/store-test-cert! storage issuer-key domain cert)
         (let [system (automation/create-started (assoc-in (make-config storage) [:ocsp :enabled] false))]
           (try
-            (let [queue (automation/get-event-queue system)
+            (let [queue (automation/subscribe-events system)
                   bundle (automation/lookup-cert system domain)]
               (is (not (decisions/short-lived-cert? bundle)))
               (automation/trigger-maintenance system)
@@ -110,7 +110,7 @@
         _ (ocsp-harness/set-ocsp-response! "*" :good)
         system (automation/create-started (make-config storage solver))]
     (try
-      (let [queue (automation/get-event-queue system)]
+      (let [queue (automation/subscribe-events system)]
         (testing "OCSP staple fetched after certificate obtain"
           (automation/manage-domains system [domain])
           (let [events (test-util/wait-for-events queue {:expected #{:domain-added
@@ -145,7 +145,7 @@
         system1 (automation/create-started config)]
     (try
       (testing "OCSP staple persisted to storage"
-        (let [queue (automation/get-event-queue system1)]
+        (let [queue (automation/subscribe-events system1)]
           (automation/manage-domains system1 [domain])
           (let [events (test-util/wait-for-events queue {:expected #{:ocsp-stapled}
                                                          :timeout-ms 10000})]
@@ -182,7 +182,7 @@
         _ (ocsp-harness/set-ocsp-response! "*" :good)
         system (automation/create-started (make-config storage solver))]
     (try
-      (let [queue (automation/get-event-queue system)]
+      (let [queue (automation/subscribe-events system)]
         (automation/manage-domains system [domain])
         (test-util/wait-for-events queue {:expected #{:certificate-obtained}
                                           :timeout-ms 10000})

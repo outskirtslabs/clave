@@ -57,7 +57,7 @@
                                          :issuers [{:directory-url (pebble/uri)}]
                                          :solvers {:http-01 (make-solver)}
                                          :http-client pebble/http-client-opts})
-              queue (automation/get-event-queue system)]
+              queue (automation/subscribe-events system)]
           (automation/start system)
           (try
             (let [events (test-util/wait-for-events queue {:expected #{:certificate-renewed}
@@ -91,7 +91,7 @@
                                                    :http-client pebble/http-client-opts
                                                    :config-fn config-fn})]
             (try
-              (let [queue (automation/get-event-queue system)]
+              (let [queue (automation/subscribe-events system)]
                 (automation/trigger-maintenance system)
                 (let [events (test-util/wait-for-events queue {:timeout-ms 1000})
                       renewed (->> events
@@ -133,7 +133,7 @@
                                                  :http-client pebble/http-client-opts
                                                  :config-fn config-fn})]
           (try
-            (let [queue (automation/get-event-queue system)]
+            (let [queue (automation/subscribe-events system)]
               (automation/trigger-maintenance system)
               (let [events (test-util/wait-for-events queue {:timeout-ms 1000})]
                 (is (some #(= domain-ok (get-in % [:data :domain])) events))

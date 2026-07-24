@@ -88,7 +88,7 @@
                                              :issuers [{:directory-url (pebble/uri)}]
                                              :solvers {:http-01 solver}
                                              :http-client pebble/http-client-opts})
-          queue (automation/get-event-queue system)]
+          queue (automation/subscribe-events system)]
       ;; Start async certificate obtain
       (automation/manage-domains system [domain])
       ;; Wait for solver to start
@@ -106,7 +106,7 @@
         (is (storage/exists? storage nil
                              (config/cert-storage-key (config/issuer-key-from-url (pebble/uri)) domain))))
       ;; Verify shutdown signal on queue
-      (is (some #(= :ol.clave/shutdown %)
+      (is (some #(= :system-stopped (:type %))
                 (loop [evts []]
                   (if-let [e (.poll queue 100 TimeUnit/MILLISECONDS)]
                     (recur (conj evts e))

@@ -65,7 +65,7 @@
                   :ocsp {:enabled false}
                   :ari {:enabled false}}
           system (automation/create-started config)
-          queue (automation/get-event-queue system)]
+          queue (automation/subscribe-events system)]
       (try
         ;; Step 1-2: Start system and obtain certificate
         (println "Step 1-2: Managing domain")

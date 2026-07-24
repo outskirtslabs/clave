@@ -31,7 +31,7 @@
                   :http-client pebble/http-client-opts}
           system (automation/create-started config)]
       (try
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           ;; Step 3: Obtain a certificate
           (automation/manage-domains system [domain])
           ;; Consume domain-added event
@@ -95,7 +95,7 @@
                   :http-client pebble/http-client-opts}
           system (automation/create-started config)]
       (try
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           ;; Step 1: Obtain certificates for multiple domains
           (automation/manage-domains system domains)
           ;; Wait for domain-added and certificate-obtained events

@@ -451,25 +451,7 @@ Event types by command and status:
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L326-L410[source,window=_blank]
-
-'''
-
-[#create-certificate-loaded-event]
-== create-certificate-loaded-event
-
-
-
-
-[source,clojure]
-----
-(create-certificate-loaded-event bundle)
-----
-
-Create an event for a certificate loaded from storage.
-
-[.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L412-L421[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L326-L422[source,window=_blank]
 
 '''
 
@@ -493,7 +475,7 @@ escalating (e.g., three 10-minute intervals means 3 attempts at that
 tier before moving to 20 minutes).
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L425-L461[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L426-L462[source,window=_blank]
 
 '''
 
@@ -515,4 +497,4 @@ Returns a random value in [0, maintenance-jitter) to spread out
 maintenance operations and avoid thundering herd problems.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L463-L471[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/decisions.clj#L464-L472[source,window=_blank]

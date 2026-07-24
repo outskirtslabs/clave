@@ -39,7 +39,7 @@
                   :ari {:enabled true}}
           system (automation/create-started config)]
       (try
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           (automation/manage-domains system [domain])
           (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained
                                                                      :ari-fetched}
@@ -108,7 +108,7 @@
                   :ari {:enabled true}}
           system (automation/create-started config)]
       (try
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           (automation/manage-domains system [domain])
           (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
                                                          :timeout-ms 10000})]

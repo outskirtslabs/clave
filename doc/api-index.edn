@@ -188,7 +188,6 @@
    :vars
    {"create" "create",
     "get-domain-status" "get-domain-status",
-    "get-event-queue" "get-event-queue",
     "has-valid-cert?" "has-valid-cert-QMARK-",
     "list-domains" "list-domains",
     "lookup-cert" "lookup-cert",
@@ -198,8 +197,10 @@
     "start" "start",
     "started?" "started-QMARK-",
     "stop" "stop",
+    "subscribe-events" "subscribe-events",
     "trigger-maintenance" "trigger-maintenance",
-    "unmanage-domains" "unmanage-domains"}},
+    "unmanage-domains" "unmanage-domains",
+    "unsubscribe-events" "unsubscribe-events"}},
   "ol.clave.automation.impl.cache"
   {:page "api/ol-clave-automation-impl-cache.adoc",
    :vars
@@ -254,8 +255,6 @@
     "check-cert-maintenance" "check-cert-maintenance",
     "classify-error" "classify-error",
     "command-key" "command-key",
-    "create-certificate-loaded-event"
-    "create-certificate-loaded-event",
     "emergency-renewal?" "emergency-renewal-QMARK-",
     "event-for-result" "event-for-result",
     "fast-command?" "fast-command-QMARK-",
@@ -278,7 +277,6 @@
     "*slow-semaphore-permits*" "-STAR-slow-semaphore-permits-STAR-",
     "create" "create",
     "get-domain-status" "get-domain-status",
-    "get-event-queue" "get-event-queue",
     "has-valid-cert?" "has-valid-cert-QMARK-",
     "list-domains" "list-domains",
     "lookup-cert" "lookup-cert",
@@ -289,8 +287,10 @@
     "started?" "started-QMARK-",
     "stop" "stop",
     "submit-command!" "submit-command-BANG-",
+    "subscribe-events" "subscribe-events",
     "trigger-maintenance" "trigger-maintenance",
-    "unmanage-domains" "unmanage-domains"}},
+    "unmanage-domains" "unmanage-domains",
+    "unsubscribe-events" "unsubscribe-events"}},
   "ol.clave.certificate"
   {:page "api/ol-clave-certificate.adoc",
    :vars

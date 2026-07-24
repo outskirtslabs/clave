@@ -44,7 +44,7 @@
             overrides {ocsp-harness/fake-ocsp-url (ocsp-harness/ocsp-url)}
             system (automation/create-started (make-config storage solver overrides))]
         (try
-          (let [queue (automation/get-event-queue system)]
+          (let [queue (automation/subscribe-events system)]
             (automation/manage-domains system [domain])
             (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained
                                                                        :ocsp-stapled}
@@ -66,7 +66,7 @@
             _ (ocsp-harness/reset-request-count!)
             system (automation/create-started (make-config storage solver {}))]
         (try
-          (let [queue (automation/get-event-queue system)]
+          (let [queue (automation/subscribe-events system)]
             (automation/manage-domains system [domain])
             (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained
                                                                        :ocsp-failed}

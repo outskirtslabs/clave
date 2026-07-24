@@ -34,7 +34,7 @@
                   :http-client pebble/http-client-opts}
           system (automation/create-started config)]
       (try
-        (let [queue (automation/get-event-queue system)
+        (let [queue (automation/subscribe-events system)
               ;; Step 2: Submit multiple requests simultaneously
               ;; Use bound-fn to propagate *pebble-ports* binding to future threads
               request-count 10

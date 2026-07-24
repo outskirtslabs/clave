@@ -19,8 +19,8 @@
                                        :email \"admin@example.com\"}]
                             :solvers {:http-01 my-http-solver}}))
 
-  ;; Optionally get the event queue before starting
-  (def queue (auto/get-event-queue system))
+  ;; Optionally subscribe to bounded lifecycle events before starting
+  (def events (auto/subscribe-events system))
 
   ;; Start the maintenance loop
   (auto/start system)
@@ -31,7 +31,8 @@
   ;; Look up certificate for TLS handshake
   (auto/lookup-cert system \"example.com\")
 
-  ;; Stop the system
+  ;; Release the subscription and stop the system
+  (auto/unsubscribe-events system events)
   (auto/stop system)
   ```
 
@@ -62,7 +63,7 @@
 
   Throws if configuration is invalid or storage cannot be initialized.
 
-  After calling this function you might be interested in [[get-event-queue]] and [[start]]."
+  After calling this function you might be interested in [[subscribe-events]] and [[start]]."
   [config]
   (system/create config))
 
@@ -177,24 +178,50 @@
   [system domain]
   (system/has-valid-cert? system domain))
 
-(defn get-event-queue
-  "Gets the event queue handle for monitoring.
+(defn subscribe-events
+  "Creates an independent bounded event subscription.
 
-  The queue is created lazily on first call. Subsequent calls return
-  the same queue instance.
+  Every active subscription receives every live event published after it is
+  created.
+  Events are not replayed.
+  The returned [[java.util.concurrent.LinkedBlockingQueue]] supports `.take`,
+  `.poll`, and `.poll(timeout, unit)` directly.
 
-  Returns a [[java.util.concurrent.LinkedBlockingQueue]]
-  Poll with `.poll`, `.poll(timeout, unit)`, or `.take`.
+  Options:
 
-  When the system is stopped via [[stop]], a `:ol.clave/shutdown` keyword
-  is placed on the queue. Consumers should check for this sentinel to
-  know when to stop polling.
+  | key         | description                                  | default |
+  |-------------|----------------------------------------------|---------|
+  | `:capacity` | Any positive queue capacity up to JVM limits | `1024`  |
+
+  A subscriber that fills its queue receives `:subscription-overflow` and is
+  disconnected without affecting automation or other subscribers.
+  Call [[unsubscribe-events]] when the consumer stops before system shutdown.
+
+  System shutdown places a `:system-stopped` event in every active queue.
 
   | key      | description                  |
   |----------|------------------------------|
-  | `system` | System handle from [[start]] |"
-  ^java.util.concurrent.LinkedBlockingQueue [system]
-  (system/get-event-queue system))
+  | `system` | System handle from [[create]] |
+  | `opts`   | Optional subscription options |"
+  (^java.util.concurrent.LinkedBlockingQueue [system]
+   (system/subscribe-events system))
+  (^java.util.concurrent.LinkedBlockingQueue [system opts]
+   (system/subscribe-events system opts)))
+
+(defn unsubscribe-events
+  "Removes one event subscription.
+
+  The removed queue receives a `:subscription-closed` event so a blocked
+  consumer can exit.
+  This function is idempotent and returns true only when it removes an active
+  subscription.
+
+  | key      | description                                |
+  |----------|--------------------------------------------|
+  | `system` | System handle from [[create]]              |
+  | `queue`  | Queue returned by [[subscribe-events]]     |"
+  [system queue]
+  (system/unsubscribe-events system queue))
 
 (defn renew-managed
   "Forces renewal of all managed certificates.

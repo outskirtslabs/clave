@@ -92,7 +92,7 @@
                   :http-client http-opts}
           system (automation/create-started config)]
       (try
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           ;; Trigger certificate obtain
           (automation/manage-domains system [domain])
           ;; Consume domain-added event

@@ -46,19 +46,18 @@
 (defn certificate-event?
   "Check if an event indicates a certificate change.
 
-  Returns true for `:certificate-obtained`, `:certificate-renewed`, and
-  `:certificate-loaded` events.
+  Returns true for `:certificate-obtained` and `:certificate-renewed` events.
 
   | key   | description                                        |
   |-------|----------------------------------------------------|
-  | `evt` | Event from [[ol.clave.automation/get-event-queue]] |
+  | `evt` | Event from [[ol.clave.automation/subscribe-events]] |
 
   ```clojure
   (when (certificate-event? evt)
     (log/info \"Certificate updated for\" (event-domain evt)))
   ```"
   [evt]
-  (contains? #{:certificate-obtained :certificate-renewed :certificate-loaded}
+  (contains? #{:certificate-obtained :certificate-renewed}
              (:type evt)))
 
 (defn event-domain

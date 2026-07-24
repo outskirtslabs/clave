@@ -26,7 +26,7 @@
                   :http-client pebble/http-client-opts}
           system (automation/create-started config)]
       (try
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           (automation/manage-domains system [domain1])
           (let [events (test-util/wait-for-events queue {:expected #{:domain-added
                                                                      :certificate-failed}

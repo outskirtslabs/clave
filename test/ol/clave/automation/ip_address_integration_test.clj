@@ -32,7 +32,7 @@
                   :http-client pebble/http-client-opts}
           system (automation/create-started config)]
       (try
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           ;; Step 3: Call manage-domains with IP address
           (automation/manage-domains system [ip-address])
 

@@ -219,35 +219,40 @@
                      :issuer-key nil}}
              (dissoc ev :timestamp)))))
 
-  (testing "certificate-failed on failure"
-    (let [ev (decisions/event-for-result {:command :obtain-certificate :domain "example.com"}
-                                         {:status :error :message "Connection refused" :reason :max-duration-exceeded})]
+  (testing "terminal certificate failure preserves structured error data"
+    (let [exception (ex-info "ACME rejected identifier"
+                             {:status 400 :type :rejected-identifier})
+          ev (decisions/event-for-result
+              {:command :obtain-certificate :domain "example.com"}
+              {:status :error
+               :message "ACME rejected identifier"
+               :reason :acme-error
+               :attempts 1
+               :exception exception})]
       (is (some? (:timestamp ev)))
       (is (= {:type :certificate-failed
-              :data {:domain "example.com"
-                     :error "Connection refused"
-                     :reason :max-duration-exceeded}}
+              :data {:attempts 1
+                     :domain "example.com"
+                     :error "ACME rejected identifier"
+                     :error-data {:status 400 :type :rejected-identifier}
+                     :exception-class "clojure.lang.ExceptionInfo"
+                     :operation :obtain-certificate
+                     :reason :acme-error
+                     :terminal? true}}
              (dissoc ev :timestamp)))))
 
-  (testing "certificate-failed includes attempts when present"
-    (let [ev (decisions/event-for-result {:command :obtain-certificate :domain "example.com"}
-                                         {:status :error :message "Max retry exceeded" :reason :max-duration-exceeded :attempts 25})]
-      (is (some? (:timestamp ev)))
+  (testing "terminal renewal failure omits unavailable optional data"
+    (let [ev (decisions/event-for-result
+              {:command :renew-certificate :domain "example.com"}
+              {:status :error
+               :message "Configuration failed"
+               :reason :config-error})]
       (is (= {:type :certificate-failed
               :data {:domain "example.com"
-                     :error "Max retry exceeded"
-                     :reason :max-duration-exceeded
-                     :attempts 25}}
-             (dissoc ev :timestamp)))))
-
-  (testing "certificate-failed omits attempts when not present"
-    (let [ev (decisions/event-for-result {:command :obtain-certificate :domain "example.com"}
-                                         {:status :error :message "Config error" :reason :config-error})]
-      (is (some? (:timestamp ev)))
-      (is (= {:type :certificate-failed
-              :data {:domain "example.com"
-                     :error "Config error"
-                     :reason :config-error}}
+                     :error "Configuration failed"
+                     :operation :renew-certificate
+                     :reason :config-error
+                     :terminal? true}}
              (dissoc ev :timestamp)))))
 
   (testing "ocsp-stapled on success"
@@ -370,15 +375,3 @@
 (deftest max-retry-duration-ms-test
   (testing "max retry duration is 30 days in milliseconds"
     (is (= (* 30 24 60 60 1000) decisions/*max-retry-duration-ms*))))
-
-(deftest create-certificate-loaded-event-test
-  (let [b (make-bundle {:not-before "2026-01-01T00:00:00Z"
-                        :not-after "2026-04-01T00:00:00Z"
-                        :names ["example.com" "www.example.com"]})
-        ev (decisions/create-certificate-loaded-event b)]
-    (is (instance? Instant (:timestamp ev)))
-    (is (= {:type :certificate-loaded
-            :data {:domain "example.com"
-                   :names ["example.com" "www.example.com"]
-                   :not-after (Instant/parse "2026-04-01T00:00:00Z")}}
-           (dissoc ev :timestamp)))))

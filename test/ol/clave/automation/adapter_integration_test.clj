@@ -52,7 +52,7 @@
           system (automation/create-started config)]
       (try
         ;; Step 3: Get event queue for adapter consumption
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           ;; Step 4: Call manage-domains (simulating adapter requesting certificate)
           (automation/manage-domains system [domain])
 

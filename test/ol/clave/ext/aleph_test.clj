@@ -5,6 +5,7 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.automation :as auto]
    [ol.clave.automation.impl.config :as automation-config]
+   [ol.clave.automation.impl.events :as events]
    [ol.clave.ext.netty :as clave-netty]
    [ol.clave.impl.test-util :as test-util])
   (:import
@@ -14,6 +15,7 @@
    [java.security.cert X509Certificate]
    [java.time Instant]
    [java.util Collections]
+   [java.util.concurrent LinkedBlockingQueue]
    [javax.net.ssl SSLContext SSLParameters SNIHostName SSLSocket SSLSocketFactory
     X509TrustManager]))
 
@@ -307,7 +309,7 @@
 
 (deftest cleans-up-a-created-system-when-tls-context-construction-fails
   (if-let [{:keys [start-server]} (sut-vars)]
-    (let [system {:fake :system}
+    (let [system {:events (events/create-bus) :fake :system}
           stopped_ (atom [])]
       (with-redefs [auto/create (fn [_config] system)
                     auto/started? (constantly false)
@@ -328,3 +330,49 @@
                 :challenge-types #{:tls-alpn-01}}})))
         (is (= [system] @stopped_))))
     (is (= :implemented :missing))))
+
+(deftest initial-certificate-wait-reports-terminal-events
+  (let [wait-for-certificates
+        (requiring-resolve 'ol.clave.ext.aleph/wait-for-certificates)]
+    (testing "reports the failed domain from a multiple-domain startup"
+      (let [domains ["first.example" "second.example"]
+            queue (LinkedBlockingQueue. 10)
+            _ (.offer queue
+                      {:type :certificate-failed
+                       :data {:domain "second.example"
+                              :operation :obtain-certificate
+                              :reason :acme-error
+                              :terminal? true}})
+            result
+            (with-redefs [auto/lookup-cert (constantly nil)]
+              (try
+                (wait-for-certificates nil domains queue 1000 10)
+                (catch Exception e
+                  e)))]
+        (is (= {:failure {:domain "second.example"
+                          :operation :obtain-certificate
+                          :reason :acme-error
+                          :terminal? true}
+                :message "Initial certificate acquisition failed"
+                :missing-domains domains}
+               {:failure (:failure (ex-data result))
+                :message (ex-message result)
+                :missing-domains (:missing-domains (ex-data result))}))))
+    (testing "reports an overflow instead of degrading to a timeout"
+      (let [domain "example.com"
+            queue (LinkedBlockingQueue. 1)
+            overflow-event {:type :subscription-overflow
+                            :data {:capacity 1}}
+            _ (.offer queue overflow-event)
+            result
+            (with-redefs [auto/lookup-cert (constantly nil)]
+              (try
+                (wait-for-certificates nil [domain] queue 1000 10)
+                (catch Exception e
+                  e)))]
+        (is (= {:event overflow-event
+                :message "Initial certificate event subscription overflowed"
+                :missing-domains [domain]}
+               {:event (:event (ex-data result))
+                :message (ex-message result)
+                :missing-domains (:missing-domains (ex-data result))}))))))

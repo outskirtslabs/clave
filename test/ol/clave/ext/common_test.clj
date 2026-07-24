@@ -56,8 +56,7 @@
 (deftest certificate-event?-test
   (testing "certificate events"
     (is (common/certificate-event? {:type :certificate-obtained}))
-    (is (common/certificate-event? {:type :certificate-renewed}))
-    (is (common/certificate-event? {:type :certificate-loaded})))
+    (is (common/certificate-event? {:type :certificate-renewed})))
   (testing "non-certificate events"
     (is (not (common/certificate-event? {:type :domain-added})))
     (is (not (common/certificate-event? {})))))

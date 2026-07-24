@@ -39,7 +39,7 @@
           ;; Step 1: Obtain a valid certificate first
           system1 (automation/create-started config)]
       (try
-        (let [queue1 (automation/get-event-queue system1)]
+        (let [queue1 (automation/subscribe-events system1)]
           (automation/manage-domains system1 [domain])
           ;; Consume domain-added event
           (.poll queue1 5 TimeUnit/SECONDS)
@@ -59,7 +59,7 @@
         (storage/store-string test-util/*storage-impl* nil cert-key "GARBAGE NOT A PEM"))
       ;; Step 3-7: Start a new system and verify behavior
       (let [system2 (automation/create-started config)
-            queue2 (automation/get-event-queue system2)]
+            queue2 (automation/subscribe-events system2)]
         (try
           ;; Step 4: Verify corrupted file is detected
           ;; The certificate should NOT be in cache because parsing failed
@@ -96,7 +96,7 @@
           ;; Step 1: Obtain a valid certificate first
           system1 (automation/create-started config)]
       (try
-        (let [queue1 (automation/get-event-queue system1)]
+        (let [queue1 (automation/subscribe-events system1)]
           (automation/manage-domains system1 [domain])
           ;; Consume domain-added event
           (.poll queue1 5 TimeUnit/SECONDS)
@@ -116,7 +116,7 @@
         (storage/store-string test-util/*storage-impl* nil key-key "GARBAGE NOT A KEY"))
       ;; Step 3-7: Start a new system and verify behavior
       (let [system2 (automation/create-started config)
-            queue2 (automation/get-event-queue system2)]
+            queue2 (automation/subscribe-events system2)]
         (try
           ;; Step 4: Verify corrupted file is detected
           ;; The certificate should NOT be in cache because key parsing failed

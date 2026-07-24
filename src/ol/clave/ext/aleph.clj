@@ -20,7 +20,8 @@
    [ol.clave.ext.netty :as clave-netty]
    [taoensso.trove :as log])
   (:import
-   [java.io Closeable]))
+   [java.io Closeable]
+   [java.util.concurrent LinkedBlockingQueue TimeUnit]))
 
 (set! *warn-on-reflection* true)
 
@@ -130,24 +131,46 @@
   (into [] (remove #(auto/lookup-cert system %)) domains))
 
 (defn- wait-for-certificates
-  [system domains timeout-ms poll-interval-ms]
+  [system domains ^LinkedBlockingQueue event-queue timeout-ms poll-interval-ms]
   (let [deadline (when timeout-ms (+ (System/currentTimeMillis) timeout-ms))]
     (loop []
-      (let [missing (missing-certificates system domains)]
+      (let [missing (missing-certificates system domains)
+            now (System/currentTimeMillis)]
         (cond
           (empty? missing)
           nil
 
-          (and deadline (>= (System/currentTimeMillis) deadline))
+          (and deadline (>= now deadline))
           (throw (ex-info "Timed out waiting for initial certificates"
                           {:domains domains
                            :missing-domains missing
                            :timeout-ms timeout-ms}))
 
           :else
-          (do
-            (Thread/sleep (long poll-interval-ms))
-            (recur)))))))
+          (let [wait-ms (if deadline
+                          (max 1 (min poll-interval-ms (- deadline now)))
+                          poll-interval-ms)
+                event (.poll event-queue
+                             (long wait-ms)
+                             TimeUnit/MILLISECONDS)
+                failure (:data event)]
+            (cond
+              (and (= :certificate-failed (:type event))
+                   (:terminal? failure)
+                   (some #{(:domain failure)} missing))
+              (throw (ex-info "Initial certificate acquisition failed"
+                              {:domains domains
+                               :failure failure
+                               :missing-domains missing}))
+
+              (= :subscription-overflow (:type event))
+              (throw (ex-info "Initial certificate event subscription overflowed"
+                              {:domains domains
+                               :event event
+                               :missing-domains missing}))
+
+              :else
+              (recur))))))))
 
 (defn- close-server [server]
   (when server
@@ -263,46 +286,51 @@
         tls-alpn-solver-instance (:tls-alpn-01 solvers)
         auto-config (automation-config config solvers)
         http-versions (get https-options :http-versions [:http1])
+        event-capacity (max 1024 (+ 16 (* 2 (count domains))))
         system_ (atom nil)
         started-servers_ (atom [])]
     (try
       (let [system (auto/create auto-config)
             _ (reset! system_ system)
-            ssl-context
-            (clave-netty/ssl-context
-             #(auto/lookup-cert system %)
-             (merge tls-options
-                    {:http-versions http-versions
-                     :tls-alpn-solver tls-alpn-solver-instance}))
-            https-options (clave-netty/server-options https-options ssl-context)]
-        (auto/start system)
-        (let [https-server (http/start-server handler https-options)
-              _ (swap! started-servers_ conj https-server)
-              ssl-port (aleph-netty/port https-server)
-              http-server
-              (when http-options
-                (let [server
-                      (http/start-server
-                       (http-handler handler
-                                     http-solver-instance
-                                     redirect-http?
-                                     ssl-port)
-                       http-options)]
-                  (swap! started-servers_ conj server)
-                  server))]
-          (auto/manage-domains system domains)
-          (wait-for-certificates system
-                                 domains
-                                 startup-timeout-ms
-                                 startup-poll-interval-ms)
-          (map->ServerContext
-           {:server https-server
-            :https-server https-server
-            :http-server http-server
-            :system system
-            :http-solver http-solver-instance
-            :tls-alpn-solver tls-alpn-solver-instance
-            :stopped? (atom false)})))
+            event-queue (auto/subscribe-events system {:capacity event-capacity})]
+        (try
+          (let [ssl-context
+                (clave-netty/ssl-context
+                 #(auto/lookup-cert system %)
+                 (merge tls-options
+                        {:http-versions http-versions
+                         :tls-alpn-solver tls-alpn-solver-instance}))
+                https-options (clave-netty/server-options https-options ssl-context)]
+            (auto/start system)
+            (let [https-server (http/start-server handler https-options)
+                  _ (swap! started-servers_ conj https-server)
+                  ssl-port (aleph-netty/port https-server)
+                  http-server (when http-options
+                                (let [server
+                                      (http/start-server
+                                       (http-handler handler
+                                                     http-solver-instance
+                                                     redirect-http?
+                                                     ssl-port)
+                                       http-options)]
+                                  (swap! started-servers_ conj server)
+                                  server))]
+              (auto/manage-domains system domains)
+              (wait-for-certificates system
+                                     domains
+                                     event-queue
+                                     startup-timeout-ms
+                                     startup-poll-interval-ms)
+              (map->ServerContext
+               {:server https-server
+                :https-server https-server
+                :http-server http-server
+                :system system
+                :http-solver http-solver-instance
+                :tls-alpn-solver tls-alpn-solver-instance
+                :stopped? (atom false)})))
+          (finally
+            (auto/unsubscribe-events system event-queue))))
       (catch Throwable e
         (stop-automation @system_)
         (run! close-server (reverse @started-servers_))

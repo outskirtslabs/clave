@@ -46,7 +46,7 @@
                                     (recur (inc n)))))))]
       (let [system (automation/create-started config)]
         (try
-          (let [queue (automation/get-event-queue system)]
+          (let [queue (automation/subscribe-events system)]
             (automation/manage-domains system [domain])
             (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained
                                                                        :ari-fetched}
@@ -90,7 +90,7 @@
 
       (let [system (automation/create-started config)]
         (try
-          (let [queue (automation/get-event-queue system)
+          (let [queue (automation/subscribe-events system)
                 initial-bundle (wait-for-bundle system)
                 initial-hash (:hash initial-bundle)
                 initial-ari (:ari-data initial-bundle)

@@ -46,7 +46,7 @@
           solver (make-http01-solver)
           system (automation/create-started (make-config storage solver))]
       (try
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           (automation/manage-domains system [domain])
           (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained}
                                                          :timeout-ms 10000})]
@@ -85,7 +85,7 @@
         (test-util/store-test-cert! storage issuer-key domain cert {:managed true})
         (let [system (automation/create-started (make-config storage solver))]
           (try
-            (let [queue (automation/get-event-queue system)
+            (let [queue (automation/subscribe-events system)
                   events (test-util/wait-for-events queue {:expected #{:certificate-renewed}
                                                            :timeout-ms 10000})]
               ;; Expired managed cert should be renewed automatically
@@ -111,7 +111,7 @@
         (test-util/store-test-cert! storage issuer-key domain cert {:managed true})
         (let [system (automation/create-started (make-config storage failing-solver))]
           (try
-            (let [queue (automation/get-event-queue system)
+            (let [queue (automation/subscribe-events system)
                   events (test-util/wait-for-events queue {:expected #{:certificate-failed}
                                                            :timeout-ms 10000})]
               ;; Should get failure event when renewal fails
@@ -144,7 +144,7 @@
             (is (.isAfter ^Instant (:not-before bundle) now))
             (is (.isAfter ^Instant (:not-after bundle) now)))
           ;; Trigger maintenance - should NOT renew a not-yet-valid cert
-          (let [queue (automation/get-event-queue system)]
+          (let [queue (automation/subscribe-events system)]
             (automation/trigger-maintenance system)
             (let [events (test-util/wait-for-events queue {:forbidden #{:certificate-renewed}
                                                            :timeout-ms 500})]

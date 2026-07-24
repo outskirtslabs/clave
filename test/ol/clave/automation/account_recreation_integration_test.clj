@@ -55,7 +55,7 @@
           ;; Start automation system - will load the pre-existing key and auto-create account
           system (automation/create-started config)]
       (try
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           ;; Step 4: Trigger certificate obtain
           (automation/manage-domains system [domain])
           ;; Wait for domain-added event

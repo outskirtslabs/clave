@@ -69,7 +69,7 @@ so it works with `with-open`, `aleph.netty/port`, and
 `aleph.netty/wait-for-close`.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/aleph.clj#L204-L309[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/aleph.clj#L227-L338[source,window=_blank]
 
 '''
 
@@ -91,4 +91,4 @@ It first stops certificate automation while challenge listeners remain
 available, then closes the HTTP and HTTPS listeners.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/aleph.clj#L311-L318[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/aleph.clj#L340-L347[source,window=_blank]

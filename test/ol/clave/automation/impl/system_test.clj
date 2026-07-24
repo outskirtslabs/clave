@@ -3,6 +3,7 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [ol.clave.automation :as automation]
+   [ol.clave.automation.impl.events :as events]
    [ol.clave.automation.impl.system :as system]
    [ol.clave.impl.test-util :as test-util]
    [ol.clave.storage.file :as file-storage])
@@ -10,7 +11,7 @@
    [java.nio.file Files]
    [java.time Instant]
    [java.time.temporal ChronoUnit]
-   [java.util.concurrent Executors LinkedBlockingQueue TimeUnit]))
+   [java.util.concurrent Executors TimeUnit]))
 
 ;; =============================================================================
 ;; System Lifecycle Tests
@@ -24,7 +25,7 @@
    :started? (atom true)
    :maintenance-thread (atom nil)
    :executor (Executors/newVirtualThreadPerTaskExecutor)
-   :event-queue (atom (LinkedBlockingQueue. 10))})
+   :events (events/create-bus)})
 
 (deftest stop-on-already-stopped-system-is-noop
   (testing "Calling stop on an already stopped system does not throw"
@@ -65,12 +66,13 @@
 (deftest event-queue-closed-on-shutdown-returns-shutdown-marker
   (testing "Event queue returns shutdown marker when system stops"
     ;; Step 1: Create minimal system with event queue
-    (let [queue (LinkedBlockingQueue. 10)
+    (let [event-bus (events/create-bus)
+          queue (events/subscribe! event-bus {:capacity 10})
           sys {:shutdown? (atom false)
                :started? (atom true)
                :maintenance-thread (atom nil)
                :executor (Executors/newVirtualThreadPerTaskExecutor)
-               :event-queue (atom queue)}
+               :events event-bus}
           ;; Step 2: Start consumer thread waiting for events
           consumer-result (promise)
           consumer-thread (Thread.
@@ -86,8 +88,8 @@
       ;; Step 4: Wait for consumer to receive the shutdown marker
       (let [result (deref consumer-result 2000 :timeout)]
         ;; Step 5: Verify consumer received shutdown marker
-        (is (= :ol.clave/shutdown result)
-            "Consumer should receive :ol.clave/shutdown marker")
+        (is (= :system-stopped (:type result))
+            "Consumer should receive :system-stopped")
         (is (not= :timeout result)
             "Consumer should not timeout waiting for shutdown"))
       ;; Cleanup
@@ -96,12 +98,13 @@
 (deftest event-queue-allows-clean-consumer-exit
   (testing "Consumer can detect shutdown and exit cleanly"
     ;; Step 1: Create system and simulate consumer loop
-    (let [queue (LinkedBlockingQueue. 10)
+    (let [event-bus (events/create-bus)
+          queue (events/subscribe! event-bus {:capacity 10})
           sys {:shutdown? (atom false)
                :started? (atom true)
                :maintenance-thread (atom nil)
                :executor (Executors/newVirtualThreadPerTaskExecutor)
-               :event-queue (atom queue)}
+               :events event-bus}
           events-processed (atom [])
           consumer-exited (promise)
           ;; Step 2: Start consumer with shutdown detection
@@ -111,7 +114,7 @@
                                (let [evt (.poll queue 1 TimeUnit/SECONDS)]
                                  (cond
                                    ;; Shutdown marker - exit cleanly
-                                   (= :ol.clave/shutdown evt)
+                                   (= :system-stopped (:type evt))
                                    (deliver consumer-exited :clean-exit)
                                    ;; Timeout - continue waiting
                                    (nil? evt)
@@ -302,7 +305,7 @@
                :started? (atom true)
                :maintenance-thread (atom nil)
                :executor executor
-               :event-queue (atom (LinkedBlockingQueue. 10))
+               :events (events/create-bus)
                :fast-semaphore (java.util.concurrent.Semaphore. 100)
                :slow-semaphore (java.util.concurrent.Semaphore. 100)
                :in-flight (java.util.concurrent.ConcurrentHashMap.)
@@ -340,12 +343,13 @@
     (let [slow-semaphore (java.util.concurrent.Semaphore. 2)
           fast-semaphore (java.util.concurrent.Semaphore. 10)
           executor (Executors/newVirtualThreadPerTaskExecutor)
-          event-queue (LinkedBlockingQueue. 100)
+          event-bus (events/create-bus)
+          event-queue (events/subscribe! event-bus {:capacity 100})
           sys {:shutdown? (atom false)
                :started? (atom true)
                :maintenance-thread (atom nil)
                :executor executor
-               :event-queue (atom event-queue)
+               :events event-bus
                :fast-semaphore fast-semaphore
                :slow-semaphore slow-semaphore
                :in-flight (java.util.concurrent.ConcurrentHashMap.)
@@ -393,12 +397,13 @@
     (let [slow-semaphore (java.util.concurrent.Semaphore. 1)
           fast-semaphore (java.util.concurrent.Semaphore. 10)
           executor (Executors/newVirtualThreadPerTaskExecutor)
-          event-queue (LinkedBlockingQueue. 100)
+          event-bus (events/create-bus)
+          event-queue (events/subscribe! event-bus {:capacity 100})
           sys {:shutdown? (atom false)
                :started? (atom true)
                :maintenance-thread (atom nil)
                :executor executor
-               :event-queue (atom event-queue)
+               :events event-bus
                :fast-semaphore fast-semaphore
                :slow-semaphore slow-semaphore
                :in-flight (java.util.concurrent.ConcurrentHashMap.)
@@ -442,13 +447,14 @@
                   :issuer-key "test-issuer"
                   :not-before not-before
                   :not-after not-after}
-          event-queue (LinkedBlockingQueue. 100)
+          event-bus (events/create-bus)
+          event-queue (events/subscribe! event-bus {:capacity 100})
           executor (Executors/newVirtualThreadPerTaskExecutor)
           sys {:shutdown? (atom false)
                :started? (atom true)
                :maintenance-thread (atom nil)
                :executor executor
-               :event-queue (atom event-queue)
+               :events event-bus
                :fast-semaphore (java.util.concurrent.Semaphore. 10)
                :slow-semaphore (java.util.concurrent.Semaphore. 10)
                :in-flight (java.util.concurrent.ConcurrentHashMap.)

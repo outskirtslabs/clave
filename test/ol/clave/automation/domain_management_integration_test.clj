@@ -38,7 +38,7 @@
           system (automation/create-started config)]
       (try
         ;; Get event queue before calling manage-domains
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           (automation/manage-domains system [domain])
           ;; Step 4: Verify :domain-added event is emitted
           (let [events (test-util/wait-for-events queue {:expected #{:domain-added
@@ -174,7 +174,7 @@
           system (automation/create-started config)]
       (try
         ;; Get event queue before calling manage-domains
-        (let [queue (automation/get-event-queue system)]
+        (let [queue (automation/subscribe-events system)]
           (automation/manage-domains system [domain])
           ;; Step 4: Verify :domain-added event is emitted
           (let [events (test-util/wait-for-events queue {:expected #{:domain-added

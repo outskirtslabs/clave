@@ -366,12 +366,24 @@
 
       ;; Certificate obtain/renew failed
       (and (not success?) (#{:obtain-certificate :renew-certificate} command))
-      {:type :certificate-failed
-       :timestamp now
-       :data (cond-> {:domain domain
-                      :error (:message result)
-                      :reason (:reason result)}
-               (:attempts result) (assoc :attempts (:attempts result)))}
+      (let [exception (:exception result)
+            exception-class (some-> exception class .getName)
+            error-data (some-> exception ex-data)]
+        {:type :certificate-failed
+         :timestamp now
+         :data (cond-> {:domain domain
+                        :error (:message result)
+                        :operation command
+                        :reason (:reason result)
+                        :terminal? true}
+                 (contains? result :attempts)
+                 (assoc :attempts (:attempts result))
+
+                 exception-class
+                 (assoc :exception-class exception-class)
+
+                 error-data
+                 (assoc :error-data error-data))})
 
       ;; OCSP fetched successfully
       (and success? (= :fetch-ocsp command))
@@ -408,17 +420,6 @@
        :data {:domain domain
               :command command
               :result result}})))
-
-(defn create-certificate-loaded-event
-  "Create an event for a certificate loaded from storage."
-  [bundle]
-  (let [domain (first (:names bundle))
-        now (Instant/now)]
-    {:type :certificate-loaded
-     :timestamp now
-     :data {:domain domain
-            :names (:names bundle)
-            :not-after (:not-after bundle)}}))
 
 ;;; Retry and Jitter
 

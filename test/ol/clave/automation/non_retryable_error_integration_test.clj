@@ -44,7 +44,7 @@
                   :http-client pebble/http-client-opts}
           system (automation/create-started config)]
       (try
-        (let [queue (automation/get-event-queue system)
+        (let [queue (automation/subscribe-events system)
               start-time (System/currentTimeMillis)]
           ;; Step 3: Trigger certificate obtain for blocked domain
           (automation/manage-domains system [blocked-domain])

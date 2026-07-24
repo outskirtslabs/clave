@@ -330,16 +330,21 @@
         (is (= [system] @stopped_))))
     (is (= :implemented :missing))))
 
-(deftest startup-subscription-precedes-management-and-is-cleaned-up
+(deftest startup-automation-starts-before-subscription-and-is-cleaned-up
   (if-let [{:keys [start-server stop]} (sut-vars)]
     (let [lifecycle_ (atom [])
           queue_ (atom nil)
+          original-start auto/start
           original-subscribe auto/subscribe-events
           original-unsubscribe auto/unsubscribe-events
           original-manage auto/manage-domains
           context
           (with-redefs
-           [auto/subscribe-events
+           [auto/start
+            (fn [system]
+              (swap! lifecycle_ conj :start)
+              (original-start system))
+            auto/subscribe-events
             (fn [system opts]
               (swap! lifecycle_ conj :subscribe)
               (let [queue (original-subscribe system opts)]
@@ -363,7 +368,7 @@
               (assoc (stored-certificate-config)
                      :challenge-types #{:tls-alpn-01})}))]
       (try
-        (is (= {:lifecycle [:subscribe :manage :unsubscribe]
+        (is (= {:lifecycle [:start :subscribe :manage :unsubscribe]
                 :queue-created? true
                 :subscription-active-after-start? false}
                {:lifecycle @lifecycle_

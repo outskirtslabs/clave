@@ -152,6 +152,38 @@
             handler)
     solver (http-solver/wrap-acme-challenge solver)))
 
+(defn- wait-for-startup-certificates!
+  [system domains event-capacity startup-timeout-ms startup-poll-interval-ms]
+  (let [event-queue (auto/subscribe-events system {:capacity event-capacity})]
+    (try
+      (auto/manage-domains system domains)
+      (common/wait-for-certificates system
+                                    domains
+                                    event-queue
+                                    startup-timeout-ms
+                                    startup-poll-interval-ms)
+      (finally
+        (auto/unsubscribe-events system event-queue)))))
+
+(defn- start-listeners!
+  [system handler https-options http-options http-solver-instance redirect-http?]
+  (let [https-server (http/start-server handler https-options)]
+    (try
+      (let [ssl-port (aleph-netty/port https-server)
+            http-server (when http-options
+                          (http/start-server
+                           (http-handler handler
+                                         http-solver-instance
+                                         redirect-http?
+                                         ssl-port)
+                           http-options))]
+        {:https-server https-server
+         :http-server http-server})
+      (catch Throwable e
+        (stop-automation system)
+        (close-server https-server)
+        (throw e)))))
+
 (defn- stop-context
   [{:keys [system http-server https-server stopped?]}]
   (when (or (nil? stopped?)
@@ -241,54 +273,53 @@
         auto-config (automation-config config solvers)
         http-versions (get https-options :http-versions [:http1])
         event-capacity (max 1024 (+ 16 (* 2 (count domains))))
-        system_ (atom nil)
-        started-servers_ (atom [])]
-    (try
-      (let [system (auto/create auto-config)
-            _ (reset! system_ system)
-            event-queue (auto/subscribe-events system {:capacity event-capacity})]
+        system (auto/create auto-config)
+        ssl-context
         (try
-          (let [ssl-context
-                (clave-netty/ssl-context
-                 #(auto/lookup-cert system %)
-                 (merge tls-options
-                        {:http-versions http-versions
-                         :tls-alpn-solver tls-alpn-solver-instance}))
-                https-options (clave-netty/server-options https-options ssl-context)]
-            (auto/start system)
-            (let [https-server (http/start-server handler https-options)
-                  _ (swap! started-servers_ conj https-server)
-                  ssl-port (aleph-netty/port https-server)
-                  http-server (when http-options
-                                (let [server
-                                      (http/start-server
-                                       (http-handler handler
-                                                     http-solver-instance
-                                                     redirect-http?
-                                                     ssl-port)
-                                       http-options)]
-                                  (swap! started-servers_ conj server)
-                                  server))]
-              (auto/manage-domains system domains)
-              (common/wait-for-certificates system
-                                            domains
-                                            event-queue
-                                            startup-timeout-ms
-                                            startup-poll-interval-ms)
-              (map->ServerContext
-               {:server https-server
-                :https-server https-server
-                :http-server http-server
-                :system system
-                :http-solver http-solver-instance
-                :tls-alpn-solver tls-alpn-solver-instance
-                :stopped? (atom false)})))
-          (finally
-            (auto/unsubscribe-events system event-queue))))
+          (clave-netty/ssl-context
+           #(auto/lookup-cert system %)
+           (merge tls-options
+                  {:http-versions http-versions
+                   :tls-alpn-solver tls-alpn-solver-instance}))
+          (catch Throwable e
+            (stop-automation system)
+            (throw e)))
+        https-options
+        (try
+          (clave-netty/server-options https-options ssl-context)
+          (catch Throwable e
+            (stop-automation system)
+            (throw e)))]
+    (try
+      (auto/start system)
       (catch Throwable e
-        (stop-automation @system_)
-        (run! close-server (reverse @started-servers_))
-        (throw e)))))
+        (stop-automation system)
+        (throw e)))
+    (let [{:keys [https-server http-server]}
+          (start-listeners! system
+                            handler
+                            https-options
+                            http-options
+                            http-solver-instance
+                            redirect-http?)]
+      (try
+        (wait-for-startup-certificates! system
+                                        domains
+                                        event-capacity
+                                        startup-timeout-ms
+                                        startup-poll-interval-ms)
+        (map->ServerContext
+         {:server          https-server
+          :https-server    https-server
+          :http-server     http-server
+          :system          system
+          :http-solver     http-solver-instance
+          :tls-alpn-solver tls-alpn-solver-instance
+          :stopped?        (atom false)})
+        (catch Throwable e
+          (stop-automation system)
+          (run! close-server [http-server https-server])
+          (throw e))))))
 
 (defn stop
   "Stops a context returned by [[start-server]].

@@ -6,18 +6,12 @@
   listener, then selects renewed certificates by SNI without restarting either
   server.
 
-  ## Dependency
-
-  Clave keeps Aleph optional.
-  Add the tested Aleph version to the application dependency map:
-
-  ```clojure
-  {:deps {aleph/aleph {:mvn/version \"0.9.10\"}}}
-  ```
-
   ## Running the example
 
-  Start Pebble in one terminal:
+
+  We use Pebble as a local CA so you don't have to talk to the real LetsEncrypt ACME server.
+
+  From the clave root project dir, start Pebble in one terminal:
 
   ```bash
   PEBBLE_VA_NOSLEEP=1 pebble -config test/fixtures/pebble-config.json
@@ -26,6 +20,7 @@
   Run the example in another terminal:
 
   ```bash
+  # from clave project root
   clj -A:dev -M -m aleph
   ```
 
@@ -34,10 +29,13 @@
   ```bash
   curl -v http://localhost:5002
   curl -vk https://localhost:5001
-  ```"
+  ```
+
+  To run this against a real ACME server, replace the Pebble directory URL with
+  the CA's directory URL, remove the Pebble trust-store override, and use a
+  domain you control instead of `localhost`."
   (:require
    [ol.clave.ext.aleph :as clave-aleph]
-   [ol.clave.storage.file :as file-storage]
    [taoensso.trove :as trove]
    [taoensso.trove.console :as trove-backend]))
 
@@ -58,7 +56,6 @@
           ::clave-aleph/http-options {:port 5002}
           ::clave-aleph/config
           {:domains     ["localhost"]
-           :storage     (file-storage/file-storage {:root "/tmp/clave-aleph-example"})
            :issuers     [{:directory-url "https://localhost:14000/dir"
                           :email         "admin@example.com"}]
            :http-client {:ssl-context

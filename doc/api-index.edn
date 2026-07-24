@@ -536,6 +536,7 @@
    {"certificate-event?" "certificate-event-QMARK-",
     "create-keystore" "create-keystore",
     "event-domain" "event-domain",
+    "missing-certificates" "missing-certificates",
     "no-op-solver" "no-op-solver",
     "wait-for-certificates" "wait-for-certificates",
     "wrap-redirect-https" "wrap-redirect-https"}},

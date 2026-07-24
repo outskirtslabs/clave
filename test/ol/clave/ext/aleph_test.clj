@@ -15,7 +15,6 @@
    [java.security.cert X509Certificate]
    [java.time Instant]
    [java.util Collections]
-   [java.util.concurrent LinkedBlockingQueue]
    [javax.net.ssl SSLContext SSLParameters SNIHostName SSLSocket SSLSocketFactory
     X509TrustManager]))
 
@@ -331,48 +330,46 @@
         (is (= [system] @stopped_))))
     (is (= :implemented :missing))))
 
-(deftest initial-certificate-wait-reports-terminal-events
-  (let [wait-for-certificates
-        (requiring-resolve 'ol.clave.ext.aleph/wait-for-certificates)]
-    (testing "reports the failed domain from a multiple-domain startup"
-      (let [domains ["first.example" "second.example"]
-            queue (LinkedBlockingQueue. 10)
-            _ (.offer queue
-                      {:type :certificate-failed
-                       :data {:domain "second.example"
-                              :operation :obtain-certificate
-                              :reason :acme-error
-                              :terminal? true}})
-            result
-            (with-redefs [auto/lookup-cert (constantly nil)]
-              (try
-                (wait-for-certificates nil domains queue 1000 10)
-                (catch Exception e
-                  e)))]
-        (is (= {:failure {:domain "second.example"
-                          :operation :obtain-certificate
-                          :reason :acme-error
-                          :terminal? true}
-                :message "Initial certificate acquisition failed"
-                :missing-domains domains}
-               {:failure (:failure (ex-data result))
-                :message (ex-message result)
-                :missing-domains (:missing-domains (ex-data result))}))))
-    (testing "reports an overflow instead of degrading to a timeout"
-      (let [domain "example.com"
-            queue (LinkedBlockingQueue. 1)
-            overflow-event {:type :subscription-overflow
-                            :data {:capacity 1}}
-            _ (.offer queue overflow-event)
-            result
-            (with-redefs [auto/lookup-cert (constantly nil)]
-              (try
-                (wait-for-certificates nil [domain] queue 1000 10)
-                (catch Exception e
-                  e)))]
-        (is (= {:event overflow-event
-                :message "Initial certificate event subscription overflowed"
-                :missing-domains [domain]}
-               {:event (:event (ex-data result))
-                :message (ex-message result)
-                :missing-domains (:missing-domains (ex-data result))}))))))
+(deftest startup-subscription-precedes-management-and-is-cleaned-up
+  (if-let [{:keys [start-server stop]} (sut-vars)]
+    (let [lifecycle_ (atom [])
+          queue_ (atom nil)
+          original-subscribe auto/subscribe-events
+          original-unsubscribe auto/unsubscribe-events
+          original-manage auto/manage-domains
+          context
+          (with-redefs
+           [auto/subscribe-events
+            (fn [system opts]
+              (swap! lifecycle_ conj :subscribe)
+              (let [queue (original-subscribe system opts)]
+                (reset! queue_ queue)
+                queue))
+            auto/manage-domains
+            (fn [system domains]
+              (swap! lifecycle_ conj :manage)
+              (original-manage system domains))
+            auto/unsubscribe-events
+            (fn [system queue]
+              (swap! lifecycle_ conj :unsubscribe)
+              (original-unsubscribe system queue))]
+            (start-server
+             (constantly {:status 200 :body "ok"})
+             {:port 0
+              :http-versions [:http1]
+              :shutdown-timeout 0
+              :ol.clave.ext.aleph/http-options nil
+              :ol.clave.ext.aleph/config
+              (assoc (stored-certificate-config)
+                     :challenge-types #{:tls-alpn-01})}))]
+      (try
+        (is (= {:lifecycle [:subscribe :manage :unsubscribe]
+                :queue-created? true
+                :subscription-active-after-start? false}
+               {:lifecycle @lifecycle_
+                :queue-created? (some? @queue_)
+                :subscription-active-after-start?
+                (original-unsubscribe (:system context) @queue_)}))
+        (finally
+          (stop context))))
+    (is (= :implemented :missing))))

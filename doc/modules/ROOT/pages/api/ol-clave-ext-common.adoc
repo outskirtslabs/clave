@@ -41,7 +41,7 @@ Returns nil if bundle is nil (no certificate available yet).
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L15-L44[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L16-L45[source,window=_blank]
 
 '''
 
@@ -73,7 +73,7 @@ Returns true for `:certificate-obtained` and `:certificate-renewed` events.
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L46-L61[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L47-L62[source,window=_blank]
 
 '''
 
@@ -99,7 +99,7 @@ Returns the domain string or nil if event has no domain.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L63-L72[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L64-L73[source,window=_blank]
 
 '''
 
@@ -137,7 +137,7 @@ Passes through requests that are already HTTPS (by `:scheme` or `x-forwarded-pro
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L74-L105[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L75-L106[source,window=_blank]
 
 '''
 
@@ -163,7 +163,34 @@ Useful with `PEBBLE_VA_ALWAYS_VALID=1` where challenge validation is skipped.
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L107-L118[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L108-L119[source,window=_blank]
+
+'''
+
+[#missing-certificates]
+== missing-certificates
+
+
+
+
+[source,clojure]
+----
+(missing-certificates system domains)
+----
+
+Returns domains without a currently available certificate.
+
+Uses xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`] as the authoritative state source.
+
+[options="header"]
+|===
+| key | description
+| `system` | Clave automation system
+| `domains` | Domains to check
+|===
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L121-L131[source,window=_blank]
 
 '''
 
@@ -175,29 +202,44 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.cl
 
 [source,clojure]
 ----
-(wait-for-certificates system domains)
+(wait-for-certificates system domains event-queue timeout-ms poll-interval-ms)
 ----
 
-Wait for certificates to be available for all domains.
+Waits for certificates to be available for all `domains`.
 
-Polls xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`] once per second until certificates
-are available for every domain. Blocks indefinitely until the automation
-system obtains all certificates or throws an error.
+Certificate state from xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`] is authoritative.
+The function accepts an existing `event-queue`, an optional `timeout-ms`, and
+a positive `poll-interval-ms`.
+It reports a terminal `:certificate-failed` event for a still-missing domain
+immediately and reports `:subscription-overflow` instead of degrading to a
+timeout.
+
+Create `event-queue` before xref:api/ol-clave-automation.adoc#manage-domains[`ol.clave.automation/manage-domains`] because
+subscriptions receive only live events.
+The caller must pass the queue to
+xref:api/ol-clave-automation.adoc#unsubscribe-events[`ol.clave.automation/unsubscribe-events`] in a `finally` clause.
 
 [options="header"]
 |===
 | key | description
-| `system` | clave automation system
-| `domains` | Vector of domains to wait for
+| `system` | Clave automation system
+| `domains` | Domains to wait for
+| `event-queue` | Queue from xref:api/ol-clave-automation.adoc#subscribe-events[`ol.clave.automation/subscribe-events`]
+| `timeout-ms` | Timeout in milliseconds, or `nil` for none
+| `poll-interval-ms` | Maximum interval between authoritative checks
 |===
 
-Returns nil once all certificates are available.
+Returns `nil` once every certificate is available.
 
 [source,clojure]
 ----
-(wait-for-certificate system ["example.com" "www.example.com"])
-(create-keystore (auto/lookup-cert system "example.com"))
+(let [events (auto/subscribe-events system)]
+  (try
+    (auto/manage-domains system ["example.com"])
+    (wait-for-certificates system ["example.com"] events 120000 100)
+    (finally
+      (auto/unsubscribe-events system events))))
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L120-L145[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L133-L211[source,window=_blank]

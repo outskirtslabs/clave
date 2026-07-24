@@ -1,7 +1,10 @@
 (ns ol.clave.ext.common-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [ol.clave.ext.common :as common]))
+   [ol.clave.automation :as auto]
+   [ol.clave.ext.common :as common])
+  (:import
+   [java.util.concurrent LinkedBlockingQueue]))
 
 (deftest wrap-redirect-https-test
   (let [handler (fn [_] {:status 200 :body "ok"})
@@ -66,3 +69,130 @@
     (is (= "example.com" (common/event-domain {:data {:domain "example.com"}}))))
   (testing "returns nil when missing"
     (is (nil? (common/event-domain {:data {}})))))
+
+(deftest missing-certificates-test
+  (let [domains ["available.example" "missing.example"]]
+    (with-redefs [auto/lookup-cert
+                  (fn [_system domain]
+                    (when (= "available.example" domain)
+                      {:names [domain]}))]
+      (is (= ["missing.example"]
+             (common/missing-certificates nil domains))))))
+
+(defn- caught-exception [f]
+  (try
+    (f)
+    (catch Exception e
+      e)))
+
+(deftest wait-for-certificates-test
+  (testing "keeps polling after a retryable failure until the certificate exists"
+    (let [domain "example.com"
+          lookup-count_ (atom 0)
+          queue (LinkedBlockingQueue. 1)
+          _ (.offer queue
+                    {:type :certificate-failed
+                     :data {:domain domain
+                            :reason :network-error
+                            :terminal? false}})
+          result
+          (with-redefs [auto/lookup-cert
+                        (fn [_system _domain]
+                          (when (< 1 (swap! lookup-count_ inc))
+                            {:names [domain]}))]
+            (common/wait-for-certificates nil [domain] queue 100 1))]
+      (is (= {:lookup-count 2
+              :result nil}
+             {:lookup-count @lookup-count_
+              :result result}))))
+  (testing "ignores terminal failure for a domain that already has a certificate"
+    (let [domains ["available.example" "pending.example"]
+          pending-lookups_ (atom 0)
+          queue (LinkedBlockingQueue. 1)
+          _ (.offer queue
+                    {:type :certificate-failed
+                     :data {:domain "available.example"
+                            :reason :acme-error
+                            :terminal? true}})
+          result
+          (with-redefs
+           [auto/lookup-cert
+            (fn [_system domain]
+              (if (= "available.example" domain)
+                {:names [domain]}
+                (when (< 1 (swap! pending-lookups_ inc))
+                  {:names [domain]})))]
+            (common/wait-for-certificates nil domains queue 100 1))]
+      (is (= {:pending-lookups 2
+              :result nil}
+             {:pending-lookups @pending-lookups_
+              :result result}))))
+  (testing "reports a terminal failure for a still-missing requested domain"
+    (let [domains ["first.example" "second.example"]
+          failure {:domain "second.example"
+                   :error-data {:type :ol.clave.errors/problem}
+                   :operation :obtain-certificate
+                   :reason :acme-error
+                   :terminal? true}
+          queue (LinkedBlockingQueue. 1)
+          _ (.offer queue {:type :certificate-failed :data failure})
+          result
+          (with-redefs [auto/lookup-cert
+                        (fn [_system domain]
+                          (when (= "first.example" domain)
+                            {:names [domain]}))]
+            (caught-exception
+             #(common/wait-for-certificates nil domains queue 100 1)))]
+      (is (= {:data {:domains domains
+                     :failure failure
+                     :missing-domains ["second.example"]}
+              :message "Initial certificate acquisition failed"}
+             {:data (ex-data result)
+              :message (ex-message result)}))))
+  (testing "reports subscription overflow instead of timing out"
+    (let [domains ["example.com"]
+          event {:type :subscription-overflow
+                 :data {:capacity 1}}
+          queue (LinkedBlockingQueue. 1)
+          _ (.offer queue event)
+          result
+          (with-redefs [auto/lookup-cert (constantly nil)]
+            (caught-exception
+             #(common/wait-for-certificates nil domains queue 100 1)))]
+      (is (= {:data {:domains domains
+                     :event event
+                     :missing-domains domains}
+              :message "Initial certificate event subscription overflowed"}
+             {:data (ex-data result)
+              :message (ex-message result)}))))
+  (testing "times out when an event claims success but state is still missing"
+    (let [domains ["example.com"]
+          timeout-ms 5
+          queue (LinkedBlockingQueue. 1)
+          _ (.offer queue
+                    {:type :certificate-obtained
+                     :data {:domain "example.com"}})
+          result
+          (with-redefs [auto/lookup-cert (constantly nil)]
+            (caught-exception
+             #(common/wait-for-certificates
+               nil domains queue timeout-ms 1)))]
+      (is (= {:data {:domains domains
+                     :missing-domains domains
+                     :timeout-ms timeout-ms}
+              :message "Timed out waiting for initial certificates"}
+             {:data (ex-data result)
+              :message (ex-message result)})))))
+
+(deftest wait-for-certificates-validates-poll-interval
+  (doseq [poll-interval-ms [nil 0 -1 1.5]]
+    (let [queue (LinkedBlockingQueue. 1)
+          result
+          (with-redefs [auto/lookup-cert (constantly nil)]
+            (caught-exception
+             #(common/wait-for-certificates
+               nil ["example.com"] queue 1 poll-interval-ms)))]
+      (is (= {:data {:poll-interval-ms poll-interval-ms}
+              :message "poll-interval-ms must be a positive integer"}
+             {:data (ex-data result)
+              :message (ex-message result)})))))

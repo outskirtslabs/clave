@@ -20,8 +20,7 @@
    [ol.clave.ext.netty :as clave-netty]
    [taoensso.trove :as log])
   (:import
-   [java.io Closeable]
-   [java.util.concurrent LinkedBlockingQueue TimeUnit]))
+   [java.io Closeable]))
 
 (set! *warn-on-reflection* true)
 
@@ -126,51 +125,6 @@
               :startup-poll-interval-ms
               :challenge-types)
       (assoc :solvers (merge (:solvers config) solvers))))
-
-(defn- missing-certificates [system domains]
-  (into [] (remove #(auto/lookup-cert system %)) domains))
-
-(defn- wait-for-certificates
-  [system domains ^LinkedBlockingQueue event-queue timeout-ms poll-interval-ms]
-  (let [deadline (when timeout-ms (+ (System/currentTimeMillis) timeout-ms))]
-    (loop []
-      (let [missing (missing-certificates system domains)
-            now (System/currentTimeMillis)]
-        (cond
-          (empty? missing)
-          nil
-
-          (and deadline (>= now deadline))
-          (throw (ex-info "Timed out waiting for initial certificates"
-                          {:domains domains
-                           :missing-domains missing
-                           :timeout-ms timeout-ms}))
-
-          :else
-          (let [wait-ms (if deadline
-                          (max 1 (min poll-interval-ms (- deadline now)))
-                          poll-interval-ms)
-                event (.poll event-queue
-                             (long wait-ms)
-                             TimeUnit/MILLISECONDS)
-                failure (:data event)]
-            (cond
-              (and (= :certificate-failed (:type event))
-                   (:terminal? failure)
-                   (some #{(:domain failure)} missing))
-              (throw (ex-info "Initial certificate acquisition failed"
-                              {:domains domains
-                               :failure failure
-                               :missing-domains missing}))
-
-              (= :subscription-overflow (:type event))
-              (throw (ex-info "Initial certificate event subscription overflowed"
-                              {:domains domains
-                               :event event
-                               :missing-domains missing}))
-
-              :else
-              (recur))))))))
 
 (defn- close-server [server]
   (when server
@@ -316,11 +270,11 @@
                                   (swap! started-servers_ conj server)
                                   server))]
               (auto/manage-domains system domains)
-              (wait-for-certificates system
-                                     domains
-                                     event-queue
-                                     startup-timeout-ms
-                                     startup-poll-interval-ms)
+              (common/wait-for-certificates system
+                                            domains
+                                            event-queue
+                                            startup-timeout-ms
+                                            startup-poll-interval-ms)
               (map->ServerContext
                {:server https-server
                 :https-server https-server

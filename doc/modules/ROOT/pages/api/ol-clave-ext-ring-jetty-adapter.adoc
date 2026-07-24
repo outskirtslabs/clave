@@ -46,6 +46,7 @@ defaults for production use: challenge solving, HTTP to HTTPS redirects,
 and SNI-based certificate selection.
 
 Blocks until the initial certificate is obtained, then starts serving.
+Terminal issuance failures and event subscription overflow fail startup immediately.
 Redirects all HTTP requests to HTTPS (when HTTP port is configured).
 Obtains and renews TLS certificates automatically.
 Certificate renewals take effect immediately via SNI-based selection.
@@ -91,7 +92,7 @@ Returns a context map for use with <<stop,`stop`>>.
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/ring_jetty_adapter.clj#L45-L119[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/ring_jetty_adapter.clj#L45-L126[source,window=_blank]
 
 '''
 
@@ -111,4 +112,4 @@ Stop a server context returned by <<run-jetty,`run-jetty`>>.
 Stops the Jetty server and automation system.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/ring_jetty_adapter.clj#L121-L127[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/ring_jetty_adapter.clj#L128-L134[source,window=_blank]

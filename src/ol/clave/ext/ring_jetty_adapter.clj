@@ -50,6 +50,7 @@
   and SNI-based certificate selection.
 
   Blocks until the initial certificate is obtained, then starts serving.
+  Terminal issuance failures and event subscription overflow fail startup immediately.
   Redirects all HTTP requests to HTTPS (when HTTP port is configured).
   Obtains and renews TLS certificates automatically.
   Certificate renewals take effect immediately via SNI-based selection.
@@ -98,6 +99,7 @@
                               (assoc :solvers {:http-01     http-solver-inst
                                                :tls-alpn-01 tls-alpn-solver}))
         system            (auto/create auto-config)
+        event-capacity    (max 1024 (+ 16 (* 2 (count domains))))
         ssl-context       (jetty-ext/sni-alpn-ssl-context #(auto/lookup-cert system %) tls-alpn-solver)
         wrapped-handler   (cond-> handler
                             (:redirect-http? config) (common/wrap-redirect-https {:ssl-port ssl-port})
@@ -108,10 +110,14 @@
                                      :ssl-context ssl-context
                                      :join? false))]
     (try
-      (auto/start system)
-      (auto/manage-domains system domains)
-      (common/wait-for-certificates system domains)
-      (catch Exception e
+      (let [event-queue (auto/subscribe-events system {:capacity event-capacity})]
+        (try
+          (auto/start system)
+          (auto/manage-domains system domains)
+          (common/wait-for-certificates system domains event-queue nil 1000)
+          (finally
+            (auto/unsubscribe-events system event-queue))))
+      (catch Throwable e
         (auto/stop system)
         (throw e)))
     (tls-alpn-solver/switch-to-integrated tls-alpn-solver)

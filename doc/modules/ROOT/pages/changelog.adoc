@@ -14,7 +14,7 @@ This project uses https://www.taoensso.com/break-versioning[*Break Versioning*].
 
 * Replace the singleton `get-event-queue` API with independent bounded `subscribe-events` queues and explicit `unsubscribe-events` cleanup.
 * Disconnect only overflowing subscribers, and deliver event-shaped subscription, overflow, and system shutdown notifications.
-* Add structured terminal certificate failure details so Aleph startup can report permanent initial issuance failures without waiting for the generic timeout.
+* Replace the two-argument polling-only `ol.clave.ext.common/wait-for-certificates` API with a five-argument event-aware waiter; callers must subscribe before `manage-domains` and unsubscribe in `finally`, and Aleph and Ring Jetty now report structured permanent initial failures immediately.
 
 == `v0.0.1` (2026-XX-XX)
 

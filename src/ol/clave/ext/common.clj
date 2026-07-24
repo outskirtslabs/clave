@@ -1,10 +1,10 @@
 (ns ol.clave.ext.common
-  "Common utilities for clave server extensions.
+  "Common utilities for Clave server extensions.
 
-  This namespace provides server-agnostic helpers for working with
-  clave's automation layer, including keystore creation and event processing.
+  This namespace provides server-agnostic helpers for working with Clave's
+  automation layer, including keystore creation and event processing.
 
-  These functions can be used by any server extension (Jetty, http-kit, etc.)."
+  These helpers work with any server extension (Jetty, http-kit, etc.)."
   (:require
    [ol.clave.automation :as auto])
   (:import
@@ -14,17 +14,15 @@
    [java.util.concurrent LinkedBlockingQueue TimeUnit]))
 
 (defn create-keystore
-  "Create an in-memory PKCS12 KeyStore from a clave certificate bundle.
+  "Creates an in-memory PKCS12 KeyStore from a Clave certificate `bundle`.
 
-  No disk I/O - purely in-memory operation suitable for TLS handshakes.
+  `bundle` is a certificate bundle from [[ol.clave.automation/lookup-cert]], and
+  `password` protects the keystore (default `\"changeit\"`).
+  There is no disk I/O; the keystore is built entirely in memory for TLS
+  handshakes.
 
-  | key        | description                                                 |
-  |------------|-------------------------------------------------------------|
-  | `bundle`   | Certificate bundle from [[ol.clave.automation/lookup-cert]] |
-  | `password` | Optional keystore password (default \"changeit\")           |
-
-  Returns a `java.security.KeyStore` ready for use with TLS servers.
-  Returns nil if bundle is nil (no certificate available yet).
+  Returns a [[java.security.KeyStore]] ready for a TLS server, or `nil` when
+  `bundle` is `nil` (no certificate available yet).
 
   ```clojure
   (create-keystore (auto/lookup-cert system \"example.com\"))
@@ -45,13 +43,11 @@
        ks))))
 
 (defn certificate-event?
-  "Check if an event indicates a certificate change.
+  "Returns `true` when `evt` indicates a certificate change.
 
-  Returns true for `:certificate-obtained` and `:certificate-renewed` events.
-
-  | key   | description                                        |
-  |-------|----------------------------------------------------|
-  | `evt` | Event from [[ol.clave.automation/subscribe-events]] |
+  `evt` is an event from [[ol.clave.automation/subscribe-events]].
+  Certificate changes are the `:certificate-obtained` and `:certificate-renewed`
+  event types.
 
   ```clojure
   (when (certificate-event? evt)
@@ -62,30 +58,26 @@
              (:type evt)))
 
 (defn event-domain
-  "Extract the domain name from a certificate event.
-
-  Returns the domain string or nil if event has no domain.
-
-  | key   | description |
-  |-------|-------------|
-  | `evt` | Event map   |"
+  "Returns the domain name from certificate event `evt`, or `nil` when absent."
   [evt]
   (get-in evt [:data :domain]))
 
 (defn wrap-redirect-https
-  "Ring middleware that redirects HTTP requests to HTTPS.
+  "Ring middleware that redirects HTTP requests on `handler` to HTTPS.
 
-  | key        | description                                        |
-  |------------|----------------------------------------------------|
-  | `handler`  | Ring handler to wrap                               |
-  | `opts`     | Options map with `:ssl-port`                       |
+  Requests that are already HTTPS pass through unchanged, detected by `:scheme`
+  or an `x-forwarded-proto` header.
+  Everything else receives a `301` redirect to the same host and path under
+  `https`.
 
   Options:
-  - `:ssl-port` - HTTPS port for redirect URL.
-    Defaults to 443 (implicit, no port in URL).
-    Use a custom port like 8443 to include it explicitly.
 
-  Passes through requests that are already HTTPS (by `:scheme` or `x-forwarded-proto` header).
+  | key         | description                     | default |
+  |-------------|---------------------------------|---------|
+  | `:ssl-port` | HTTPS port for the redirect URL | `443`   |
+
+  Port `443` is left implicit in the URL; any other port, such as `8443`, is
+  included explicitly.
 
   ```clojure
   (wrap-redirect-https handler {:ssl-port 8443})
@@ -106,10 +98,11 @@
             :headers {"Location" (.toString redirect-uri)}}))))))
 
 (defn no-op-solver
-  "Create a no-op ACME solver for testing.
+  "Creates a no-op ACME solver for testing.
 
-  Returns a solver that does nothing.
-  Useful with `PEBBLE_VA_ALWAYS_VALID=1` where challenge validation is skipped.
+  The returned solver does nothing.
+  It is useful with `PEBBLE_VA_ALWAYS_VALID=1`, where challenge validation is
+  skipped.
 
   ```clojure
   {:solvers {:http-01 (no-op-solver)}}
@@ -119,41 +112,33 @@
    :cleanup (fn [_lease _challenge _state] nil)})
 
 (defn missing-certificates
-  "Returns domains without a currently available certificate.
+  "Returns the subset of `domains` without a currently available certificate.
 
-  Uses [[ol.clave.automation/lookup-cert]] as the authoritative state source.
-
-  | key       | description              |
-  |-----------|--------------------------|
-  | `system`  | Clave automation system  |
-  | `domains` | Domains to check         |"
+  `system` is a Clave automation system; [[ol.clave.automation/lookup-cert]] is
+  the authoritative source of certificate state."
   [system domains]
   (into [] (remove #(auto/lookup-cert system %)) domains))
 
 (defn wait-for-certificates
-  "Waits for certificates to be available for all `domains`.
+  "Blocks until a certificate is available for every domain in `domains`.
 
-  Certificate state from [[ol.clave.automation/lookup-cert]] is authoritative.
-  The function accepts an existing `event-queue`, an optional `timeout-ms`, and
-  a positive `poll-interval-ms`.
-  It reports a terminal `:certificate-failed` event for a still-missing domain
-  immediately and reports `:subscription-overflow` instead of degrading to a
-  timeout.
+  Certificate state from [[ol.clave.automation/lookup-cert]] on `system` is
+  authoritative.
+  The loop rechecks that state at least every `poll-interval-ms` (a positive
+  integer) and gives up after `timeout-ms`, or waits indefinitely when
+  `timeout-ms` is `nil`.
+  A terminal `:certificate-failed` event for a still-missing domain fails
+  immediately rather than waiting out the timeout, and a `:subscription-overflow`
+  event fails instead of silently degrading.
 
-  Create `event-queue` before [[ol.clave.automation/manage-domains]] because
-  subscriptions receive only live events.
-  The caller must pass the queue to
+  `event-queue` comes from [[ol.clave.automation/subscribe-events]] and must be
+  created before [[ol.clave.automation/manage-domains]], because subscriptions
+  receive only live events.
+  The caller must pass the same queue to
   [[ol.clave.automation/unsubscribe-events]] in a `finally` clause.
 
-  | key                | description                                      |
-  |--------------------|--------------------------------------------------|
-  | `system`           | Clave automation system                          |
-  | `domains`          | Domains to wait for                              |
-  | `event-queue`      | Queue from [[ol.clave.automation/subscribe-events]] |
-  | `timeout-ms`       | Timeout in milliseconds, or `nil` for none       |
-  | `poll-interval-ms` | Maximum interval between authoritative checks    |
-
-  Returns `nil` once every certificate is available.
+  Returns `nil` once every certificate is available, and otherwise throws
+  [[clojure.lang.ExceptionInfo]] on timeout, terminal failure, or overflow.
 
   ```clojure
   (let [events (auto/subscribe-events system)]

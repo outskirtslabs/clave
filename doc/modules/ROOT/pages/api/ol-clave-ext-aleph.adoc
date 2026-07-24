@@ -1,16 +1,16 @@
 = ol.clave.ext.aleph
 
 
-Aleph server integration for automatic Clave certificates.
+Automatic HTTPS certificates for Aleph listeners.
 
-<<start-server,`start-server`>> owns a Clave automation system, an Aleph HTTPS listener, and
-an optional Aleph HTTP listener for HTTP-01 and redirects.
-Both listeners start before initial certificate acquisition, which lets
-HTTP-01 and integrated TLS-ALPN-01 solve the first order without a temporary
-listener or server restart.
+Add `aleph/aleph` to your application dependencies; Clave does not pull it in.
 
-Consumers must add `aleph/aleph` separately.
-This adapter is tested with Aleph 0.9.10.
+Use <<start-server,`start-server`>> to run separate HTTP and HTTPS listeners with automatic
+ACME certificate management.
+It serves HTTP-01 on the cleartext listener and TLS-ALPN-01 on the HTTPS
+listener, and renews certificates without restarting either listener.
+
+Call <<stop,`stop`>> to shut the listeners and certificate automation down together.
 
 [#start-server]
 == start-server
@@ -68,8 +68,30 @@ The result implements `java.io.Closeable` and `aleph.netty/AlephServer`,
 so it works with `with-open`, `aleph.netty/port`, and
 `aleph.netty/wait-for-close`.
 
+Example:
+
+[source,clojure]
+----
+(require '[ol.clave.ext.aleph :as clave-aleph])
+
+(def server
+  (clave-aleph/start-server
+   handler
+   {:port                      443
+    :http-versions             [:http2 :http1]
+    ::clave-aleph/http-options {:port 80}
+    ::clave-aleph/config
+    {:domains ["example.com" "www.example.com"]
+     :issuers [{:directory-url "https://acme-v02.api.letsencrypt.org/directory"
+                :email         "admin@example.com"}]}}))
+
+;; Renewed certificates are selected by SNI without a restart.
+
+(clave-aleph/stop server)
+----
+
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/aleph.clj#L181-L291[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/aleph.clj#L213-L343[source,window=_blank]
 
 '''
 
@@ -91,4 +113,4 @@ It first stops certificate automation while challenge listeners remain
 available, then closes the HTTP and HTTPS listeners.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/aleph.clj#L293-L300[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/aleph.clj#L345-L352[source,window=_blank]

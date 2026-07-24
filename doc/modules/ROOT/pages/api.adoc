@@ -115,10 +115,10 @@ This release publishes 46 namespaces.
 | Shared error keyword definitions and helpers for ex-info payloads.
 
 | xref:api/ol-clave-ext-aleph.adoc[`ol.clave.ext.aleph`]
-| Aleph server integration for automatic Clave certificates.
+| Automatic HTTPS certificates for Aleph listeners.
 
 | xref:api/ol-clave-ext-common.adoc[`ol.clave.ext.common`]
-| Common utilities for clave server extensions.
+| Common utilities for Clave server extensions.
 
 | xref:api/ol-clave-ext-jetty.adoc[`ol.clave.ext.jetty`]
 | Jetty integration for clave automation.

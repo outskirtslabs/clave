@@ -92,7 +92,7 @@ Returns a context map for use with <<stop,`stop`>>.
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/ring_jetty_adapter.clj#L45-L126[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/ring_jetty_adapter.clj#L45-L125[source,window=_blank]
 
 '''
 
@@ -112,4 +112,4 @@ Stop a server context returned by <<run-jetty,`run-jetty`>>.
 Stops the Jetty server and automation system.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/ring_jetty_adapter.clj#L128-L134[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/ring_jetty_adapter.clj#L127-L133[source,window=_blank]

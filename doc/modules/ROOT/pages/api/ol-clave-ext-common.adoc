@@ -1,12 +1,12 @@
 = ol.clave.ext.common
 
 
-Common utilities for clave server extensions.
+Common utilities for Clave server extensions.
 
-This namespace provides server-agnostic helpers for working with
-clave's automation layer, including keystore creation and event processing.
+This namespace provides server-agnostic helpers for working with Clave's
+automation layer, including keystore creation and event processing.
 
-These functions can be used by any server extension (Jetty, http-kit, etc.).
+These helpers work with any server extension (Jetty, http-kit, etc.).
 
 [#create-keystore]
 == create-keystore
@@ -20,19 +20,15 @@ These functions can be used by any server extension (Jetty, http-kit, etc.).
 (create-keystore bundle password)
 ----
 
-Create an in-memory PKCS12 KeyStore from a clave certificate bundle.
+Creates an in-memory PKCS12 KeyStore from a Clave certificate `bundle`.
 
-No disk I/O - purely in-memory operation suitable for TLS handshakes.
+`bundle` is a certificate bundle from xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`], and
+`password` protects the keystore (default `"changeit"`).
+There is no disk I/O; the keystore is built entirely in memory for TLS
+handshakes.
 
-[options="header"]
-|===
-| key | description
-| `bundle` | Certificate bundle from xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`]
-| `password` | Optional keystore password (default "changeit")
-|===
-
-Returns a `java.security.KeyStore` ready for use with TLS servers.
-Returns nil if bundle is nil (no certificate available yet).
+Returns a `java.security.KeyStore` ready for a TLS server, or `nil` when
+`bundle` is `nil` (no certificate available yet).
 
 [source,clojure]
 ----
@@ -41,7 +37,7 @@ Returns nil if bundle is nil (no certificate available yet).
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L16-L45[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L16-L43[source,window=_blank]
 
 '''
 
@@ -56,15 +52,11 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.cl
 (certificate-event? evt)
 ----
 
-Check if an event indicates a certificate change.
+Returns `true` when `evt` indicates a certificate change.
 
-Returns true for `:certificate-obtained` and `:certificate-renewed` events.
-
-[options="header"]
-|===
-| key | description
-| `evt` | Event from xref:api/ol-clave-automation.adoc#subscribe-events[`ol.clave.automation/subscribe-events`]
-|===
+`evt` is an event from xref:api/ol-clave-automation.adoc#subscribe-events[`ol.clave.automation/subscribe-events`].
+Certificate changes are the `:certificate-obtained` and `:certificate-renewed`
+event types.
 
 [source,clojure]
 ----
@@ -73,7 +65,7 @@ Returns true for `:certificate-obtained` and `:certificate-renewed` events.
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L47-L62[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L45-L58[source,window=_blank]
 
 '''
 
@@ -88,18 +80,10 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.cl
 (event-domain evt)
 ----
 
-Extract the domain name from a certificate event.
-
-Returns the domain string or nil if event has no domain.
-
-[options="header"]
-|===
-| key | description
-| `evt` | Event map
-|===
+Returns the domain name from certificate event `evt`, or `nil` when absent.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L64-L73[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L60-L63[source,window=_blank]
 
 '''
 
@@ -115,21 +99,23 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.cl
 (wrap-redirect-https handler {:keys [ssl-port] :or {ssl-port 443}})
 ----
 
-Ring middleware that redirects HTTP requests to HTTPS.
+Ring middleware that redirects HTTP requests on `handler` to HTTPS.
+
+Requests that are already HTTPS pass through unchanged, detected by `:scheme`
+or an `x-forwarded-proto` header.
+Everything else receives a `301` redirect to the same host and path under
+`https`.
+
+Options:
 
 [options="header"]
 |===
-| key | description
-| `handler` | Ring handler to wrap
-| `opts` | Options map with `:ssl-port`
+| key | description | default
+| `:ssl-port` | HTTPS port for the redirect URL | `443`
 |===
 
-Options:
-- `:ssl-port` - HTTPS port for redirect URL.
-  Defaults to 443 (implicit, no port in URL).
-  Use a custom port like 8443 to include it explicitly.
-
-Passes through requests that are already HTTPS (by `:scheme` or `x-forwarded-proto` header).
+Port `443` is left implicit in the URL; any other port, such as `8443`, is
+included explicitly.
 
 [source,clojure]
 ----
@@ -137,7 +123,7 @@ Passes through requests that are already HTTPS (by `:scheme` or `x-forwarded-pro
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L75-L106[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L65-L98[source,window=_blank]
 
 '''
 
@@ -152,10 +138,11 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.cl
 (no-op-solver)
 ----
 
-Create a no-op ACME solver for testing.
+Creates a no-op ACME solver for testing.
 
-Returns a solver that does nothing.
-Useful with `PEBBLE_VA_ALWAYS_VALID=1` where challenge validation is skipped.
+The returned solver does nothing.
+It is useful with `PEBBLE_VA_ALWAYS_VALID=1`, where challenge validation is
+skipped.
 
 [source,clojure]
 ----
@@ -163,7 +150,7 @@ Useful with `PEBBLE_VA_ALWAYS_VALID=1` where challenge validation is skipped.
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L108-L119[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L100-L112[source,window=_blank]
 
 '''
 
@@ -178,19 +165,13 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.cl
 (missing-certificates system domains)
 ----
 
-Returns domains without a currently available certificate.
+Returns the subset of `domains` without a currently available certificate.
 
-Uses xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`] as the authoritative state source.
-
-[options="header"]
-|===
-| key | description
-| `system` | Clave automation system
-| `domains` | Domains to check
-|===
+`system` is a Clave automation system; xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`] is
+the authoritative source of certificate state.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L121-L131[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L114-L120[source,window=_blank]
 
 '''
 
@@ -205,31 +186,25 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.cl
 (wait-for-certificates system domains event-queue timeout-ms poll-interval-ms)
 ----
 
-Waits for certificates to be available for all `domains`.
+Blocks until a certificate is available for every domain in `domains`.
 
-Certificate state from xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`] is authoritative.
-The function accepts an existing `event-queue`, an optional `timeout-ms`, and
-a positive `poll-interval-ms`.
-It reports a terminal `:certificate-failed` event for a still-missing domain
-immediately and reports `:subscription-overflow` instead of degrading to a
-timeout.
+Certificate state from xref:api/ol-clave-automation.adoc#lookup-cert[`ol.clave.automation/lookup-cert`] on `system` is
+authoritative.
+The loop rechecks that state at least every `poll-interval-ms` (a positive
+integer) and gives up after `timeout-ms`, or waits indefinitely when
+`timeout-ms` is `nil`.
+A terminal `:certificate-failed` event for a still-missing domain fails
+immediately rather than waiting out the timeout, and a `:subscription-overflow`
+event fails instead of silently degrading.
 
-Create `event-queue` before xref:api/ol-clave-automation.adoc#manage-domains[`ol.clave.automation/manage-domains`] because
-subscriptions receive only live events.
-The caller must pass the queue to
+`event-queue` comes from xref:api/ol-clave-automation.adoc#subscribe-events[`ol.clave.automation/subscribe-events`] and must be
+created before xref:api/ol-clave-automation.adoc#manage-domains[`ol.clave.automation/manage-domains`], because subscriptions
+receive only live events.
+The caller must pass the same queue to
 xref:api/ol-clave-automation.adoc#unsubscribe-events[`ol.clave.automation/unsubscribe-events`] in a `finally` clause.
 
-[options="header"]
-|===
-| key | description
-| `system` | Clave automation system
-| `domains` | Domains to wait for
-| `event-queue` | Queue from xref:api/ol-clave-automation.adoc#subscribe-events[`ol.clave.automation/subscribe-events`]
-| `timeout-ms` | Timeout in milliseconds, or `nil` for none
-| `poll-interval-ms` | Maximum interval between authoritative checks
-|===
-
-Returns `nil` once every certificate is available.
+Returns `nil` once every certificate is available, and otherwise throws
+`clojure.lang.ExceptionInfo` on timeout, terminal failure, or overflow.
 
 [source,clojure]
 ----
@@ -242,4 +217,4 @@ Returns `nil` once every certificate is available.
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L133-L211[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/common.clj#L122-L196[source,window=_blank]

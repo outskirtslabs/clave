@@ -204,21 +204,32 @@
 
   Options:
 
-  | key                   | description                                      | default     |
-  |-----------------------|--------------------------------------------------|-------------|
-  | `:http-versions`      | Aleph HTTP versions in ALPN preference order     | `[:http1]`  |
-  | `:tls-alpn-solver`    | Solver containing a domain-keyed `:registry` atom | `nil`       |
-  | `:protocols`          | Enabled TLS protocol names                       | JDK default |
-  | `:ciphers`            | Enabled cipher-suite names                       | JDK default |
-  | `:client-auth`        | `:none`, `:optional`, or `:require`               | `:none`     |
-  | `:trust-managers`     | TrustManager or sequence for client certificates | JDK default |
-  | `:session-cache-size` | TLS server-session cache size                    | JDK default |
-  | `:session-timeout`    | TLS server-session timeout in seconds            | JDK default |
-  | `:secure-random`      | SecureRandom used to initialize JSSE              | new default |
+  | key                   | description                                    | default     |
+  |-----------------------|------------------------------------------------|-------------|
+  | `:http-versions`      | Aleph HTTP versions in ALPN preference order   | `[:http1]`  |
+  | `:tls-alpn-solver`    | Solver holding a domain-keyed `:registry` atom | `nil`       |
+  | `:protocols`          | Enabled TLS protocol names                     | JDK default |
+  | `:ciphers`            | Enabled cipher-suite names                     | JDK default |
+  | `:client-auth`        | `:none`, `:optional`, or `:require`            | `:none`     |
+  | `:trust-managers`     | TrustManager or sequence for client certs      | JDK default |
+  | `:session-cache-size` | TLS server-session cache size                  | JDK default |
+  | `:session-timeout`    | TLS server-session timeout in seconds          | JDK default |
+  | `:secure-random`      | SecureRandom used to initialize JSSE           | new default |
 
   Unknown or absent SNI fails the handshake.
   TLS-ALPN-01 challenge selection uses the SNI hostname, so concurrent domain
-  validations receive their own challenge certificates."
+  validations receive their own challenge certificates.
+
+  Example:
+
+  ```clojure
+  (require '[ol.clave.automation :as auto])
+
+  (ssl-context #(auto/lookup-cert system %)
+               {:http-versions [:http2 :http1]})
+  ```
+
+  See [[server-options]] to install the returned context into Aleph."
   (^JdkSslContext [lookup-fn]
    (ssl-context lookup-fn nil))
   (^JdkSslContext
@@ -277,7 +288,17 @@
   The caller may provide `:initial-pipeline-transform`; it runs after Clave's
   TLS handlers are installed.
   The caller must not provide `:ssl-context` or `:manual-ssl?`, because this
-  function owns those Aleph hooks."
+  function owns those Aleph hooks.
+
+  Example:
+
+  ```clojure
+  (let [context (ssl-context #(auto/lookup-cert system %)
+                             {:http-versions [:http2 :http1]})]
+    (aleph.http/start-server handler (server-options {:port 443} context)))
+  ```
+
+  [[ol.clave.ext.aleph/start-server]] wires this together for you."
   [opts ^JdkSslContext ssl-context]
   (when-let [conflicts (seq (filter #(contains? opts %)
                                     [:ssl-context :manual-ssl?]))]

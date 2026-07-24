@@ -1,14 +1,14 @@
 (ns ol.clave.ext.aleph
-  "Aleph server integration for automatic Clave certificates.
+  "Automatic HTTPS certificates for Aleph listeners.
 
-  [[start-server]] owns a Clave automation system, an Aleph HTTPS listener, and
-  an optional Aleph HTTP listener for HTTP-01 and redirects.
-  Both listeners start before initial certificate acquisition, which lets
-  HTTP-01 and integrated TLS-ALPN-01 solve the first order without a temporary
-  listener or server restart.
+  Add `aleph/aleph` to your application dependencies; Clave does not pull it in.
 
-  Consumers must add `aleph/aleph` separately.
-  This adapter is tested with Aleph 0.9.10."
+  Use [[start-server]] to run separate HTTP and HTTPS listeners with automatic
+  ACME certificate management.
+  It serves HTTP-01 on the cleartext listener and TLS-ALPN-01 on the HTTPS
+  listener, and renews certificates without restarting either listener.
+
+  Call [[stop]] to shut the listeners and certificate automation down together."
   (:require
    [aleph.http :as http]
    [aleph.netty :as aleph-netty]
@@ -252,34 +252,55 @@
   `:http-server`, and `:system`.
   The result implements [[java.io.Closeable]] and [[aleph.netty/AlephServer]],
   so it works with `with-open`, [[aleph.netty/port]], and
-  [[aleph.netty/wait-for-close]]."
+  [[aleph.netty/wait-for-close]].
+
+  Example:
+
+  ```clojure
+  (require '[ol.clave.ext.aleph :as clave-aleph])
+
+  (def server
+    (clave-aleph/start-server
+     handler
+     {:port                      443
+      :http-versions             [:http2 :http1]
+      ::clave-aleph/http-options {:port 80}
+      ::clave-aleph/config
+      {:domains [\"example.com\" \"www.example.com\"]
+       :issuers [{:directory-url \"https://acme-v02.api.letsencrypt.org/directory\"
+                  :email         \"admin@example.com\"}]}}))
+
+  ;; Renewed certificates are selected by SNI without a restart.
+
+  (clave-aleph/stop server)
+  ```"
   [handler {::keys [config] :as opts}]
   (let [{:keys [domains redirect-http? startup-timeout-ms
                 startup-poll-interval-ms challenge-types]
-         :as config} (validate-config config)
-        http-options (http-options opts)
-        tls-options (::tls-options opts)
-        https-options (-> opts
-                          (dissoc ::config ::http-options ::tls-options)
-                          (default-port 443))
-        http-options (some-> http-options (default-port 80))
-        _ (validate-listener-options https-options
-                                     http-options
-                                     challenge-types
-                                     tls-options)
-        solvers (adapter-solvers challenge-types)
-        http-solver-instance (:http-01 solvers)
+         :as   config}           (validate-config config)
+        http-options             (http-options opts)
+        tls-options              (::tls-options opts)
+        https-options            (-> opts
+                                     (dissoc ::config ::http-options ::tls-options)
+                                     (default-port 443))
+        http-options             (some-> http-options (default-port 80))
+        _                        (validate-listener-options https-options
+                                                            http-options
+                                                            challenge-types
+                                                            tls-options)
+        solvers                  (adapter-solvers challenge-types)
+        http-solver-instance     (:http-01 solvers)
         tls-alpn-solver-instance (:tls-alpn-01 solvers)
-        auto-config (automation-config config solvers)
-        http-versions (get https-options :http-versions [:http1])
-        event-capacity (max 1024 (+ 16 (* 2 (count domains))))
-        system (auto/create auto-config)
+        auto-config              (automation-config config solvers)
+        http-versions            (get https-options :http-versions [:http1])
+        event-capacity           (max 1024 (+ 16 (* 2 (count domains))))
+        system                   (auto/create auto-config)
         ssl-context
         (try
           (clave-netty/ssl-context
            #(auto/lookup-cert system %)
            (merge tls-options
-                  {:http-versions http-versions
+                  {:http-versions   http-versions
                    :tls-alpn-solver tls-alpn-solver-instance}))
           (catch Throwable e
             (stop-automation system)

@@ -35,11 +35,11 @@ Options:
 |===
 | key | description | default
 | `:http-versions` | Aleph HTTP versions in ALPN preference order | `[:http1]`
-| `:tls-alpn-solver` | Solver containing a domain-keyed `:registry` atom | `nil`
+| `:tls-alpn-solver` | Solver holding a domain-keyed `:registry` atom | `nil`
 | `:protocols` | Enabled TLS protocol names | JDK default
 | `:ciphers` | Enabled cipher-suite names | JDK default
 | `:client-auth` | `:none`, `:optional`, or `:require` | `:none`
-| `:trust-managers` | TrustManager or sequence for client certificates | JDK default
+| `:trust-managers` | TrustManager or sequence for client certs | JDK default
 | `:session-cache-size` | TLS server-session cache size | JDK default
 | `:session-timeout` | TLS server-session timeout in seconds | JDK default
 | `:secure-random` | SecureRandom used to initialize JSSE | new default
@@ -49,8 +49,20 @@ Unknown or absent SNI fails the handshake.
 TLS-ALPN-01 challenge selection uses the SNI hostname, so concurrent domain
 validations receive their own challenge certificates.
 
+Example:
+
+[source,clojure]
+----
+(require '[ol.clave.automation :as auto])
+
+(ssl-context #(auto/lookup-cert system %)
+             {:http-versions [:http2 :http1]})
+----
+
+See <<server-options,`server-options`>> to install the returned context into Aleph.
+
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/netty.clj#L195-L248[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/netty.clj#L195-L259[source,window=_blank]
 
 '''
 
@@ -76,5 +88,16 @@ TLS handlers are installed.
 The caller must not provide `:ssl-context` or `:manual-ssl?`, because this
 function owns those Aleph hooks.
 
+Example:
+
+[source,clojure]
+----
+(let [context (ssl-context #(auto/lookup-cert system %)
+                           {:http-versions [:http2 :http1]})]
+  (aleph.http/start-server handler (server-options {:port 443} context)))
+----
+
+xref:api/ol-clave-ext-aleph.adoc#start-server[`ol.clave.ext.aleph/start-server`] wires this together for you.
+
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/netty.clj#L270-L290[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/ext/netty.clj#L281-L311[source,window=_blank]

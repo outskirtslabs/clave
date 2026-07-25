@@ -53,7 +53,6 @@ The config map supports:
 | `:key-reuse` | Reuse private key on renewal (default false)
 | `:solvers` | Map of solver types to implementations
 | `:ocsp` | OCSP config with `:enabled`, `:must-staple`
-| `:ari` | ARI config with `:enabled`
 | `:cache-capacity` | Max certificates in cache (nil = unlimited)
 | `:config-fn` | Function: domain -> config overrides
 | `:http-client` | HTTP client options for ACME requests
@@ -79,7 +78,7 @@ Throws if configuration is invalid or storage cannot be initialized.
 After calling this function you might be interested in <<subscribe-events,`subscribe-events`>> and <<start,`start`>>.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L59-L68[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L58-L67[source,window=_blank]
 
 '''
 
@@ -104,7 +103,7 @@ Returns the system handle.
 See also <<create,`create`>>.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L70-L80[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L69-L79[source,window=_blank]
 
 '''
 
@@ -131,7 +130,7 @@ and releases resources.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L87-L97[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L86-L96[source,window=_blank]
 
 '''
 
@@ -155,7 +154,7 @@ Returns true if the system is in started state.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L99-L106[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L98-L105[source,window=_blank]
 
 '''
 
@@ -183,7 +182,7 @@ Throws with `:errors` in ex-data if any domain is invalid.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L108-L119[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L107-L118[source,window=_blank]
 
 '''
 
@@ -211,7 +210,7 @@ Certificates remain in storage but are no longer actively managed.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L121-L132[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L120-L131[source,window=_blank]
 
 '''
 
@@ -239,7 +238,7 @@ Returns the certificate bundle or nil if not found.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L134-L145[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L133-L144[source,window=_blank]
 
 '''
 
@@ -265,7 +264,7 @@ Returns a vector of maps with `:domain`, `:status`, and `:not-after`.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L147-L156[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L146-L155[source,window=_blank]
 
 '''
 
@@ -293,7 +292,7 @@ Returns a map with `:domain`, `:status`, `:not-after`, `:issuer`,
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L158-L169[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L157-L168[source,window=_blank]
 
 '''
 
@@ -318,7 +317,7 @@ Returns true if the system has a valid certificate for the domain.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L171-L179[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L170-L178[source,window=_blank]
 
 '''
 
@@ -364,7 +363,7 @@ System shutdown places a `:system-stopped` event in every active queue.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L181-L209[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L180-L208[source,window=_blank]
 
 '''
 
@@ -394,7 +393,7 @@ subscription.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L211-L224[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L210-L223[source,window=_blank]
 
 '''
 
@@ -426,7 +425,7 @@ Returns the number of certificates queued for renewal.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L226-L241[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L225-L240[source,window=_blank]
 
 '''
 
@@ -468,7 +467,7 @@ Returns `{:status :success}` on successful revocation,
 or `{:status :error :message ...}` on failure.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L243-L266[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L242-L265[source,window=_blank]
 
 '''
 
@@ -495,4 +494,4 @@ maintenance loop runs automatically at regular intervals.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L268-L278[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation.clj#L267-L277[source,window=_blank]

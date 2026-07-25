@@ -49,7 +49,6 @@
   | `:key-reuse`        | Reuse private key on renewal (default false)                                 |
   | `:solvers`          | Map of solver types to implementations                                       |
   | `:ocsp`             | OCSP config with `:enabled`, `:must-staple`                                  |
-  | `:ari`              | ARI config with `:enabled`                                                   |
   | `:cache-capacity`   | Max certificates in cache (nil = unlimited)                                  |
   | `:config-fn`        | Function: domain -> config overrides                                         |
   | `:http-client`      | HTTP client options for ACME requests                                        |"

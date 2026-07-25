@@ -464,7 +464,7 @@
       (try
         ;; Mock storage check and config resolution to enable maintenance path
         (with-redefs [system/certificate-exists-in-storage? (constantly true)
-                      system/resolve-config-with-timeout (fn [_ _ _] {:ari {:enabled false}})]
+                      system/resolve-config-with-timeout (fn [_ _ _] {})]
           ;; Trigger maintenance cycle
           (system/trigger-maintenance sys)
           ;; Give time for async operations

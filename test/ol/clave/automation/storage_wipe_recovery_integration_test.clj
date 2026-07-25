@@ -57,13 +57,12 @@
   (testing "System recovers after complete storage wipe by re-obtaining certificate"
     (let [domain "localhost"
           solver (make-http01-solver)
-          ;; Disable OCSP and ARI to simplify the test
+          ;; Disable OCSP to avoid unrelated fetch work.
           config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
-                  :ocsp {:enabled false}
-                  :ari {:enabled false}}
+                  :ocsp {:enabled false}}
           system (automation/create-started config)
           queue (automation/subscribe-events system)]
       (try

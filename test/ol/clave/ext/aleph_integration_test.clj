@@ -65,7 +65,6 @@
    :challenge-types challenge-types
    :preferred-challenges (vec challenge-types)
    :ocsp {:enabled false}
-   :ari {:enabled false}
    :startup-timeout-ms 30000})
 
 (defn- start-adapter [start-server challenge-types]

@@ -1079,12 +1079,12 @@
   - Certificate is not short-lived
   - Command does not have :skip-ocsp-fetch flag (used for revocation-triggered renewals)"
   [system cmd result]
-  (let [cmd-type (:command cmd)
-        success? (= :success (:status result))
-        config (:config system)
+  (let [cmd-type      (:command cmd)
+        success?      (= :success (:status result))
+        config        (:config system)
         ocsp-enabled? (get-in config [:ocsp :enabled] false)
-        bundle (:bundle result)
-        skip-ocsp? (:skip-ocsp-fetch cmd)]
+        bundle        (:bundle result)
+        skip-ocsp?    (:skip-ocsp-fetch cmd)]
     (and success?
          (not skip-ocsp?)
          (contains? #{:obtain-certificate :renew-certificate} cmd-type)
@@ -1093,21 +1093,13 @@
          (not (decisions/short-lived-cert? bundle)))))
 
 (defn- should-fetch-ari?
-  "Check if ARI should be fetched after certificate operation.
-
-  Returns true when:
-  - Command was :obtain-certificate or :renew-certificate
-  - Result status is :success
-  - ARI is enabled in config"
-  [system cmd result]
+  "Checks whether ARI should be fetched after a certificate operation."
+  [cmd result]
   (let [cmd-type (:command cmd)
         success? (= :success (:status result))
-        config (:config system)
-        ari-enabled? (get-in config [:ari :enabled] false)
-        bundle (:bundle result)]
+        bundle   (:bundle result)]
     (and success?
          (contains? #{:obtain-certificate :renew-certificate} cmd-type)
-         ari-enabled?
          bundle)))
 
 (defn- ocsp-indicates-revocation?
@@ -1133,7 +1125,7 @@
         domain (:domain cmd)]
     (when (should-fetch-ocsp? system cmd result)
       (submit-command! system {:command :fetch-ocsp :domain domain :bundle bundle}))
-    (when (should-fetch-ari? system cmd result)
+    (when (should-fetch-ari? cmd result)
       (submit-command! system {:command :fetch-ari :domain domain :bundle bundle}))))
 
 (defn- on-command-complete!

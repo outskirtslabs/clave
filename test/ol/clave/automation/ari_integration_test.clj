@@ -31,30 +31,29 @@
   (testing "ARI data is stored and renewal can be forced"
     (let [domain "ari-data.localhost"
           solver (create-http01-solver)
-          config {:storage test-util/*storage-impl*
-                  :issuers [{:directory-url (pebble/uri)}]
-                  :solvers {:http-01 solver}
+          config {:storage     test-util/*storage-impl*
+                  :issuers     [{:directory-url (pebble/uri)}]
+                  :solvers     {:http-01 solver}
                   :http-client pebble/http-client-opts
-                  :ocsp {:enabled false}
-                  :ari {:enabled true}}
+                  :ocsp        {:enabled false}}
           system (automation/create-started config)]
       (try
         (let [queue (automation/subscribe-events system)]
           (automation/manage-domains system [domain])
-          (let [events (test-util/wait-for-events queue {:expected #{:certificate-obtained
-                                                                     :ari-fetched}
+          (let [events (test-util/wait-for-events queue {:expected   #{:certificate-obtained
+                                                                       :ari-fetched}
                                                          :timeout-ms 10000})]
             (is (some #(= :certificate-obtained (:type %)) events)
                 "Should receive :certificate-obtained event")
             (is (some #(= :ari-fetched (:type %)) events)
                 "Should receive :ari-fetched event"))
           ;; Verify ARI data content
-          (let [bundle (automation/lookup-cert system domain)
-                ari-data (:ari-data bundle)
+          (let [bundle           (automation/lookup-cert system domain)
+                ari-data         (:ari-data bundle)
                 suggested-window (:suggested-window ari-data)
-                selected-time (:selected-time ari-data)
-                retry-after (:retry-after ari-data)
-                now (Instant/now)]
+                selected-time    (:selected-time ari-data)
+                retry-after      (:retry-after ari-data)
+                now              (Instant/now)]
             (is (some? bundle) "Should have certificate bundle")
             (is (some? ari-data) "Bundle should have ARI data")
             (is (some? suggested-window) "ARI data should have suggested-window")
@@ -63,9 +62,9 @@
               (let [start (if (map? suggested-window)
                             (:start suggested-window)
                             (first suggested-window))
-                    end (if (map? suggested-window)
-                          (:end suggested-window)
-                          (second suggested-window))]
+                    end   (if (map? suggested-window)
+                            (:end suggested-window)
+                            (second suggested-window))]
                 (is (not (.isBefore ^Instant selected-time ^Instant start))
                     "Selected time should be >= window start")
                 (is (not (.isAfter ^Instant selected-time ^Instant end))
@@ -84,15 +83,19 @@
             (is (some? initial-hash) "Should have initial cert hash")
             (binding [decisions/*renewal-threshold* 1.01]
               (automation/trigger-maintenance system)
-              (let [events (test-util/wait-for-events queue {:expected #{:certificate-renewed}
-                                                             :timeout-ms 60000})
-                    renewed-event (first (filter #(= :certificate-renewed (:type %)) events))]
-                (is (some? renewed-event)
-                    "Should receive certificate-renewed event")
-                (when renewed-event
-                  (let [new-bundle (automation/lookup-cert system domain)]
-                    (is (not= initial-hash (:hash new-bundle))
-                        "New cert should have different hash")))))))
+              (let [expected-event-types #{:certificate-renewed :ari-fetched}
+                    events               (test-util/wait-for-events queue {:expected   expected-event-types
+                                                                           :timeout-ms 60000})
+                    actual-event-types   (->> events
+                                              (map :type)
+                                              (filter expected-event-types)
+                                              set)
+                    new-bundle           (automation/lookup-cert system domain)]
+                (is (= expected-event-types actual-event-types))
+                (is (= {:renewed?     true
+                        :ari-fetched? true}
+                       {:renewed?     (not= initial-hash (:hash new-bundle))
+                        :ari-fetched? (some? (:ari-data new-bundle))}))))))
         (finally
           (automation/stop system))))))
 
@@ -104,8 +107,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
-                  :ocsp {:enabled false}
-                  :ari {:enabled true}}
+                  :ocsp {:enabled false}}
           system (automation/create-started config)]
       (try
         (let [queue (automation/subscribe-events system)]

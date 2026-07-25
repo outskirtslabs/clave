@@ -100,7 +100,6 @@
       :storage test-util/*storage-impl*
       :issuers [{:directory-url directory-url}]
       :ocsp {:enabled false}
-      :ari {:enabled false}
       :startup-timeout-ms 5000})))
 
 (deftest starts-http-and-https-listeners-with-a-stored-certificate

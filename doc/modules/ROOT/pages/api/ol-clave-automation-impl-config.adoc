@@ -89,12 +89,11 @@ Default values:
 - Issuer: Let's Encrypt production
 - Key type: P256 (ECDSA)
 - OCSP: enabled, must-staple disabled
-- ARI: enabled
 - Key reuse: disabled
 - Cache capacity: unlimited
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L53-L72[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L53-L70[source,window=_blank]
 
 '''
 
@@ -120,7 +119,7 @@ Returns a unique identifier for the issuer based on the URL's host and path.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L92-L116[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L90-L114[source,window=_blank]
 
 '''
 
@@ -147,7 +146,7 @@ Format: `certificates/{issuer-key}/{domain}/{domain}.crt`
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L118-L130[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L116-L128[source,window=_blank]
 
 '''
 
@@ -174,7 +173,7 @@ Format: `certificates/{issuer-key}/{domain}/{domain}.key`
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L132-L144[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L130-L142[source,window=_blank]
 
 '''
 
@@ -201,7 +200,7 @@ Format: `certificates/{issuer-key}/{domain}/{domain}.edn`
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L146-L158[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L144-L156[source,window=_blank]
 
 '''
 
@@ -227,7 +226,7 @@ Format: `certificates/{issuer-key}`
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L160-L169[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L158-L167[source,window=_blank]
 
 '''
 
@@ -253,7 +252,7 @@ Format: `accounts/{issuer-key}/account.key`
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L171-L180[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L169-L178[source,window=_blank]
 
 '''
 
@@ -277,7 +276,7 @@ Generate storage key for an account public key PEM file.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L182-L189[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L180-L187[source,window=_blank]
 
 '''
 
@@ -300,7 +299,7 @@ Contains the account KID (URL) returned by the CA after registration,
 allowing subsequent operations to skip the newAccount call.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L191-L199[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L189-L197[source,window=_blank]
 
 '''
 
@@ -329,7 +328,7 @@ The OCSP staple is stored as raw DER-encoded bytes.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L201-L215[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L199-L213[source,window=_blank]
 
 '''
 
@@ -358,7 +357,7 @@ Compromised keys are archived for audit purposes and never reused.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L217-L231[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L215-L229[source,window=_blank]
 
 '''
 
@@ -388,7 +387,7 @@ and retry-after.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L233-L248[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L231-L246[source,window=_blank]
 
 '''
 
@@ -418,7 +417,7 @@ the challenge response for HTTP-01 or TLS-ALPN-01 validation.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L250-L265[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L248-L263[source,window=_blank]
 
 '''
 
@@ -451,4 +450,4 @@ Falls back to first chain if root name not found.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L267-L299[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/config.clj#L265-L297[source,window=_blank]

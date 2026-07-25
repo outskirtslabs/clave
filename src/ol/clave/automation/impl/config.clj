@@ -57,7 +57,6 @@
   - Issuer: Let's Encrypt production
   - Key type: P256 (ECDSA)
   - OCSP: enabled, must-staple disabled
-  - ARI: enabled
   - Key reuse: disabled
   - Cache capacity: unlimited"
   []
@@ -68,7 +67,6 @@
    :ocsp {:enabled true
           :must-staple false
           :responder-overrides {}}
-   :ari {:enabled true}
    :cache-capacity nil})
 
 ;;; Storage Key Generation

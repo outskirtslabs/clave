@@ -34,8 +34,7 @@
           config {:storage test-util/*storage-impl*
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
-                  :http-client pebble/http-client-opts
-                  :ari {:enabled true}}
+                  :http-client pebble/http-client-opts}
           wait-for-bundle (fn [system]
                             (loop [n 0]
                               (let [bundle (automation/lookup-cert system domain)]

@@ -226,7 +226,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/im
 See xref:api/ol-clave-automation.adoc#manage-domains[`ol.clave.automation/manage-domains`]
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1197-L1233[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1189-L1225[source,window=_blank]
 
 '''
 
@@ -244,7 +244,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/im
 See xref:api/ol-clave-automation.adoc#unmanage-domains[`ol.clave.automation/unmanage-domains`]
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1235-L1247[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1227-L1239[source,window=_blank]
 
 '''
 
@@ -262,7 +262,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/im
 See xref:api/ol-clave-automation.adoc#list-domains[`ol.clave.automation/list-domains`]
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1249-L1258[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1241-L1250[source,window=_blank]
 
 '''
 
@@ -280,7 +280,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/im
 See xref:api/ol-clave-automation.adoc#get-domain-status[`ol.clave.automation/get-domain-status`]
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1260-L1268[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1252-L1260[source,window=_blank]
 
 '''
 
@@ -298,7 +298,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/im
 See xref:api/ol-clave-automation.adoc#has-valid-cert-QMARK-[`ol.clave.automation/has-valid-cert?`]
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1270-L1273[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1262-L1265[source,window=_blank]
 
 '''
 
@@ -317,7 +317,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/im
 See xref:api/ol-clave-automation.adoc#subscribe-events[`ol.clave.automation/subscribe-events`].
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1275-L1280[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1267-L1272[source,window=_blank]
 
 '''
 
@@ -335,7 +335,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/im
 See xref:api/ol-clave-automation.adoc#unsubscribe-events[`ol.clave.automation/unsubscribe-events`].
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1282-L1285[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1274-L1277[source,window=_blank]
 
 '''
 
@@ -353,7 +353,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/im
 See xref:api/ol-clave-automation.adoc#renew-managed[`ol.clave.automation/renew-managed`]
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1287-L1300[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1279-L1292[source,window=_blank]
 
 '''
 
@@ -371,4 +371,4 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/im
 See xref:api/ol-clave-automation.adoc#revoke[`ol.clave.automation/revoke`]
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1302-L1340[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/automation/impl/system.clj#L1294-L1332[source,window=_blank]

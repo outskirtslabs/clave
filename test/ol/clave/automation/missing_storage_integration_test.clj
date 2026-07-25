@@ -57,8 +57,7 @@
                   :issuers [{:directory-url (pebble/uri)}]
                   :solvers {:http-01 solver}
                   :http-client pebble/http-client-opts
-                  :ocsp {:enabled false}
-                  :ari {:enabled false}}
+                  :ocsp {:enabled false}}
           system (automation/create-started config)
           queue (automation/subscribe-events system)]
       (try

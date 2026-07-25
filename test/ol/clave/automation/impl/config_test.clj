@@ -6,17 +6,16 @@
 (deftest resolve-config-test
   (testing "Per-domain config overrides global config values"
     (let [global-config {:key-type :p256
-                         :ocsp {:enabled true}
-                         :ari {:enabled true}}
+                         :ocsp {:enabled true}}
           config-fn (fn [domain]
                       (when (= domain "test.example.com")
                         {:key-type :rsa2048}))
           system {:config global-config
                   :config-fn config-fn}
           result (config/resolve-config system "test.example.com")]
-      (is (= :rsa2048 (:key-type result)))
-      (is (= {:enabled true} (:ocsp result)))
-      (is (= {:enabled true} (:ari result)))))
+      (is (= {:key-type :rsa2048
+              :ocsp {:enabled true}}
+             result))))
 
   (testing "Deep merge preserves nested structures"
     (let [global-config {:ocsp {:enabled true
@@ -76,7 +75,6 @@
             :ocsp {:enabled true
                    :must-staple false
                    :responder-overrides {}}
-            :ari {:enabled true}
             :cache-capacity nil}
            (config/default-config)))))
 

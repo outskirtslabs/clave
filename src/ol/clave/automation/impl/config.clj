@@ -116,7 +116,7 @@
 (defn cert-storage-key
   "Generate storage key for a certificate PEM file.
 
-  Format: `certificates/{issuer-key}/{domain}/{domain}.crt`
+  Format: `certificates/<issuer-key>/<domain>/<domain>.crt`
 
   | key          | description                                     |
   |--------------|-------------------------------------------------|
@@ -130,7 +130,7 @@
 (defn key-storage-key
   "Generate storage key for a private key PEM file.
 
-  Format: `certificates/{issuer-key}/{domain}/{domain}.key`
+  Format: `certificates/<issuer-key>/<domain>/<domain>.key`
 
   | key | description |
   |-----|-------------|
@@ -144,7 +144,7 @@
 (defn meta-storage-key
   "Generate storage key for certificate metadata EDN file.
 
-  Format: `certificates/{issuer-key}/{domain}/{domain}.edn`
+  Format: `certificates/<issuer-key>/<domain>/<domain>.edn`
 
   | key | description |
   |-----|-------------|
@@ -158,7 +158,7 @@
 (defn certs-prefix
   "Generate storage prefix for listing certificates under an issuer.
 
-  Format: `certificates/{issuer-key}`
+  Format: `certificates/<issuer-key>`
 
   | key          | description                                     |
   |--------------|-------------------------------------------------|
@@ -169,7 +169,7 @@
 (defn account-private-key-storage-key
   "Generate storage key for an account private key PEM file.
 
-  Format: `accounts/{issuer-key}/account.key`
+  Format: `accounts/<issuer-key>/account.key`
 
   | key          | description                                     |
   |--------------|-------------------------------------------------|
@@ -189,7 +189,7 @@
 (defn account-registration-storage-key
   "Generate storage key for account registration EDN.
 
-  Format: `accounts/{issuer-key}/registration.edn`
+  Format: `accounts/<issuer-key>/registration.edn`
 
   Contains the account KID (URL) returned by the CA after registration,
   allowing subsequent operations to skip the newAccount call."
@@ -199,7 +199,7 @@
 (defn ocsp-storage-key
   "Generate storage key for an OCSP staple file.
 
-  Format: `certificates/{issuer-key}/{domain}/{domain}.ocsp`
+  Format: `certificates/<issuer-key>/<domain>/<domain>.ocsp`
 
   The OCSP staple is stored as raw DER-encoded bytes.
 
@@ -215,7 +215,7 @@
 (defn compromised-key-storage-key
   "Generate storage key for archiving a compromised private key.
 
-  Format: `keys/{domain}.compromised.{timestamp}`
+  Format: `keys/<domain>.compromised.<timestamp>`
 
   Compromised keys are archived for audit purposes and never reused.
 
@@ -231,7 +231,7 @@
 (defn ari-storage-key
   "Generate storage key for ARI (ACME Renewal Information) data.
 
-  Format: `certificates/{issuer-key}/{domain}/{domain}.ari.edn`
+  Format: `certificates/<issuer-key>/<domain>/<domain>.ari.edn`
 
   The ARI data is stored as EDN containing suggested-window, selected-time,
   and retry-after.
@@ -248,7 +248,7 @@
 (defn challenge-token-storage-key
   "Generate storage key for a challenge token (distributed solving).
 
-  Format: `challenge_tokens/{issuer-key}/{identifier}.edn`
+  Format: `challenge_tokens/<issuer-key>/<identifier>.edn`
 
   Used to store challenge data so any instance in a cluster can serve
   the challenge response for HTTP-01 or TLS-ALPN-01 validation.

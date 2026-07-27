@@ -64,7 +64,7 @@
 (defn wrap-acme-challenge
   "Ring middleware that serves ACME HTTP-01 challenge responses.
 
-  Intercepts requests to `/.well-known/acme-challenge/{token}` and returns
+  Intercepts requests to `/.well-known/acme-challenge/<token>` and returns
   the key-authorization from the solver's registry.
   Other requests pass through to the wrapped handler.
 

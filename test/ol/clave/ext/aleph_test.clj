@@ -10,8 +10,10 @@
    [ol.clave.impl.test-util :as test-util])
   (:import
    [io.aleph.dirigiste IPool]
+   [io.netty.resolver AddressResolverGroup InetNameResolver]
+   [io.netty.util.concurrent Promise]
    [java.io BufferedReader Closeable InputStreamReader PrintWriter]
-   [java.net Socket]
+   [java.net InetAddress Socket]
    [java.security.cert X509Certificate]
    [java.time Instant]
    [java.util Collections]
@@ -101,6 +103,20 @@
       :issuers [{:directory-url directory-url}]
       :ocsp {:enabled false}
       :startup-timeout-ms 5000})))
+
+(defn- loopback-resolver ^AddressResolverGroup []
+  ;; Keep `clave.localhost` as SNI while bypassing systemd-resolved, which is
+  ;; unavailable in Nix build sandboxes.
+  (let [address (InetAddress/getByAddress (byte-array [127 0 0 1]))]
+    (proxy [AddressResolverGroup] []
+      (newResolver [executor]
+        (.asAddressResolver
+         (proxy [InetNameResolver] [executor]
+           (doResolve [_hostname ^Promise promise]
+             (.setSuccess promise address))
+           (doResolveAll [_hostname ^Promise promise]
+             (.setSuccess promise
+                          (Collections/singletonList address)))))))))
 
 (deftest starts-http-and-https-listeners-with-a-stored-certificate
   (if-let [{:keys [start-server stop]} (sut-vars)]
@@ -205,10 +221,12 @@
             (assoc (stored-certificate-config "clave.localhost")
                    :challenge-types #{:tls-alpn-01})})]
       (try
-        (let [^IPool pool
+        (let [^AddressResolverGroup resolver (loopback-resolver)
+              ^IPool pool
               (http/connection-pool
                {:connection-options {:http-versions [:http2]
-                                     :insecure? true}})]
+                                     :insecure? true
+                                     :name-resolver resolver}})]
           (try
             (let [port (aleph-netty/port (:https-server context))
                   response @(http/get (str "https://clave.localhost:" port "/http2")
@@ -219,7 +237,8 @@
                      {:body (slurp (:body response))
                       :status (:status response)})))
             (finally
-              (.shutdown pool))))
+              (.shutdown pool)
+              (.close resolver))))
         (finally
           (stop context))))
     (is (= :implemented :missing))))

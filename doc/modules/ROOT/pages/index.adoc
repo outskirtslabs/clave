@@ -15,8 +15,8 @@ It gives you a lower-level API for implementing the ACME protocol itself when yo
 And if you do not want to live at RFC altitude all day, it also gives you a higher-level API for provisioning certificates from application code, managing them over time, and keeping them up to date. That is the part most people actually want. Ask for a cert. Renew the cert. Repeat.
 
 `ol.clave` also includes adapters for wiring ACME into Jetty and Aleph applications, plus helpers for HTTP-01 and TLS-ALPN-01 validation.
-For DNS validation, it gives you the hooks you need, but it does not ship DNS provider integrations by default.
-DNS provider integrations are future work.
+For DNS-01 validation, use Clave's challenge hooks with https://docs.outskirtslabs.com/ol.protocol53/next/[`ol.protocol53`], Outskirts Labs' provider-independent API for managing DNS records across supported providers.
+A direct Clave adapter remains future work.
 If you are interested in that, https://casey.link/about[get in touch].
 
 One of the design goals for `ol.clave` was as few dependencies as possible and avoid dragging in a bunch of Java ecosystem baggage.
@@ -79,6 +79,18 @@ Replace `certificate` with the example namespace you want to run.
 * https://docs.outskirtslabs.com/ol.clave/next/[Docs]
 * https://docs.outskirtslabs.com/ol.clave/next/api[API Reference]
 * https://github.com/outskirtslabs/clave/issues[Support via GitHub Issues]
+
+== Related Projects
+
+https://docs.outskirtslabs.com/ol.protocol53/next/[`ol.protocol53`] is Outskirts Labs'
+provider-independent Clojure API for managing DNS records. ACME DNS-01
+validation needs temporary TXT records, which Protocol53 can manage across its
+supported DNS providers.
+A direct Clave adapter remains future work.
+
+* https://docs.outskirtslabs.com/ol.protocol53/next/[Protocol53 documentation]
+* https://docs.outskirtslabs.com/ol.protocol53/next/api[Protocol53 API reference]
+* https://github.com/outskirtslabs/protocol53[Protocol53 source code]
 
 == Recommended Reading
 

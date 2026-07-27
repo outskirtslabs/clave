@@ -30,10 +30,9 @@
     (loop []
       (let [resp (try
                    (http/request
-                    {:client (http/client pebble/http-client-opts)
+                    {:client pebble/http-client-opts
                      :uri url
-                     :method :get
-                     :as :json})
+                     :method :get})
                    (catch Exception _ nil))]
         (cond
           (and resp (<= 200 (:status resp) 299)) true

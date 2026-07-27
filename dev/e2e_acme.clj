@@ -75,15 +75,9 @@
             account-key (account/generate-keypair)
             account     (account/create "mailto:test@example.com" true)
 
-            ;; create a new session, this opaque handle must be passed to every ol.clave.command function
-            ;; they will always return a new session handle that you must use
-            ;; you _must_ never re-use a session handle
-            ;; for this demo we use pebble which has a self signed cert, so we have to pass an :http-client
-            ;; if you were doing this against a "real" acme server you probably wouldn't need to
+            ;; Create a session. JVM trust-store flags configure Pebble's CA.
             [session _] (cmd/create-session bg-lease "https://localhost:14000/dir"
-                                            {:http-client {:ssl-context {:trust-store-pass "changeit"
-                                                                         :trust-store      "test/fixtures/pebble-truststore.p12"}}
-                                             :account-key account-key})
+                                            {:account-key account-key})
 
             ;; register a new account with the server
             [session account] (cmd/new-account bg-lease session account)

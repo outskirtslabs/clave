@@ -10,7 +10,10 @@
 
   Then run:
 
-    clj -A:dev -M -m acme"
+    clj -J-Djavax.net.ssl.trustStore=test/fixtures/pebble-truststore.p12 \\
+        -J-Djavax.net.ssl.trustStorePassword=changeit \\
+        -J-Djavax.net.ssl.trustStoreType=PKCS12 \\
+        -A:dev -M -m acme"
   (:require
    [ol.clave.acme.account :as account]
    [ol.clave.acme.challenge :as challenge]
@@ -33,14 +36,9 @@
         account-key (account/generate-keypair)
         account     (account/create "mailto:you@example.com" true)
 
-        ;; Now we can make our low-level ACME session.
-        ;; For this demo we use pebble which has a self signed cert, so we have
-        ;; to pass an :http-client. If you were doing this against a "real"
-        ;; ACME server you probably wouldn't need to.
+        ;; The JVM trust-store flags above configure Pebble's self-signed CA.
         [session _] (cmd/create-session bg-lease "https://127.0.0.1:14000/dir"
-                                        {:http-client {:ssl-context {:trust-store-pass "changeit"
-                                                                     :trust-store      "test/fixtures/pebble-truststore.p12"}}
-                                         :account-key account-key})
+                                        {:account-key account-key})
 
         ;; If the account is new, we need to create it; only do this once!
         ;; Then be sure to securely store the account key and metadata so

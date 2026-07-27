@@ -167,9 +167,7 @@
             account-key (account/generate-keypair)
             account (account/create "mailto:test@example.com" true)
             [session _] (cmd/create-session bg-lease "https://localhost:14000/dir"
-                                            {:http-client {:ssl-context {:trust-store-pass "changeit"
-                                                                         :trust-store "test/fixtures/pebble-truststore.p12"}}
-                                             :account-key account-key})
+                                            {:account-key account-key})
             [session _] (cmd/new-account bg-lease session account)
             identifiers [(order/create-identifier :dns "localhost")]
             order-request (order/create identifiers)

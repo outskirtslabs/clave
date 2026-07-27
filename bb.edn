@@ -8,7 +8,7 @@
                     [babashka.tasks :refer [shell]]
                     [ol.bb-tasks.gen-docs :as gen-docs]
                     [ol.bb-tasks.publish-clojars :as publish-clojars])
-         :init     (do (def paths #_["src" "test" "dev" "examples"] ["src" "test"]))
+         :init     (do (def paths #_["src" "test" "dev" "examples"] ["src" "test" "examples"]))
          dev       {:doc "Start a local development server" :task (apply clojure "-M:dev:repl/dev" *command-line-args*)}
 
          test

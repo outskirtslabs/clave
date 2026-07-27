@@ -389,29 +389,27 @@
 ;;; Public API
 
 (defn fetch-ocsp-response
-  "Fetch OCSP response for a certificate from the specified responder.
+  "Fetches an OCSP response for a certificate from the specified responder.
 
-  | key | description |
-  |-----|-------------|
-  | `cert` | The X509Certificate to check |
-  | `issuer` | The issuer certificate |
-  | `responder-url` | URL of the OCSP responder |
-  | `http-opts` | HTTP client options map |
+  | key             | description                                                       |
+  |-----------------|-------------------------------------------------------------------|
+  | `cert`          | The [[java.security.cert.X509Certificate]] to check.              |
+  | `issuer`        | The issuer certificate.                                           |
+  | `responder-url` | URL of the OCSP responder.                                        |
+  | `http-client`   | Optional [[java.net.http.HttpClient]].                             |
 
   Returns a result map:
   - On success: `{:status :success :ocsp-response {...}}`
   - On failure: `{:status :error :message \"...\"}`"
-  [^X509Certificate cert ^X509Certificate issuer responder-url http-opts]
+  [^X509Certificate cert ^X509Certificate issuer responder-url http-client]
   (try
     (let [request-bytes (create-ocsp-request cert issuer)
-          client (http-impl/client (or http-opts http-impl/default-client-opts))
           response (http-impl/request
-                    {:client client
+                    {:client http-client
                      :uri responder-url
                      :method :post
                      :headers {"content-type" "application/ocsp-request"}
-                     :body request-bytes
-                     :as :bytes})
+                     :body request-bytes})
           status (:status response)]
       (if (<= 200 status 299)
         (let [body-bytes (:body response)
@@ -428,21 +426,21 @@
        :message (.getMessage e)})))
 
 (defn fetch-ocsp-for-bundle
-  "Fetch OCSP response for a certificate bundle.
+  "Fetches an OCSP response for a certificate bundle.
 
   Extracts the OCSP URL from the leaf certificate and fetches the response.
   Supports responder URL overrides for testing.
 
-  | key | description |
-  |-----|-------------|
-  | `bundle` | Certificate bundle with `:certificate` chain |
-  | `http-opts` | HTTP client options |
-  | `responder-overrides` | Optional map of original-url -> override-url |
+  | key                   | description                                            |
+  |-----------------------|--------------------------------------------------------|
+  | `bundle`              | Certificate bundle with a `:certificate` chain.        |
+  | `http-client`         | Optional [[java.net.http.HttpClient]].                  |
+  | `responder-overrides` | Optional map of original URL to override URL.           |
 
   Returns a result map:
   - On success: `{:status :success :ocsp-response {...}}`
   - On failure: `{:status :error :message \"...\"}`"
-  [bundle http-opts responder-overrides]
+  [bundle http-client responder-overrides]
   (let [certs (:certificate bundle)
         ^X509Certificate leaf-cert (first certs)
         ^X509Certificate issuer-cert (second certs)]
@@ -465,4 +463,4 @@
             (if (empty? responder-url)
               {:status :error
                :message "OCSP responder disabled by override"}
-              (fetch-ocsp-response leaf-cert issuer-cert responder-url http-opts))))))))
+              (fetch-ocsp-response leaf-cert issuer-cert responder-url http-client))))))))

@@ -44,21 +44,28 @@
   - `opts` — optional map configuring the session. Recognised keys are
     summarised below.
 
-  | Key            | Type                    | Description                                                              |
-  |----------------|-------------------------|--------------------------------------------------------------------------|
-  | `:http-client` | map                     | Passed to `ol.clave.impl.http/http-client` to build the transport layer. |
-  | `:account-key` | `java.security.KeyPair` | Injects an existing key pair into the session.                           |
-  | `:account-kid` | string                  | Stores a known account URL for authenticated calls.                      |
-  | `:scope`       | scope token             | Overrides the default cancellation/timeout scope.                        |
+  | Key            | Type                         | Description                                                                  |
+  |----------------|------------------------------|------------------------------------------------------------------------------|
+  | `:http-client` | [[java.net.http.HttpClient]] | Uses the supplied client directly; omit or use `nil` for the shared default. |
+  | `:account-key` | `java.security.KeyPair`      | Injects an existing key pair into the session.                               |
+  | `:account-kid` | string                       | Stores a known account URL for authenticated calls.                          |
+  | `:scope`       | scope token                  | Overrides the default cancellation/timeout scope.                            |
+
+  A supplied client owns redirect, proxy, executor, connection-timeout, and SSL
+  policy.
 
   Returns `[session nil]`, where `session` is a qualified map of
   `::ol.clave.specs/*` keys suitable for subsequent commands.
 
   Example:
   ```clojure
-  (require '[ol.clave.commands :as commands])
+  (require '[ol.clave.acme.commands :as commands])
 
-  (let [[session _] (commands/new-session \"https://acme.example/dir\" {:http-client {}})]
+  (let [client (-> (java.net.http.HttpClient/newBuilder)
+                   (.followRedirects java.net.http.HttpClient$Redirect/NORMAL)
+                   (.build))
+        [session _] (commands/new-session \"https://acme.example/dir\"
+                                          {:http-client client})]
     (::ol.clave.specs/directory-url session))
   ```"
   ([directory-url]
@@ -93,11 +100,11 @@
 
   Example:
   ```clojure
-  (require '[ol.clave.commands :as commands]
+  (require '[ol.clave.acme.commands :as commands]
            '[ol.clave.lease :as lease])
 
   (let [bg (lease/background)
-        [session _] (commands/new-session \"https://acme.example/dir\" {:http-client {}})]
+        [session _] (commands/new-session \"https://acme.example/dir\")]
     (commands/load-directory bg session))
   ```"
   ([lease session]
@@ -143,10 +150,10 @@
 
   Example:
   ```clojure
-  (require '[ol.clave.commands :as commands]
+  (require '[ol.clave.acme.commands :as commands]
            '[ol.clave.lease :as lease])
 
-  (commands/create-session (lease/background) \"https://acme.example/dir\" {:http-client {}})
+  (commands/create-session (lease/background) \"https://acme.example/dir\")
   ```"
   ([lease directory-url]
    (impl/create-session lease directory-url nil))

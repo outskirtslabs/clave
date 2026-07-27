@@ -10,7 +10,10 @@
 
   Then run:
 
-    clj -A:dev -M -m certificate"
+    clj -J-Djavax.net.ssl.trustStore=test/fixtures/pebble-truststore.p12 \\
+        -J-Djavax.net.ssl.trustStorePassword=changeit \\
+        -J-Djavax.net.ssl.trustStoreType=PKCS12 \\
+        -A:dev -M -m e2e-certificate"
   (:require
    [ol.clave.acme.account :as account]
    [ol.clave.acme.commands :as commands]
@@ -41,16 +44,12 @@
   ;; Start HTTP-01 challenge server (uses http-solver/handler internally)
   (let [http01-server (http01/start! {:port 5002})]
     (try
-      (let [;; Create session with directory fetch
+      (let [;; JVM trust-store flags configure Pebble's self-signed CA.
             account-key (account/generate-keypair)
-            ;; for this demo we use pebble which has a self signed cert, so we have to pass an :http-client
-            ;; if you were doing this against a "real" acme server you probably wouldn't need to
             [session _] (commands/create-session
                          (lease/background)
                          "https://localhost:14000/dir"
-                         {:account-key account-key
-                          :http-client {:ssl-context {:trust-store-pass "changeit"
-                                                      :trust-store "test/fixtures/pebble-truststore.p12"}}})
+                         {:account-key account-key})
             ;; Register account
             [session _] (commands/new-account
                          (lease/background) session

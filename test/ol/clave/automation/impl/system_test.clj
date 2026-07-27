@@ -5,27 +5,40 @@
    [ol.clave.automation :as automation]
    [ol.clave.automation.impl.events :as events]
    [ol.clave.automation.impl.system :as system]
+   [ol.clave.certificate.impl.ocsp :as ocsp]
    [ol.clave.impl.test-util :as test-util]
    [ol.clave.storage.file :as file-storage])
   (:import
    [java.nio.file Files]
    [java.time Instant]
    [java.time.temporal ChronoUnit]
-   [java.util.concurrent Executors TimeUnit]))
+   [java.util.concurrent ConcurrentHashMap Executors Semaphore TimeUnit]))
 
 ;; =============================================================================
 ;; System Lifecycle Tests
 ;; =============================================================================
 
 (defn- create-minimal-system
-  "Create a minimal system state for testing lifecycle operations.
-  This bypasses start to test stop behavior in isolation."
-  []
-  {:shutdown? (atom false)
-   :started? (atom true)
-   :maintenance-thread (atom nil)
-   :executor (Executors/newVirtualThreadPerTaskExecutor)
-   :events (events/create-bus)})
+  ([]
+   (create-minimal-system {}))
+  ([{:keys [shutdown? executor event-bus fast-semaphore slow-semaphore cache]
+     :or {shutdown? (atom false)
+          executor (Executors/newVirtualThreadPerTaskExecutor)
+          event-bus (events/create-bus)
+          fast-semaphore (Semaphore. 10)
+          slow-semaphore (Semaphore. 10)
+          cache (atom {:certs {} :index {}})}}]
+   {:shutdown? shutdown?
+    :started? (atom true)
+    :maintenance-thread (atom nil)
+    :executor executor
+    :events event-bus
+    :fast-semaphore fast-semaphore
+    :slow-semaphore slow-semaphore
+    :in-flight (ConcurrentHashMap.)
+    :cache cache
+    :storage nil
+    :config {:issuers []}}))
 
 (deftest stop-on-already-stopped-system-is-noop
   (testing "Calling stop on an already stopped system does not throw"
@@ -68,11 +81,7 @@
     ;; Step 1: Create minimal system with event queue
     (let [event-bus (events/create-bus)
           queue (events/subscribe! event-bus {:capacity 10})
-          sys {:shutdown? (atom false)
-               :started? (atom true)
-               :maintenance-thread (atom nil)
-               :executor (Executors/newVirtualThreadPerTaskExecutor)
-               :events event-bus}
+          sys (create-minimal-system {:event-bus event-bus})
           ;; Step 2: Start consumer thread waiting for events
           consumer-result (promise)
           consumer-thread (Thread.
@@ -100,11 +109,7 @@
     ;; Step 1: Create system and simulate consumer loop
     (let [event-bus (events/create-bus)
           queue (events/subscribe! event-bus {:capacity 10})
-          sys {:shutdown? (atom false)
-               :started? (atom true)
-               :maintenance-thread (atom nil)
-               :executor (Executors/newVirtualThreadPerTaskExecutor)
-               :events event-bus}
+          sys (create-minimal-system {:event-bus event-bus})
           events-processed (atom [])
           consumer-exited (promise)
           ;; Step 2: Start consumer with shutdown detection
@@ -153,14 +158,7 @@
     ;; Step 1: Create minimal system for maintenance loop
     (let [shutdown? (atom false)
           ;; Create system with minimal required fields
-          sys {:shutdown? shutdown?
-               :started? (atom true)
-               :maintenance-thread (atom nil)
-               :cache (atom {:certs {} :index {}})
-               :config {:issuers []}
-               :storage nil
-               :executor (Executors/newVirtualThreadPerTaskExecutor)
-               :in-flight (java.util.concurrent.ConcurrentHashMap.)}]
+          sys (create-minimal-system {:shutdown? shutdown?})]
       ;; Override maintenance interval for fast testing
       (binding [system/*maintenance-interval-ms* 100
                 system/*maintenance-jitter-ms* 10]
@@ -188,14 +186,7 @@
   (testing "Interrupt allows immediate shutdown check"
     ;; This verifies that interrupt during a long sleep allows quick response to shutdown
     (let [shutdown? (atom false)
-          sys {:shutdown? shutdown?
-               :started? (atom true)
-               :maintenance-thread (atom nil)
-               :cache (atom {:certs {} :index {}})
-               :config {:issuers []}
-               :storage nil
-               :executor (Executors/newVirtualThreadPerTaskExecutor)
-               :in-flight (java.util.concurrent.ConcurrentHashMap.)}]
+          sys (create-minimal-system {:shutdown? shutdown?})]
       ;; Use long sleep interval
       (binding [system/*maintenance-interval-ms* 10000
                 system/*maintenance-jitter-ms* 0]
@@ -290,6 +281,16 @@
                    temp-dir])
             (catch Exception _)))))))
 
+(deftest automated-ocsp-uses-supplied-http-client
+  (let [http-client (java.net.http.HttpClient/newHttpClient)
+        responder-overrides {:original :override}]
+    (with-redefs [ocsp/fetch-ocsp-for-bundle vector]
+      (is (= [:bundle http-client responder-overrides]
+             (#'system/fetch-ocsp!
+              {:http-client http-client
+               :config {:ocsp {:responder-overrides responder-overrides}}}
+              {:bundle :bundle}))))))
+
 ;; =============================================================================
 ;; Executor Rejection Handling Tests
 ;; =============================================================================
@@ -301,17 +302,7 @@
   (testing "RejectedExecutionException during shutdown is caught gracefully"
     ;; Step 1: Create minimal system with executor
     (let [executor (Executors/newVirtualThreadPerTaskExecutor)
-          sys {:shutdown? (atom false)
-               :started? (atom true)
-               :maintenance-thread (atom nil)
-               :executor executor
-               :events (events/create-bus)
-               :fast-semaphore (java.util.concurrent.Semaphore. 100)
-               :slow-semaphore (java.util.concurrent.Semaphore. 100)
-               :in-flight (java.util.concurrent.ConcurrentHashMap.)
-               :cache (atom {:certs {} :index {}})
-               :storage nil
-               :config {:issuers []}}
+          sys (create-minimal-system {:executor executor})
           test-cmd {:command :obtain-certificate :domain "test.example.com"}]
       ;; Step 2: Shutdown the executor (simulating system shutdown)
       (.shutdown executor)
@@ -345,17 +336,10 @@
           executor (Executors/newVirtualThreadPerTaskExecutor)
           event-bus (events/create-bus)
           event-queue (events/subscribe! event-bus {:capacity 100})
-          sys {:shutdown? (atom false)
-               :started? (atom true)
-               :maintenance-thread (atom nil)
-               :executor executor
-               :events event-bus
-               :fast-semaphore fast-semaphore
-               :slow-semaphore slow-semaphore
-               :in-flight (java.util.concurrent.ConcurrentHashMap.)
-               :cache (atom {:certs {} :index {}})
-               :storage nil
-               :config {:issuers []}}]
+          sys (create-minimal-system {:executor executor
+                                      :event-bus event-bus
+                                      :fast-semaphore fast-semaphore
+                                      :slow-semaphore slow-semaphore})]
       ;; Step 2: Exhaust slow semaphore by acquiring all permits
       ;; This simulates "filling" it with slow commands
       (.acquire slow-semaphore 2)
@@ -399,17 +383,10 @@
           executor (Executors/newVirtualThreadPerTaskExecutor)
           event-bus (events/create-bus)
           event-queue (events/subscribe! event-bus {:capacity 100})
-          sys {:shutdown? (atom false)
-               :started? (atom true)
-               :maintenance-thread (atom nil)
-               :executor executor
-               :events event-bus
-               :fast-semaphore fast-semaphore
-               :slow-semaphore slow-semaphore
-               :in-flight (java.util.concurrent.ConcurrentHashMap.)
-               :cache (atom {:certs {} :index {}})
-               :storage nil
-               :config {:issuers []}}]
+          sys (create-minimal-system {:executor executor
+                                      :event-bus event-bus
+                                      :fast-semaphore fast-semaphore
+                                      :slow-semaphore slow-semaphore})]
       ;; Step 2: Exhaust slow semaphore
       (.acquire slow-semaphore 1)
       (is (= 0 (.availablePermits slow-semaphore))
@@ -450,17 +427,9 @@
           event-bus (events/create-bus)
           event-queue (events/subscribe! event-bus {:capacity 100})
           executor (Executors/newVirtualThreadPerTaskExecutor)
-          sys {:shutdown? (atom false)
-               :started? (atom true)
-               :maintenance-thread (atom nil)
-               :executor executor
-               :events event-bus
-               :fast-semaphore (java.util.concurrent.Semaphore. 10)
-               :slow-semaphore (java.util.concurrent.Semaphore. 10)
-               :in-flight (java.util.concurrent.ConcurrentHashMap.)
-               :cache (atom {:certs {1 bundle} :index {}})
-               :storage nil
-               :config {:issuers []}}]
+          sys (create-minimal-system {:executor executor
+                                      :event-bus event-bus
+                                      :cache (atom {:certs {1 bundle} :index {}})})]
       (try
         ;; Mock storage check and config resolution to enable maintenance path
         (with-redefs [system/certificate-exists-in-storage? (constantly true)

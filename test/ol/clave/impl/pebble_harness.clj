@@ -1,22 +1,35 @@
 (ns ol.clave.impl.pebble-harness
   (:require
    [babashka.process :as p]
+   [clojure.java.io :as io]
    [ol.clave.acme.impl.http.impl :as http]
    [ol.clave.crypto.impl.json :as json])
   (:import
-   (java.net ServerSocket)))
+   [java.net ServerSocket]
+   [java.net.http HttpClient HttpClient$Redirect]
+   [java.security KeyStore]
+   [java.time Duration]
+   [javax.net.ssl SSLContext TrustManagerFactory]))
 
 (def http-client-opts
-  "HTTP client options for Pebble tests.
-  Includes SSL context for self-signed certs and timeouts to prevent hangs."
-  (assoc http/default-client-opts
-         :ssl-context
-         {:trust-store-pass "changeit"
-          :trust-store "test/fixtures/pebble-truststore.p12"}
-         ;; Add timeouts to prevent indefinite hangs during parallel execution
-         :connect-timeout 10000   ; 10 second connection timeout
-         :request {:timeout 30000 ; 30 second request timeout
-                   :headers (:headers (:request http/default-client-opts))}))
+  "Reusable Java [[java.net.http.HttpClient]] for Pebble tests.
+
+  The historical var name deliberately avoids churn in pass-through test
+  call sites."
+  (let [password  (char-array "changeit")
+        key-store (KeyStore/getInstance "PKCS12")]
+    (with-open [input (io/input-stream "test/fixtures/pebble-truststore.p12")]
+      (.load key-store input password))
+    (let [trust-managers (doto (TrustManagerFactory/getInstance
+                                (TrustManagerFactory/getDefaultAlgorithm))
+                           (.init key-store))
+          ssl-context    (doto (SSLContext/getInstance "TLS")
+                           (.init nil (.getTrustManagers trust-managers) nil))]
+      (-> (HttpClient/newBuilder)
+          (.connectTimeout (Duration/ofSeconds 10))
+          (.followRedirects HttpClient$Redirect/NORMAL)
+          (.sslContext ssl-context)
+          (.build)))))
 
 (def default-pebble-config
   "Default Pebble configuration as EDN.
@@ -176,7 +189,7 @@
 (defn challtestsrv-post
   "POST JSON payload to the challenge test server management API."
   [path payload]
-  (http/request {:client (http/client http/default-client-opts)
+  (http/request {:client http-client-opts
                  :uri (str (challenge-uri) path)
                  :method :post
                  :headers {"content-type" "application/json"}
@@ -253,10 +266,9 @@
          deadline (+ (System/currentTimeMillis) timeout-ms)]
      (loop []
        (let [resp (try
-                    (http/request {:client (http/client http-client-opts)
+                    (http/request {:client http-client-opts
                                    :uri url
-                                   :method :get
-                                   :as :json})
+                                   :method :get})
                     (catch Exception _ nil))]
          (cond
            (and resp (<= 200 (:status resp) 299)) true

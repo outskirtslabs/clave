@@ -14,7 +14,7 @@
     (let [bg-lease (lease/background)
           session {::specs/directory-url "https://localhost:14000/dir"
                    ::specs/nonces '()
-                   ::specs/http {}
+                   ::specs/http (java.net.http.HttpClient/newHttpClient)
                    ::specs/directory {}
                    ::specs/account-kid "https://localhost:14000/account/123"
                    ::specs/poll-interval 5000
@@ -29,7 +29,7 @@
           [_account account-key] (account/deserialize (slurp "test/fixtures/test-account.edn"))
           session {::specs/directory-url "https://localhost:14000/dir"
                    ::specs/nonces '()
-                   ::specs/http {}
+                   ::specs/http (java.net.http.HttpClient/newHttpClient)
                    ::specs/directory {}
                    ::specs/account-key account-key
                    ::specs/poll-interval 5000
@@ -58,7 +58,6 @@
     (let [bg-lease (lease/background)
           session {::specs/directory-url "https://localhost:14000/dir"
                    ::specs/nonces '()
-                   ::specs/http {}
                    ::specs/directory {::specs/newAccount "https://localhost:14000/sign-me-up"}
                    ::specs/poll-interval 5000
                    ::specs/poll-timeout 60000}]

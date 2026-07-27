@@ -11,8 +11,6 @@
 ***** xref:api/ol-clave-acme-impl-challenge.adoc[challenge]
 ***** xref:api/ol-clave-acme-impl-commands.adoc[commands]
 ***** xref:api/ol-clave-acme-impl-directory-cache.adoc[directory-cache]
-***** http
-****** xref:api/ol-clave-acme-impl-http-interceptors.adoc[interceptors]
 ***** xref:api/ol-clave-acme-impl-order.adoc[order]
 ***** xref:api/ol-clave-acme-impl-revocation.adoc[revocation]
 ***** xref:api/ol-clave-acme-impl-tos.adoc[tos]

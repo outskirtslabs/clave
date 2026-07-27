@@ -941,12 +941,6 @@
     "org/apache/maven/wagon/wagon/3.5.3/wagon-3.5.3.pom": {
       "sha256": "7c10b8bac59268fe7957f2ab2b50965d90069ebf850c756bb55ea807ce440f0b"
     },
-    "org/babashka/http-client/0.4.23/http-client-0.4.23.jar": {
-      "sha256": "471872b2989b74e38088dad080f6e68e94e4eb9ce42ebeb3da01e95c7f9ec95f"
-    },
-    "org/babashka/http-client/0.4.23/http-client-0.4.23.pom": {
-      "sha256": "a241189d1b740644a3244438b7c687e7e4107ad5a0dcc2cd00fd8cd1027487b1"
-    },
     "org/babashka/json/0.1.6/json-0.1.6.jar": {
       "sha256": "b782c5c6c8c04aadfbc9dcebb033ef5f60c7e090eeed64c3b25873b279eebe21"
     },

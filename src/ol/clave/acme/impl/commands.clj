@@ -33,7 +33,7 @@
   [directory-url {:keys [http-client account-key account-kid]}]
   (let [base {::acme/directory-url directory-url
               ::acme/nonces http/empty-nonces
-              ::acme/http (http/http-client http-client)
+              ::acme/http http-client
               ::acme/directory nil
               ::acme/poll-interval default-poll-interval-ms
               ::acme/poll-timeout default-poll-timeout-ms}

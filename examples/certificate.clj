@@ -10,7 +10,10 @@
 
   Then run:
 
-    clj -A:dev -M -m certificate"
+    clj -J-Djavax.net.ssl.trustStore=test/fixtures/pebble-truststore.p12 \\
+        -J-Djavax.net.ssl.trustStorePassword=changeit \\
+        -J-Djavax.net.ssl.trustStoreType=PKCS12 \\
+        -A:dev -M -m certificate"
   (:require
    [ol.clave.acme.account :as account]
    [ol.clave.acme.commands :as commands]
@@ -39,15 +42,11 @@
         ;; different from any key used for certificates! BE SURE TO SAVE THE
         ;; PRIVATE KEY SO YOU CAN REUSE THE ACCOUNT.
         account-key (account/generate-keypair)
-        ;; Create session and fetch directory
-        ;; For this demo we use pebble which has a self signed cert, so we have to pass :http-client
-        ;; If you were doing this against a "real" ACME server you probably wouldn't need to
+        ;; The JVM trust-store flags above configure Pebble's self-signed CA.
         [session _] (commands/create-session
                      the-lease
                      "https://127.0.0.1:14000/dir"
-                     {:account-key account-key
-                      :http-client {:ssl-context {:trust-store-pass "changeit"
-                                                  :trust-store "test/fixtures/pebble-truststore.p12"}}})
+                     {:account-key account-key})
         ;; If the account is new, we need to create it; only do this once!
         ;; Then be sure to securely store the account key and metadata so
         ;; you can reuse it later!

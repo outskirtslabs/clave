@@ -107,7 +107,7 @@
 (s/def ::nonces
   (s/and list?
          (s/coll-of string? :kind list?)))
-(s/def ::http map?)
+(s/def ::http (s/nilable #(instance? java.net.http.HttpClient %)))
 
 (s/def ::poll-interval int?)
 (s/def ::poll-timeout int?)

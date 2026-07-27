@@ -58,11 +58,14 @@ Parameters:
 [options="header"]
 |===
 | Key | Type | Description
-| `:http-client` | map | Passed to `ol.clave.impl.http/http-client` to build the transport layer.
+| `:http-client` | `java.net.http.HttpClient` | Uses the supplied client directly; omit or use `nil` for the shared default.
 | `:account-key` | `java.security.KeyPair` | Injects an existing key pair into the session.
 | `:account-kid` | string | Stores a known account URL for authenticated calls.
 | `:scope` | scope token | Overrides the default cancellation/timeout scope.
 |===
+
+A supplied client owns redirect, proxy, executor, connection-timeout, and SSL
+policy.
 
 Returns `[session nil]`, where `session` is a qualified map of
 `::ol.clave.specs/*` keys suitable for subsequent commands.
@@ -70,14 +73,18 @@ Returns `[session nil]`, where `session` is a qualified map of
 Example:
 [source,clojure]
 ----
-(require '[ol.clave.commands :as commands])
+(require '[ol.clave.acme.commands :as commands])
 
-(let [[session _] (commands/new-session "https://acme.example/dir" {:http-client {}})]
+(let [client (-> (java.net.http.HttpClient/newBuilder)
+                 (.followRedirects java.net.http.HttpClient$Redirect/NORMAL)
+                 (.build))
+      [session _] (commands/new-session "https://acme.example/dir"
+                                        {:http-client client})]
   (::ol.clave.specs/directory-url session))
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L39-L67[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L39-L74[source,window=_blank]
 
 '''
 
@@ -122,16 +129,16 @@ the first JWS operation will fetch one via HEAD to newNonce.
 Example:
 [source,clojure]
 ----
-(require '[ol.clave.commands :as commands]
+(require '[ol.clave.acme.commands :as commands]
          '[ol.clave.lease :as lease])
 
 (let [bg (lease/background)
-      [session _] (commands/new-session "https://acme.example/dir" {:http-client {}})]
+      [session _] (commands/new-session "https://acme.example/dir")]
   (commands/load-directory bg session))
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L69-L106[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L76-L113[source,window=_blank]
 
 '''
 
@@ -171,7 +178,7 @@ Example:
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L108-L130[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L115-L137[source,window=_blank]
 
 '''
 
@@ -201,14 +208,14 @@ into `session`.
 Example:
 [source,clojure]
 ----
-(require '[ol.clave.commands :as commands]
+(require '[ol.clave.acme.commands :as commands]
          '[ol.clave.lease :as lease])
 
-(commands/create-session (lease/background) "https://acme.example/dir" {:http-client {}})
+(commands/create-session (lease/background) "https://acme.example/dir")
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L132-L154[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L139-L161[source,window=_blank]
 
 '''
 
@@ -245,7 +252,7 @@ Example:
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L156-L177[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L163-L184[source,window=_blank]
 
 '''
 
@@ -290,7 +297,7 @@ Example:
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L179-L207[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L186-L214[source,window=_blank]
 
 '''
 
@@ -323,7 +330,7 @@ Throws `::ol.clave.errors/account-not-found` if no account exists for the key.
 Throws `::ol.clave.errors/invalid-account-key` if session has no account key.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L209-L228[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L216-L235[source,window=_blank]
 
 '''
 
@@ -360,7 +367,7 @@ Example:
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L230-L252[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L237-L259[source,window=_blank]
 
 '''
 
@@ -396,7 +403,7 @@ Example:
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L254-L275[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L261-L282[source,window=_blank]
 
 '''
 
@@ -431,7 +438,7 @@ Example:
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L277-L297[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L284-L304[source,window=_blank]
 
 '''
 
@@ -470,7 +477,7 @@ Example:
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L299-L323[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L306-L330[source,window=_blank]
 
 '''
 
@@ -507,7 +514,7 @@ Returns `[updated-session order]` where `order` is the normalized order map
 including `::ol.clave.specs/order-location`.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L325-L346[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L332-L353[source,window=_blank]
 
 '''
 
@@ -535,7 +542,7 @@ Parameters:
 Returns `[updated-session order]` with the latest order data.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L348-L362[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L355-L369[source,window=_blank]
 
 '''
 
@@ -563,7 +570,7 @@ Parameters:
 Returns `[updated-session order]` on success or throws on invalid/timeout.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L364-L377[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L371-L384[source,window=_blank]
 
 '''
 
@@ -592,7 +599,7 @@ Parameters:
 Returns `[updated-session order]` with the updated order state.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L379-L394[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L386-L401[source,window=_blank]
 
 '''
 
@@ -620,7 +627,7 @@ Returns `[updated-session result]` where `result` includes `:chains` and
 `:preferred` entries with parsed PEM data.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L396-L410[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L403-L417[source,window=_blank]
 
 '''
 
@@ -648,7 +655,7 @@ Parameters:
 Returns `[updated-session authorization]`.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L412-L426[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L419-L433[source,window=_blank]
 
 '''
 
@@ -677,7 +684,7 @@ Returns `[updated-session authorization]` on success or throws when invalid,
 unusable, or timed out.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L428-L442[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L435-L449[source,window=_blank]
 
 '''
 
@@ -704,7 +711,7 @@ Parameters:
 Returns `[updated-session authorization]`.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L444-L457[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L451-L464[source,window=_blank]
 
 '''
 
@@ -746,7 +753,7 @@ Throws:
 - `::ol.clave.errors/pre-authorization-failed` if server rejects the request.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L459-L487[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L466-L494[source,window=_blank]
 
 '''
 
@@ -781,7 +788,7 @@ Options:
 Returns `[updated-session challenge]`.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L489-L508[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L496-L515[source,window=_blank]
 
 '''
 
@@ -827,7 +834,7 @@ Example:
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L510-L539[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L517-L546[source,window=_blank]
 
 '''
 
@@ -859,7 +866,7 @@ Returns `[updated-session renewal-info]` where `renewal-info` contains
 `:retry-after-ms`, and optional `:explanation-url`.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L541-L559[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L548-L566[source,window=_blank]
 
 '''
 
@@ -891,4 +898,4 @@ Returns `[updated-session tos-change]` where `tos-change` contains:
 - `:current` - current termsOfService URL or nil
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L561-L579[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/acme/commands.clj#L568-L586[source,window=_blank]

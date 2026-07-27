@@ -12,19 +12,6 @@
 (defn- body->nonce [req]
   (String. ^bytes (:body req) StandardCharsets/UTF_8))
 
-(deftest header-normalization-case-insensitive
-  (testing "normalize-headers lowercases keys"
-    (let [normalized (@#'ol.clave.acme.impl.http/normalize-headers {"Replay-Nonce" "abc"})]
-      (is (= {"replay-nonce" "abc"} normalized)))))
-
-(deftest header-normalization-seq-input
-  (testing "normalize-headers handles sequence of pairs"
-    (let [normalized (@#'ol.clave.acme.impl.http/normalize-headers [["Replay-Nonce" "abc"]
-                                                                    [:cache-control "no-store"]])]
-      (is (= {"replay-nonce" "abc"
-              "cache-control" "no-store"}
-             normalized)))))
-
 (deftest get-header-case-insensitive
   (testing "get-header works regardless of header case"
     (let [resp {:headers {"replay-nonce" "abc"}}]

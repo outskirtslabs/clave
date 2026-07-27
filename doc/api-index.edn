@@ -124,23 +124,6 @@
     "cache-get" "cache-get",
     "cache-put" "cache-put",
     "default-ttl-ms" "default-ttl-ms"}},
-  "ol.clave.acme.impl.http.interceptors"
-  {:page "api/ol-clave-acme-impl-http-interceptors.adoc",
-   :vars
-   {"->uri" "--GT-uri",
-    "accept-header" "accept-header",
-    "construct-uri" "construct-uri",
-    "decode-body" "decode-body",
-    "decompress-body" "decompress-body",
-    "default-interceptors" "default-interceptors",
-    "form-params" "form-params",
-    "parse-json-body" "parse-json-body",
-    "query-params" "query-params",
-    "request-method" "request-method",
-    "throw-on-exceptional-status-code"
-    "throw-on-exceptional-status-code",
-    "unexceptional-statuses" "unexceptional-statuses",
-    "uri-with-query" "uri-with-query"}},
   "ol.clave.acme.impl.order"
   {:page "api/ol-clave-acme-impl-order.adoc",
    :vars

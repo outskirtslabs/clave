@@ -19,7 +19,10 @@
 
   Run this example in another terminal:
 
-    clj -A:dev -M -m ring-jetty
+    clj -J-Djavax.net.ssl.trustStore=test/fixtures/pebble-truststore.p12 \\
+        -J-Djavax.net.ssl.trustStorePassword=changeit \\
+        -J-Djavax.net.ssl.trustStoreType=PKCS12 \\
+        -A:dev -M -m ring-jetty
 
   Test the servers:
 
@@ -53,13 +56,12 @@
              {;; Ports match Pebble's validation ports (tlsPort/httpPort)
               :port                5002
               :ssl-port            5001
-              ::clave-jetty/config {:domains     ["localhost"]
-                                    ;; in prod the remaining config keys are not necessary, they are only for this demo environment
-                                    :storage     (file-storage/file-storage {:root "/tmp/clave-ring-jetty-example"})
-                                    :issuers     [{:directory-url "https://localhost:14000/dir"
-                                                   :email         "admin@example.com"}]
-                                    :http-client {:ssl-context {:trust-store-pass "changeit"
-                                                                :trust-store      "test/fixtures/pebble-truststore.p12"}}}})]
+              ::clave-jetty/config {:domains ["localhost"]
+                                    ;; The remaining keys are only for the local demo.
+                                    :storage (file-storage/file-storage
+                                              {:root "/tmp/clave-ring-jetty-example"})
+                                    :issuers [{:directory-url "https://localhost:14000/dir"
+                                               :email         "admin@example.com"}]}})]
 
     (println)
     (println "Servers running:")

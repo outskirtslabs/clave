@@ -51,7 +51,7 @@
   | `:ocsp`             | OCSP config with `:enabled`, `:must-staple`                                  |
   | `:cache-capacity`   | Max certificates in cache (nil = unlimited)                                  |
   | `:config-fn`        | Function: domain -> config overrides                                         |
-  | `:http-client`      | HTTP client options for ACME requests                                        |"
+  | `:http-client`      | Optional [[java.net.http.HttpClient]] for ACME and OCSP requests             |"
   (:require
    [ol.clave.automation.impl.system :as system]))
 

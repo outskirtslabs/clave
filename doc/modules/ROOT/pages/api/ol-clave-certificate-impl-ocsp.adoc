@@ -91,18 +91,18 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/i
 
 [source,clojure]
 ----
-(fetch-ocsp-response cert issuer responder-url http-opts)
+(fetch-ocsp-response cert issuer responder-url http-client)
 ----
 
-Fetch OCSP response for a certificate from the specified responder.
+Fetches an OCSP response for a certificate from the specified responder.
 
 [options="header"]
 |===
 | key | description
-| `cert` | The X509Certificate to check
-| `issuer` | The issuer certificate
-| `responder-url` | URL of the OCSP responder
-| `http-opts` | HTTP client options map
+| `cert` | The `java.security.cert.X509Certificate` to check.
+| `issuer` | The issuer certificate.
+| `responder-url` | URL of the OCSP responder.
+| `http-client` | Optional `java.net.http.HttpClient`.
 |===
 
 Returns a result map:
@@ -110,7 +110,7 @@ Returns a result map:
 - On failure: `{:status :error :message "..."}`
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/ocsp.clj#L391-L428[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/ocsp.clj#L391-L426[source,window=_blank]
 
 '''
 
@@ -122,10 +122,10 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/i
 
 [source,clojure]
 ----
-(fetch-ocsp-for-bundle bundle http-opts responder-overrides)
+(fetch-ocsp-for-bundle bundle http-client responder-overrides)
 ----
 
-Fetch OCSP response for a certificate bundle.
+Fetches an OCSP response for a certificate bundle.
 
 Extracts the OCSP URL from the leaf certificate and fetches the response.
 Supports responder URL overrides for testing.
@@ -133,9 +133,9 @@ Supports responder URL overrides for testing.
 [options="header"]
 |===
 | key | description
-| `bundle` | Certificate bundle with `:certificate` chain
-| `http-opts` | HTTP client options
-| `responder-overrides` | Optional map of original-url -> override-url
+| `bundle` | Certificate bundle with a `:certificate` chain.
+| `http-client` | Optional `java.net.http.HttpClient`.
+| `responder-overrides` | Optional map of original URL to override URL.
 |===
 
 Returns a result map:
@@ -143,4 +143,4 @@ Returns a result map:
 - On failure: `{:status :error :message "..."}`
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/ocsp.clj#L430-L468[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate/impl/ocsp.clj#L428-L466[source,window=_blank]

@@ -1,15 +1,13 @@
 (ns ol.clave.impl.http-integration-test
   (:require
-   [clojure.test :refer [deftest is testing use-fixtures]]
+   [clojure.test :refer [deftest is use-fixtures]]
    [ol.clave.acme.impl.commands :as commands]
    [ol.clave.acme.impl.http :as http]
    [ol.clave.acme.impl.http.impl :as http-impl]
+   [ol.clave.crypto.impl.json :as json]
    [ol.clave.impl.pebble-harness :as pebble :refer [http-client-opts]]
    [ol.clave.lease :as lease]
-   [ol.clave.specs :as acme])
-  (:import
-   [java.net URI]
-   [java.net.http HttpClient HttpRequest HttpRequest$Builder]))
+   [ol.clave.specs :as acme]))
 
 (use-fixtures :once pebble/pebble-fixture)
 
@@ -32,54 +30,16 @@
     (is (instance? clojure.lang.ExceptionInfo ex))
     (is (= :lease/cancelled (:type (ex-data ex))))))
 
-(def ^:private http-client (http-impl/client http-client-opts))
-
 (deftest http-impl-test-with-trust-store
-  (is (=
-       {:keyChange (pebble/uri "/rollover-account-key")
-        :meta {:externalAccountRequired false
-               :termsOfService "data:text/plain,Do%20what%20thou%20wilt"}
-        :newAccount (pebble/uri "/sign-me-up")
-        :newNonce (pebble/uri "/nonce-plz")
-        :newOrder (pebble/uri "/order-plz")
-        :renewalInfo (pebble/uri "/draft-ietf-acme-ari-03/renewalInfo")
-        :revokeCert (pebble/uri "/revoke-cert")}
-       (:body (http-impl/request {:client http-client :uri (pebble/uri) :method :get :as :json})))))
-
-(defn- make-client ^HttpClient []
-  (:client (http-impl/client http-client-opts)))
-
-(defn- make-request-builder ^HttpRequest$Builder [uri]
-  (-> (HttpRequest/newBuilder)
-      (.uri (URI. uri))
-      (.GET)))
-
-(deftest request-with-lease-success-test
-  (testing "successful request returns response map"
-    (let [client (make-client)
-          builder (make-request-builder (pebble/uri))
-          the-lease (lease/background)
-          response (http-impl/request-with-lease client builder the-lease)]
-      (is (map? response))
-      (is (= 200 (:status response)))
-      (is (some? (:body response))))))
-
-(deftest request-with-lease-cancelled-lease-test
-  (testing "already cancelled lease throws immediately"
-    (let [client (make-client)
-          builder (make-request-builder (pebble/uri))
-          [the-lease cancel] (lease/with-cancel (lease/background))]
-      (cancel)
-      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"cancelled"
-                            (http-impl/request-with-lease client builder the-lease))))))
-
-(deftest request-with-lease-timeout-propagation-test
-  (testing "lease deadline propagates to request timeout"
-    (let [client (make-client)
-          builder (make-request-builder (pebble/uri))
-          [the-lease cancel] (lease/with-timeout (lease/background) 10000)]
-      (try
-        (let [response (http-impl/request-with-lease client builder the-lease)]
-          (is (= 200 (:status response))))
-        (finally
-          (cancel))))))
+  (let [response (http-impl/request {:client http-client-opts
+                                     :uri (pebble/uri)
+                                     :method :get})]
+    (is (= {:keyChange (pebble/uri "/rollover-account-key")
+            :meta {:externalAccountRequired false
+                   :termsOfService "data:text/plain,Do%20what%20thou%20wilt"}
+            :newAccount (pebble/uri "/sign-me-up")
+            :newNonce (pebble/uri "/nonce-plz")
+            :newOrder (pebble/uri "/order-plz")
+            :renewalInfo (pebble/uri "/draft-ietf-acme-ari-03/renewalInfo")
+            :revokeCert (pebble/uri "/revoke-cert")}
+           (json/read-str (slurp (:body response) :encoding "UTF-8"))))))

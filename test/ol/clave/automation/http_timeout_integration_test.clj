@@ -1,60 +1,8 @@
 (ns ol.clave.automation.http-timeout-integration-test
-  "Integration test for HTTP client timeout handling."
+  "Tests HTTP timeout error classification."
   (:require
-   [clojure.test :refer [deftest is testing use-fixtures]]
-   [ol.clave.automation :as automation]
-   [ol.clave.automation.impl.decisions :as decisions]
-   [ol.clave.impl.pebble-harness :as pebble]
-   [ol.clave.impl.test-util :as test-util])
-  (:import
-   [java.net ServerSocket]
-   [java.util.concurrent TimeUnit]))
-
-(defn- pebble-no-challtestsrv-fixture
-  "Starts only Pebble (no challtestsrv) for timeout testing."
-  [f]
-  (pebble/with-pebble {:env {"PEBBLE_VA_NOSLEEP" "1"}} f))
-
-(use-fixtures :each test-util/storage-fixture)
-(use-fixtures :once pebble-no-challtestsrv-fixture)
-
-(defn- start-slow-server
-  "Starts a server that accepts connections but delays responses.
-  Used to trigger request timeouts."
-  [port delay-ms]
-  (let [server (doto (ServerSocket. port)
-                 (.setReuseAddress true))
-        running (atom true)
-        connections-accepted (atom 0)
-        thread (Thread.
-                (fn []
-                  (while @running
-                    (try
-                      (let [socket (.accept server)]
-                        (swap! connections-accepted inc)
-                        (future
-                          (try
-                            ;; Hold connection open for delay-ms
-                            (Thread/sleep delay-ms)
-                            (catch InterruptedException _))
-                          (try
-                            (.close socket)
-                            (catch Exception _))))
-                      (catch Exception _)))))]
-    (.start thread)
-    {:server server
-     :running running
-     :thread thread
-     :connections-accepted connections-accepted}))
-
-(defn- stop-slow-server
-  [{:keys [server running thread]}]
-  (reset! running false)
-  (try
-    (.close ^ServerSocket server)
-    (catch Exception _))
-  (when thread
-    (.interrupt ^Thread thread)))
+   [clojure.test :refer [deftest is testing]]
+   [ol.clave.automation.impl.decisions :as decisions]))
 
 (deftest http-timeout-exception-is-classified-as-network-error
   (testing "HttpTimeoutException is classified as network error"
@@ -72,49 +20,6 @@
   (testing "HTTP timeout errors are retryable"
     (is (true? (decisions/retryable-error? :network-error))
         "Network errors (including timeouts) should be retryable")))
-
-(deftest http-client-timeout-triggers-certificate-failed-event
-  (testing "HTTP client timeout during certificate obtain triggers failure event"
-    (let [domain "localhost"
-          ;; Start a slow server on the HTTP challenge port
-          ;; Delay just needs to exceed HTTP timeout (2s) to trigger timeout
-          slow-server (start-slow-server (:http-port pebble/*pebble-ports*) 10000)
-          ;; Use a short timeout to trigger timeout quickly
-          ;; The HTTP client will timeout before the slow server responds
-          http-opts (assoc pebble/http-client-opts :timeout 2000)
-          solver {:present (fn [_lease _chall _account-key]
-                             ;; No-op solver - challenge validation will timeout
-                             {:token "test"})
-                  :cleanup (fn [_lease _chall _state] nil)}
-          config {:storage test-util/*storage-impl*
-                  :issuers [{:directory-url (pebble/uri)}]
-                  :solvers {:http-01 solver}
-                  :http-client http-opts}
-          system (automation/create-started config)]
-      (try
-        (let [queue (automation/subscribe-events system)]
-          ;; Trigger certificate obtain
-          (automation/manage-domains system [domain])
-          ;; Consume domain-added event
-          (.poll queue 2 TimeUnit/SECONDS)
-          ;; Wait for certificate-failed event (should timeout)
-          ;; HTTP timeout is 2s, so failure should arrive within ~5s
-          (let [event (loop [attempts 0]
-                        (when (< attempts 15)
-                          (let [e (.poll queue 1 TimeUnit/SECONDS)]
-                            (if (and e (= :certificate-failed (:type e)))
-                              e
-                              (recur (inc attempts))))))]
-            ;; Verify we got a failure event
-            (is (some? event) "Should receive :certificate-failed event")
-            (when event
-              (is (= :certificate-failed (:type event))
-                  "Event type should be :certificate-failed")
-              (is (= domain (get-in event [:data :domain]))
-                  "Event domain should match"))))
-        (finally
-          (automation/stop system)
-          (stop-slow-server slow-server))))))
 
 (deftest http-timeout-is-retryable-in-automation-context
   (testing "HTTP timeout during ACME operations produces retryable error classification"

@@ -1,6 +1,6 @@
 = API Reference
 
-This release publishes 46 namespaces.
+This release publishes 45 namespaces.
 
 [cols="1,3",options="header",stripes=hover]
 |===
@@ -32,9 +32,6 @@ This release publishes 46 namespaces.
 
 | xref:api/ol-clave-acme-impl-directory-cache.adoc[`ol.clave.acme.impl.directory-cache`]
 | Global directory cache with TTL for ACME directory responses.
-
-| xref:api/ol-clave-acme-impl-http-interceptors.adoc[`ol.clave.acme.impl.http.interceptors`]
-| -
 
 | xref:api/ol-clave-acme-impl-order.adoc[`ol.clave.acme.impl.order`]
 | -

@@ -31,17 +31,6 @@
         :else (str k))
       (str/lower-case)))
 
-(defn- normalize-headers
-  "Coerce any header collection (map or seq of [k v]) into a map keyed by
-  lower-cased header names, preserving values; returns an empty map when input
-  is nil or unrecognised."
-  [headers]
-  (cond
-    (nil? headers) {}
-    (map? headers) (into {} (map (fn [[k v]] [(canonical-header-name k) v])) headers)
-    (sequential? headers) (into {} (map (fn [[k v]] [(canonical-header-name k) v])) headers)
-    :else {}))
-
 (defn get-header
   "Looks up a header in a Ring response (or request) case insensitively,
   returning the value of the header, or nil if not present."
@@ -222,18 +211,15 @@
   Returns `{:resp :headers :status :body-bytes :nonce :retry? :err}`."
   [lease session req]
   (let [req' (cond-> req
-               (not (get-in req [:headers :user-agent])) (update :headers assoc :user-agent default-user-agent))
+               (not (get-in req [:headers :user-agent]))
+               (update :headers assoc :user-agent default-user-agent))
         request (-> req'
                     (dissoc :as)
-                    (assoc :client (::acme/http session)
-                           :throw false
-                           :as :bytes))]
+                    (assoc :client (::acme/http session)))]
     (try
       (lease/ensure-active lease)
-      (let [raw-resp (http/request request)
-            headers (normalize-headers (:headers raw-resp))
-            resp (assoc raw-resp :headers headers)
-            {:keys [status body]} resp
+      (let [resp (http/request request)
+            {:keys [status headers body]} resp
             nonce (get-header resp replay-nonce-header)]
         {:resp resp
          :headers headers
@@ -424,6 +410,3 @@
 
         :else
         [session result]))))
-
-(defn http-client [opts]
-  (http/client (merge http/default-client-opts opts)))

@@ -814,9 +814,9 @@
   [system cmd]
   (let [bundle (:bundle cmd)
         config (:config system)
-        http-opts (:http-client config)
+        http-client (:http-client system)
         responder-overrides (get-in config [:ocsp :responder-overrides])]
-    (ocsp/fetch-ocsp-for-bundle bundle http-opts responder-overrides)))
+    (ocsp/fetch-ocsp-for-bundle bundle http-client responder-overrides)))
 
 (defn- store-ocsp-staple!
   "Store OCSP staple to persistent storage.

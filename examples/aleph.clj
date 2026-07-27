@@ -21,7 +21,10 @@
 
   ```bash
   # from clave project root
-  clj -A:dev -M -m aleph
+  clj -J-Djavax.net.ssl.trustStore=test/fixtures/pebble-truststore.p12 \\
+      -J-Djavax.net.ssl.trustStorePassword=changeit \\
+      -J-Djavax.net.ssl.trustStoreType=PKCS12 \\
+      -A:dev -M -m aleph
   ```
 
   Test both listeners:
@@ -31,9 +34,9 @@
   curl -vk https://localhost:5001
   ```
 
-  To run this against a real ACME server, replace the Pebble directory URL with
-  the CA's directory URL, remove the Pebble trust-store override, and use a
-  domain you control instead of `localhost`."
+  To run this against a real ACME server, replace the Pebble directory URL,
+  omit the Pebble JVM trust-store flags, and use a domain you control instead
+  of `localhost`."
   (:require
    [ol.clave.ext.aleph :as clave-aleph]
    [taoensso.trove :as trove]
@@ -55,12 +58,9 @@
           :http-versions             [:http2 :http1]
           ::clave-aleph/http-options {:port 5002}
           ::clave-aleph/config
-          {:domains     ["localhost"]
-           :issuers     [{:directory-url "https://localhost:14000/dir"
-                          :email         "admin@example.com"}]
-           :http-client {:ssl-context
-                         {:trust-store-pass "changeit"
-                          :trust-store      "test/fixtures/pebble-truststore.p12"}}}})]
+          {:domains ["localhost"]
+           :issuers [{:directory-url "https://localhost:14000/dir"
+                      :email         "admin@example.com"}]}})]
     (println)
     (println "Servers running:")
     (println "   HTTP: http://localhost:5002")

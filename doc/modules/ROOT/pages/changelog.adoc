@@ -16,6 +16,7 @@ This project uses https://www.taoensso.com/break-versioning[*Break Versioning*].
 * Disconnect only overflowing subscribers, and deliver event-shaped subscription, overflow, and system shutdown notifications.
 * Replace the two-argument polling-only `ol.clave.ext.common/wait-for-certificates` API with a five-argument event-aware waiter; callers must subscribe before `manage-domains` and unsubscribe in `finally`, and Aleph and Ring Jetty now report structured permanent initial failures immediately.
 * Make post-issuance ARI fetching automatic and remove the automation-layer `:ari` configuration option.
+* Replace the vendored Babashka HTTP client and interceptor chain with `java.net.http`; `:http-client` now accepts a `java.net.http.HttpClient` directly.
 
 == `v0.0.1` (2026-XX-XX)
 

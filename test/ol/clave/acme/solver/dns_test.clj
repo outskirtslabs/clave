@@ -1,5 +1,6 @@
 (ns ol.clave.acme.solver.dns-test
   (:require
+   [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
    [ol.clave.acme.account :as account]
    [ol.clave.acme.challenge :as challenge]
@@ -110,3 +111,194 @@
         (is (= {"example.test." []} @(:records provider))))
       (finally
         (dns-server/stop! server)))))
+
+(defn present-in-zone
+  [solver the-lease challenge-map account-key]
+  (with-redefs [impl/discover-zone (fn [_ _ _] "example.test.")]
+    ((:present solver) the-lease challenge-map account-key)))
+
+(defn provider-error
+  [operation zone-state]
+  {:ol.protocol53/error
+   {:type :provider-request
+    :message "provider failed"
+    :operation operation
+    :provider :test
+    :retryable? true
+    :zone "example.test."
+    :zone-state zone-state}})
+
+(deftest presentation-ownership-test
+  (let [challenge-map (dns-challenge "www.example.test")
+        account-key (account/generate-keypair)
+        digest (challenge/dns01-key-authorization challenge-map account-key)
+        sibling {:name "_acme-challenge.www" :type "TXT" :ttl 60 :data "sibling"}
+        existing {:name "_ACME-CHALLENGE.WWW" :type "txt" :ttl 900 :data digest}]
+    (testing "an existing logical Record remains unowned"
+      (let [initial [sibling existing]
+            provider (test-provider/provider {:records {"example.test." initial}})
+            solver (dns/solver provider {:propagation-checks? false
+                                         :propagation-delay-ms 20})
+            state (present-in-zone solver (lease/background) challenge-map account-key)
+            started (System/nanoTime)
+            wait-result ((:wait solver) (lease/background) challenge-map state)
+            elapsed-ms (/ (double (- (System/nanoTime) started)) 1000000.0)]
+        (is (= {:owned? false
+                :zone "example.test."
+                :owner "_acme-challenge.www.example.test."
+                :digest digest}
+               state))
+        (is (nil? wait-result))
+        (is (<= 15.0 elapsed-ms))
+        (is (nil? ((:cleanup solver) (lease/background) challenge-map state)))
+        (is (= {"example.test." initial} @(:records provider)))
+        (is (= [:get] (mapv first @(:operations provider))))))
+
+    (testing "owned cleanup uses the exact normalized Stored Record and preserves siblings"
+      (let [initial [sibling]
+            provider (test-provider/provider
+                      {:records {"example.test." initial}
+                       :normalize-record #(assoc % :name (str/upper-case (:name %)) :ttl 600)})
+            solver (dns/solver provider {:ttl 30 :propagation-checks? false})
+            state (present-in-zone solver (lease/background) challenge-map account-key)
+            stored {:name "_ACME-CHALLENGE.WWW" :type "TXT" :ttl 600 :data digest}]
+        (is (= {:owned? true
+                :zone "example.test."
+                :owner "_acme-challenge.www.example.test."
+                :digest digest
+                :record stored}
+               state))
+        (is (= {"example.test." [sibling stored]} @(:records provider)))
+        (is (nil? ((:cleanup solver) (lease/background) challenge-map state)))
+        (is (= {"example.test." initial} @(:records provider)))
+        (is (= [[:get "example.test." nil]
+                [:append "example.test." [{:name "_acme-challenge.www"
+                                           :type "TXT"
+                                           :ttl 30
+                                           :data digest}]]
+                [:delete "example.test." [stored]]]
+               (mapv (fn [[operation zone payload]]
+                       [operation zone (when (vector? payload) payload)])
+                     @(:operations provider))))))))
+
+(deftest ambiguous-append-is-terminal-test
+  (let [challenge-map (dns-challenge "www.example.test")
+        account-key (account/generate-keypair)
+        record {:name "returned" :type "TXT" :ttl 0 :data "value"}]
+    (doseq [records [[] [record record]]]
+      (let [provider (test-provider/provider
+                      {:append-outcome {:ol.protocol53/result {:records records}}})
+            solver (dns/solver provider {:propagation-checks? false})
+            error (try
+                    (present-in-zone solver (lease/background) challenge-map account-key)
+                    nil
+                    (catch clojure.lang.ExceptionInfo e
+                      e))]
+        (is (= {errors/challenge-fallback-safe? false
+                :type ::impl/ambiguous-append
+                :zone "example.test."
+                :outcome {:records records}}
+               (ex-data error)))
+        (is (= [:get :append] (mapv first @(:operations provider))))
+        (is (= {} @(:records provider)))))))
+
+(deftest provider-failure-classification-test
+  (let [challenge-map (dns-challenge "www.example.test")
+        account-key (account/generate-keypair)]
+    (doseq [[operation zone-state fallback-safe?]
+            [[:get-records :unchanged false]
+             [:append-records :unchanged true]
+             [:append-records :unknown false]]]
+      (let [outcome (provider-error operation zone-state)
+            provider (test-provider/provider
+                      (if (= :get-records operation)
+                        {:get-outcome outcome}
+                        {:append-outcome outcome}))
+            solver (dns/solver provider {:propagation-checks? false})
+            error (try
+                    (present-in-zone solver (lease/background) challenge-map account-key)
+                    nil
+                    (catch clojure.lang.ExceptionInfo e
+                      e))]
+        (is (= {:operation operation
+                :outcome outcome
+                :provider-error (:ol.protocol53/error outcome)
+                errors/challenge-fallback-safe? fallback-safe?
+                :type ::impl/protocol53-operation-failed}
+               (ex-data error)))
+        (is (= (if (= :get-records operation) [:get] [:get :append])
+               (mapv first @(:operations provider))))
+        (is (= {} @(:records provider)))))
+
+    (testing "a delete error retains its complete outcome without retry"
+      (let [outcome (provider-error :delete-records :unknown)
+            provider (test-provider/provider {:delete-outcome outcome})
+            solver (dns/solver provider {:propagation-checks? false})
+            state (present-in-zone solver (lease/background) challenge-map account-key)
+            error (try
+                    ((:cleanup solver) (lease/background) challenge-map state)
+                    nil
+                    (catch clojure.lang.ExceptionInfo e
+                      e))]
+        (is (= {:operation :delete-records
+                :outcome outcome
+                :provider-error (:ol.protocol53/error outcome)
+                errors/challenge-fallback-safe? false
+                :type ::impl/protocol53-operation-failed}
+               (ex-data error)))
+        (is (= [:get :append :delete] (mapv first @(:operations provider))))
+        (is (= 1 (count (get @(:records provider) "example.test."))))))
+    (testing "an unexpected Provider exception remains a terminal cause"
+      (let [failure (ex-info "unexpected" {:provider :bug})
+            provider (test-provider/provider {:on-append (fn [_ _] (throw failure))})
+            solver (dns/solver provider {:propagation-checks? false})
+            error (try
+                    (present-in-zone solver (lease/background) challenge-map account-key)
+                    nil
+                    (catch Exception e
+                      e))]
+        (is (= {:operation :append-records
+                errors/challenge-fallback-safe? false
+                :type ::impl/protocol53-provider-exception}
+               (ex-data error)))
+        (is (identical? failure (ex-cause error)))
+        (is (= [:get :append] (mapv first @(:operations provider))))
+        (is (= 1 (count (get @(:records provider) "example.test."))))))
+
+    (testing "a malformed Provider outcome is terminal"
+      (let [provider (test-provider/provider
+                      {:append-outcome {:ol.protocol53/result {:records :invalid}}})
+            solver (dns/solver provider {:propagation-checks? false})
+            error (try
+                    (present-in-zone solver (lease/background) challenge-map account-key)
+                    nil
+                    (catch Exception e
+                      e))]
+        (is (= {:operation :append-records
+                errors/challenge-fallback-safe? false
+                :type ::impl/protocol53-provider-exception}
+               (ex-data error)))
+        (is (re-find #"invalid append-records outcome" (ex-message (ex-cause error))))
+        (is (= [:get :append] (mapv first @(:operations provider))))
+        (is (= {} @(:records provider))))))
+
+  (testing "an unchanged append error becomes terminal after in-flight Lease cancellation"
+    (let [[the-lease cancel] (lease/with-cancel (lease/background))
+          outcome (provider-error :append-records :unchanged)
+          provider (test-provider/provider
+                    {:append-outcome outcome
+                     :on-append (fn [_ _] (cancel))})
+          solver (dns/solver provider {:propagation-checks? false})
+          error (try
+                  (present-in-zone solver the-lease (dns-challenge "www.example.test")
+                                   (account/generate-keypair))
+                  nil
+                  (catch Exception e
+                    e))]
+      (is (= {:operation :append-records
+              :outcome outcome
+              :provider-error (:ol.protocol53/error outcome)
+              errors/challenge-fallback-safe? false
+              :type ::impl/protocol53-operation-failed}
+             (ex-data error)))
+      (is (= [:get :append] (mapv first @(:operations provider)))))))

@@ -231,8 +231,10 @@
   (testing "obtain completes DNS-01 presentation and cleanup through Protocol53"
     (let [owner (fn [zone [{:keys [name]}]]
                   (if (= name "@") zone (str name "." zone)))
+          sibling {:name "_acme-challenge" :type "TXT" :ttl 60 :data "sibling"}
           provider (test-provider/provider
-                    {:on-append (fn [zone records]
+                    {:records {"localhost." [sibling]}
+                     :on-append (fn [zone records]
                                   (pebble/challtestsrv-set-txt
                                    (owner zone records)
                                    (:data (first records))))
@@ -254,4 +256,4 @@
           (is (= "valid" (::specs/status (:order result))))
           (is (str/includes? (-> result :certificates first :chain-pem)
                              "BEGIN CERTIFICATE"))
-          (is (= {"localhost." []} @(:records provider))))))))
+          (is (= {"localhost." [sibling]} @(:records provider))))))))

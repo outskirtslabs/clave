@@ -5,11 +5,14 @@
    [ol.clave.acme.account :as account]
    [ol.clave.acme.commands :as cmd]
    [ol.clave.acme.impl.stats :as stats]
+   [ol.clave.acme.solver.dns :as dns-solver]
+   [ol.clave.acme.solver.dns.impl :as dns-impl]
    [ol.clave.acme.solver.http :as http-solver]
    [ol.clave.automation.impl.config :as config]
    [ol.clave.certificate :as certificate]
    [ol.clave.certificate.impl.keygen :as keygen]
    [ol.clave.errors :as errors]
+   [ol.clave.impl.protocol53-provider :as test-provider]
    [ol.clave.impl.test-util :as test-util]
    [ol.clave.lease :as lease]
    [ol.clave.specs :as specs]
@@ -206,44 +209,47 @@
                             challenge-types)})
 
 (defn run-obtain
-  [the-lease authzs solvers events poll-authorization]
-  (let [authzs-by-url (into {} (map (juxt ::specs/authorization-location identity)) authzs)
-        initial-order {::specs/authorizations (mapv ::specs/authorization-location authzs)
-                       ::specs/order-location "order-1"}
-        ready-order {::specs/status "ready"
-                     ::specs/order-location "order-1"}
-        final-order {::specs/status "valid"
-                     ::specs/order-location "order-1"
-                     ::specs/certificate "certificate-1"}
-        session {::specs/account-key (account/generate-keypair)
-                 ::specs/directory-url "directory"
-                 ::specs/account-kid "account"}]
-    (with-redefs [cmd/new-order (fn [_ s _] [s initial-order])
-                  cmd/get-authorization (fn [_ s url] [s (get authzs-by-url url)])
-                  cmd/respond-challenge (fn [_ s challenge _]
-                                          (swap! events conj [:respond (::specs/token challenge)])
-                                          [s nil])
-                  cmd/poll-authorization poll-authorization
-                  cmd/get-order (fn [_ s _]
-                                  (swap! events conj :order-ready)
-                                  [s ready-order])
-                  cmd/finalize-order (fn [_ s _ _]
-                                       (swap! events conj :finalize)
-                                       [s final-order])
-                  cmd/poll-order (fn [_ s _]
-                                   (swap! events conj :poll-order)
-                                   [s final-order])
-                  cmd/get-certificate (fn [_ s _]
-                                        (swap! events conj :download)
-                                        [s {:preferred {::specs/pem "certificate"}}])]
-      (try
-        {:value (certificate/obtain the-lease session
-                                    (mapv ::specs/identifier authzs)
-                                    (keygen/generate :p256)
-                                    solvers
-                                    {:preferred-challenges [:http-01 :dns-01]})}
-        (catch Exception e
-          {:error e})))))
+  ([the-lease authzs solvers events poll-authorization]
+   (run-obtain the-lease authzs solvers events poll-authorization
+               [:http-01 :dns-01]))
+  ([the-lease authzs solvers events poll-authorization preferred-challenges]
+   (let [authzs-by-url (into {} (map (juxt ::specs/authorization-location identity)) authzs)
+         initial-order {::specs/authorizations (mapv ::specs/authorization-location authzs)
+                        ::specs/order-location "order-1"}
+         ready-order {::specs/status "ready"
+                      ::specs/order-location "order-1"}
+         final-order {::specs/status "valid"
+                      ::specs/order-location "order-1"
+                      ::specs/certificate "certificate-1"}
+         session {::specs/account-key (account/generate-keypair)
+                  ::specs/directory-url "directory"
+                  ::specs/account-kid "account"}]
+     (with-redefs [cmd/new-order (fn [_ s _] [s initial-order])
+                   cmd/get-authorization (fn [_ s url] [s (get authzs-by-url url)])
+                   cmd/respond-challenge (fn [_ s challenge _]
+                                           (swap! events conj [:respond (::specs/token challenge)])
+                                           [s nil])
+                   cmd/poll-authorization poll-authorization
+                   cmd/get-order (fn [_ s _]
+                                   (swap! events conj :order-ready)
+                                   [s ready-order])
+                   cmd/finalize-order (fn [_ s _ _]
+                                        (swap! events conj :finalize)
+                                        [s final-order])
+                   cmd/poll-order (fn [_ s _]
+                                    (swap! events conj :poll-order)
+                                    [s final-order])
+                   cmd/get-certificate (fn [_ s _]
+                                         (swap! events conj :download)
+                                         [s {:preferred {::specs/pem "certificate"}}])]
+       (try
+         {:value (certificate/obtain the-lease session
+                                     (mapv ::specs/identifier authzs)
+                                     (keygen/generate :p256)
+                                     solvers
+                                     {:preferred-challenges preferred-challenges})}
+         (catch Exception e
+           {:error e}))))))
 
 (deftest presentation-failure-classification-test
   (doseq [[classification failure-data]
@@ -267,6 +273,84 @@
         (is (nil? (:error result)))
         (is (= [[:present :http] [:present :dns]]
                (take 2 @events)))))))
+
+(deftest dns-provider-failure-controls-certificate-fallback-test
+  (let [authz (authorization "example.com" [:dns-01 :http-01])
+        outcome (fn [zone-state]
+                  {:ol.protocol53/error
+                   {:type :provider-request
+                    :message "append failed"
+                    :operation :append-records
+                    :provider :test
+                    :retryable? true
+                    :zone "example.test."
+                    :zone-state zone-state}})
+        fallback-solver (fn [events]
+                          {:present (fn [_ _ _]
+                                      (swap! events conj :http-presented)
+                                      :http-state)
+                           :cleanup (fn [_ _ _]
+                                      (swap! events conj :http-cleaned))})]
+    (testing "an unchanged append failure selects the alternate Challenge"
+      (let [events (atom [])
+            append-outcome (outcome :unchanged)
+            provider (test-provider/provider {:append-outcome append-outcome})
+            solvers {:dns-01 (dns-solver/solver provider {:propagation-checks? false})
+                     :http-01 (fallback-solver events)}
+            result (with-redefs [dns-impl/discover-zone (fn [_ _ _] "example.test.")]
+                     (run-obtain (lease/background) [authz] solvers events
+                                 (fn [_ s _] [s authz])
+                                 [:dns-01 :http-01]))]
+        (is (nil? (:error result)))
+        (is (= [:get :append] (mapv first @(:operations provider))))
+        (is (= {} @(:records provider)))
+        (is (= 1 (count (filter #{:http-presented} @events))))))
+
+    (testing "an unknown append state terminates without fallback or another Mutation"
+      (let [events (atom [])
+            append-outcome (outcome :unknown)
+            provider (test-provider/provider {:append-outcome append-outcome})
+            solvers {:dns-01 (dns-solver/solver provider {:propagation-checks? false})
+                     :http-01 (fallback-solver events)}
+            result (with-redefs [dns-impl/discover-zone (fn [_ _ _] "example.test.")]
+                     (run-obtain (lease/background) [authz] solvers events
+                                 (fn [_ s _] [s authz])
+                                 [:dns-01 :http-01]))]
+        (is (= {:operation :append-records
+                :outcome append-outcome
+                :provider-error (:ol.protocol53/error append-outcome)
+                errors/challenge-fallback-safe? false
+                :type ::dns-impl/protocol53-operation-failed}
+               (ex-data (:error result))))
+        (is (= [:get :append] (mapv first @(:operations provider))))
+        (is (= {} @(:records provider)))
+        (is (not-any? #{:http-presented} @events))))
+
+    (testing "Provider exceptions and malformed outcomes terminate without fallback"
+      (let [failure (ex-info "provider bug" {:provider :bug})]
+        (doseq [[case-name provider-config expected-record-count]
+                [["exception" {:on-append (fn [_ _] (throw failure))} 1]
+                 ["malformed outcome"
+                  {:append-outcome {:ol.protocol53/result {:records :invalid}}}
+                  0]]]
+          (let [events (atom [])
+                provider (test-provider/provider provider-config)
+                solvers {:dns-01 (dns-solver/solver provider {:propagation-checks? false})
+                         :http-01 (fallback-solver events)}
+                result (with-redefs [dns-impl/discover-zone (fn [_ _ _] "example.test.")]
+                         (run-obtain (lease/background) [authz] solvers events
+                                     (fn [_ s _] [s authz])
+                                     [:dns-01 :http-01]))]
+            (is (= {:operation :append-records
+                    errors/challenge-fallback-safe? false
+                    :type ::dns-impl/protocol53-provider-exception}
+                   (ex-data (:error result)))
+                case-name)
+            (is (= [:get :append] (mapv first @(:operations provider))) case-name)
+            (is (= expected-record-count
+                   (count (get @(:records provider) "example.test.")))
+                case-name)
+            (is (not-any? #{:http-presented} @events) case-name)))))))
 
 (deftest unsafe-presentation-failure-is-terminal-test
   (let [events (atom [])

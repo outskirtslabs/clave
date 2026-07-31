@@ -242,12 +242,38 @@
     {:deadline deadline}
     {:timeout (Duration/ofMinutes 2)}))
 
+(defn presentation-outcome!
+  [operation f]
+  (try
+    (f)
+    (catch Exception cause
+      (throw (errors/ex ::protocol53-provider-exception
+                        (str "Protocol53 " (name operation) " threw unexpectedly")
+                        {:operation operation
+                         errors/challenge-fallback-safe? false}
+                        cause)))))
+
+(defn same-logical-record?
+  [expected actual]
+  (and (= (str/lower-case (:name expected))
+          (str/lower-case (:name actual)))
+       (= (str/lower-case (:type expected))
+          (str/lower-case (:type actual)))
+       (= (:data expected) (:data actual))))
+
 (defn result!
-  [operation outcome]
+  [operation outcome the-lease]
   (if-let [error (:ol.protocol53/error outcome)]
-    (throw (errors/ex ::protocol53-operation-failed
-                      (str "Protocol53 " (name operation) " failed")
-                      {:operation operation :outcome outcome :provider-error error}))
+    (let [fallback-safe? (and (= :append-records operation)
+                              (= :unchanged (:zone-state error))
+                              (some? the-lease)
+                              (lease/active? the-lease))]
+      (throw (errors/ex ::protocol53-operation-failed
+                        (str "Protocol53 " (name operation) " failed")
+                        {:operation operation
+                         :outcome outcome
+                         :provider-error error
+                         errors/challenge-fallback-safe? fallback-safe?})))
     (:ol.protocol53/result outcome)))
 
 (defn present
@@ -263,19 +289,36 @@
                 :type "TXT"
                 :ttl (:ttl config)
                 :data digest}
-        result (result! :append-records
-                        (protocol53/append-records! provider zone [record]
-                                                    (provider-opts the-lease)))
-        stored-record (first (:records result))]
-    (when-not (= 1 (count (:records result)))
-      (throw (errors/ex ::ambiguous-append
-                        "Protocol53 append must return exactly one Stored Record"
-                        {:zone zone :outcome result})))
-    {:owned? true
-     :zone zone
-     :owner owner
-     :digest digest
-     :record stored-record}))
+        get-opts (provider-opts the-lease)
+        existing (:records
+                  (result! :get-records
+                           (presentation-outcome!
+                            :get-records
+                            #(protocol53/get-records! provider zone get-opts))
+                           the-lease))]
+    (if (some #(same-logical-record? record %) existing)
+      {:owned? false
+       :zone zone
+       :owner owner
+       :digest digest}
+      (let [append-opts (provider-opts the-lease)
+            result (result! :append-records
+                            (presentation-outcome!
+                             :append-records
+                             #(protocol53/append-records! provider zone [record] append-opts))
+                            the-lease)
+            stored-records (:records result)]
+        (when-not (= 1 (count stored-records))
+          (throw (errors/ex ::ambiguous-append
+                            "Protocol53 append must return exactly one Stored Record"
+                            {:zone zone
+                             :outcome result
+                             errors/challenge-fallback-safe? false})))
+        {:owned? true
+         :zone zone
+         :owner owner
+         :digest digest
+         :record (first stored-records)}))))
 
 (defn wait-for-presentation
   [config the-lease _challenge {:keys [owner digest]}]
@@ -299,7 +342,8 @@
     (result! :delete-records
              (protocol53/delete-records!
               provider zone [record]
-              {:timeout (Duration/ofMillis (:propagation-timeout-ms config))})))
+              {:timeout (Duration/ofMillis (:propagation-timeout-ms config))})
+             nil))
   nil)
 
 (defn solver

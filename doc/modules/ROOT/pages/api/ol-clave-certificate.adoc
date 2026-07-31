@@ -16,6 +16,11 @@ Solvers are maps containing functions that handle challenge provisioning:
 - `:wait` (optional) - waits for slow provisioning (e.g., DNS propagation)
 - `:payload` (optional) - generates custom challenge response payload
 
+A presentation exception may include `errors/challenge-fallback-safe?` in its
+`ex-data`. `false` terminates alternate-challenge fallback, while `true`
+permits it while the Lease remains active. Omitting it preserves the default
+fallback behavior.
+
 See `ol.clave.solver.http` for an HTTP-01 solver with Ring middleware.
 
 See also `ol.clave.commands` for low-level plumbing operations.
@@ -45,7 +50,7 @@ Optional keys are allowed (permissive mode):
 Returns nil on success, throws on validation failure.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L38-L63[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L43-L68[source,window=_blank]
 
 '''
 
@@ -81,7 +86,7 @@ enabling any instance to reconstruct and serve the response.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L67-L118[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L72-L123[source,window=_blank]
 
 '''
 
@@ -108,7 +113,7 @@ Wraps all solvers in a map for distributed challenge solving.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L120-L134[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L125-L139[source,window=_blank]
 
 '''
 
@@ -137,7 +142,7 @@ Returns the challenge data map if found, nil otherwise.
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L136-L150[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L141-L155[source,window=_blank]
 
 '''
 
@@ -195,7 +200,7 @@ Returns `[updated-session result]` where result is a map:
 |===
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L285-L443[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L291-L460[source,window=_blank]
 
 '''
 
@@ -224,7 +229,7 @@ Example:
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L447-L465[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L464-L482[source,window=_blank]
 
 '''
 
@@ -280,7 +285,7 @@ Example:
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L467-L506[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L484-L523[source,window=_blank]
 
 '''
 
@@ -342,7 +347,7 @@ Examples:
   (create-csr kp ["münchen.example" "www.münchen.example"])
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L508-L555[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L525-L572[source,window=_blank]
 
 '''
 
@@ -366,7 +371,7 @@ Encode a private key as PKCS#8 PEM-formatted string.
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L557-L565[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L574-L582[source,window=_blank]
 
 '''
 
@@ -406,4 +411,4 @@ Returns a `java.security.KeyPair`.
 ----
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L567-L593[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/certificate.clj#L584-L610[source,window=_blank]

@@ -9,6 +9,7 @@ This project uses https://www.taoensso.com/break-versioning[*Break Versioning*].
 === Added
 
 * Add optional Aleph and Netty integrations for automatic HTTPS with HTTP-01 and TLS-ALPN-01 validation, dynamic SNI certificate selection, and certificate renewal without restarting listeners.
+* Add a Protocol53-backed DNS-01 Challenge Solver with explicit Provider construction, exact Record ownership and cleanup, bounded propagation checks, and credential-safe Trove telemetry. Protocol53 and Provider artifacts remain optional and do not change Clave's base runtime dependencies.
 
 === Changed
 

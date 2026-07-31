@@ -16,6 +16,7 @@
 ***** xref:api/ol-clave-acme-impl-tos.adoc[tos]
 **** xref:api/ol-clave-acme-order.adoc[order]
 **** solver
+***** xref:api/ol-clave-acme-solver-dns.adoc[dns]
 ***** xref:api/ol-clave-acme-solver-http.adoc[http]
 ***** xref:api/ol-clave-acme-solver-tls-alpn.adoc[tls-alpn]
 *** xref:api/ol-clave-automation.adoc[automation]

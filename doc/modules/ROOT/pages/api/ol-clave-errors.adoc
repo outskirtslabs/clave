@@ -666,6 +666,19 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L7
 
 '''
 
+[#challenge-fallback-safe-QMARK-]
+== challenge-fallback-safe?
+
+
+
+
+
+
+[.api-source]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L74-L74[source,window=_blank]
+
+'''
+
 [#invalid-solver]
 == invalid-solver
 
@@ -675,7 +688,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L7
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L76-L76[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L77-L77[source,window=_blank]
 
 '''
 
@@ -688,7 +701,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L7
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L79-L79[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L80-L80[source,window=_blank]
 
 '''
 
@@ -701,7 +714,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L7
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L80-L80[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L81-L81[source,window=_blank]
 
 '''
 
@@ -714,7 +727,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L8
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L81-L81[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L82-L82[source,window=_blank]
 
 '''
 
@@ -727,7 +740,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L8
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L84-L84[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L85-L85[source,window=_blank]
 
 '''
 
@@ -740,7 +753,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L8
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L85-L85[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L86-L86[source,window=_blank]
 
 '''
 
@@ -753,7 +766,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L8
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L88-L88[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L89-L89[source,window=_blank]
 
 '''
 
@@ -766,7 +779,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L8
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L89-L89[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L90-L90[source,window=_blank]
 
 '''
 
@@ -779,7 +792,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L8
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L92-L92[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L93-L93[source,window=_blank]
 
 '''
 
@@ -792,7 +805,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L9
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L93-L93[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L94-L94[source,window=_blank]
 
 '''
 
@@ -805,7 +818,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L9
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L101-L101[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L102-L102[source,window=_blank]
 
 '''
 
@@ -818,7 +831,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L103-L103[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L104-L104[source,window=_blank]
 
 '''
 
@@ -831,7 +844,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L104-L104[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L105-L105[source,window=_blank]
 
 '''
 
@@ -844,7 +857,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L105-L105[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L106-L106[source,window=_blank]
 
 '''
 
@@ -857,7 +870,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L106-L106[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L107-L107[source,window=_blank]
 
 '''
 
@@ -870,7 +883,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L107-L107[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L108-L108[source,window=_blank]
 
 '''
 
@@ -883,7 +896,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L108-L108[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L109-L109[source,window=_blank]
 
 '''
 
@@ -896,7 +909,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L109-L109[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L110-L110[source,window=_blank]
 
 '''
 
@@ -909,7 +922,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L110-L110[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L111-L111[source,window=_blank]
 
 '''
 
@@ -922,7 +935,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L111-L111[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L112-L112[source,window=_blank]
 
 '''
 
@@ -935,7 +948,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L112-L112[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L113-L113[source,window=_blank]
 
 '''
 
@@ -948,7 +961,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L113-L113[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L114-L114[source,window=_blank]
 
 '''
 
@@ -961,7 +974,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L114-L114[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L115-L115[source,window=_blank]
 
 '''
 
@@ -974,7 +987,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L115-L115[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L116-L116[source,window=_blank]
 
 '''
 
@@ -987,7 +1000,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L116-L116[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L117-L117[source,window=_blank]
 
 '''
 
@@ -1000,7 +1013,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L117-L117[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L118-L118[source,window=_blank]
 
 '''
 
@@ -1013,7 +1026,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L118-L118[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L119-L119[source,window=_blank]
 
 '''
 
@@ -1026,7 +1039,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L119-L119[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L120-L120[source,window=_blank]
 
 '''
 
@@ -1039,7 +1052,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L120-L120[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L121-L121[source,window=_blank]
 
 '''
 
@@ -1052,7 +1065,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L121-L121[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L122-L122[source,window=_blank]
 
 '''
 
@@ -1065,7 +1078,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L122-L122[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L123-L123[source,window=_blank]
 
 '''
 
@@ -1078,7 +1091,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L123-L123[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L124-L124[source,window=_blank]
 
 '''
 
@@ -1091,7 +1104,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L124-L124[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L125-L125[source,window=_blank]
 
 '''
 
@@ -1104,7 +1117,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L125-L125[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L126-L126[source,window=_blank]
 
 '''
 
@@ -1117,7 +1130,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L126-L126[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L127-L127[source,window=_blank]
 
 '''
 
@@ -1130,7 +1143,7 @@ link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L1
 
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L128-L128[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L129-L129[source,window=_blank]
 
 '''
 
@@ -1149,7 +1162,7 @@ Extract identifiers from problem subproblems.
 Returns vector of identifier maps, e.g., `[{:type "dns" :value "example.com"}]`.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L134-L138[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L135-L139[source,window=_blank]
 
 '''
 
@@ -1168,7 +1181,7 @@ Find subproblem for specific identifier.
 Returns the first subproblem matching the given identifier, or nil.
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L140-L144[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L141-L145[source,window=_blank]
 
 '''
 
@@ -1188,4 +1201,4 @@ Convenience wrapper for ex-info that associates the shared :type key.
 Usage: (errors/ex errors/invalid-header "message" {:field :kid :reason "missing"})
 
 [.api-source]
-link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L146-L152[source,window=_blank]
+link:https://github.com/outskirtslabs/clave/blob/main/src/ol/clave/errors.clj#L147-L153[source,window=_blank]

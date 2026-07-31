@@ -152,6 +152,9 @@
     "create-identifier" "create-identifier",
     "identifiers" "identifiers",
     "url" "url"}},
+  "ol.clave.acme.solver.dns"
+  {:page "api/ol-clave-acme-solver-dns.adoc",
+   :vars {"solver" "solver"}},
   "ol.clave.acme.solver.http"
   {:page "api/ol-clave-acme-solver-http.adoc",
    :vars
@@ -433,6 +436,7 @@
     "base64" "base64",
     "cancelled" "cancelled",
     "certificate-download-failed" "certificate-download-failed",
+    "challenge-fallback-safe?" "challenge-fallback-safe-QMARK-",
     "challenge-rejected" "challenge-rejected",
     "ecdsa-signature-format" "ecdsa-signature-format",
     "encoding-failed" "encoding-failed",

@@ -1,4 +1,4 @@
-(ns ol.clave.acme.solver.dns.impl
+(ns ^:no-doc ol.clave.acme.solver.dns.impl
   "Implementation of [[ol.clave.acme.solver.dns]]."
   (:require
    [clojure.set :as set]
@@ -7,7 +7,8 @@
    [ol.clave.errors :as errors]
    [ol.clave.lease :as lease]
    [ol.protocol53 :as protocol53]
-   [ol.protocol53.protocols :as protocols])
+   [ol.protocol53.protocols :as protocols]
+   [taoensso.trove :as log])
   (:import
    [java.lang ModuleLayer]
    [java.net Inet6Address InetAddress URI]
@@ -393,6 +394,24 @@
                      :dns-status (:status result)}
                     (:cause result))))
 
+(def terminal-dns-error-types
+  #{::dns-query-failed
+    ::dns-transport-failed
+    ::hostname-resolution-failed
+    ::no-nameservers
+    ::not-propagated
+    ::zone-not-found})
+
+(defn log-terminal-dns-failure!
+  [owner error]
+  (let [{:keys [type dns-status]} (ex-data error)]
+    (when (terminal-dns-error-types type)
+      (log/log! {:level :warn
+                 :id :ol.clave.acme.solver.dns/terminal-dns-failure
+                 :data (cond-> {:owner owner :error-type type}
+                         dns-status (assoc :dns-status dns-status))
+                 :error error}))))
+
 (defn discover-zone
   [the-lease resolvers owner]
   (loop [candidate owner
@@ -475,43 +494,55 @@
   (let [authorization (:authorization challenge-map)
         owner (absolute-name
                (or (:presentation-name config)
-                   (challenge/dns01-txt-name (challenge/identifier-domain authorization))))
-        digest (challenge/dns01-key-authorization challenge-map account-key)
-        zone (discover-zone the-lease (:resolvers config) owner)
-        record {:name (relative-name owner zone)
-                :type "TXT"
-                :ttl (:ttl config)
-                :data digest}
-        get-opts (provider-opts the-lease)
-        existing (:records
-                  (result! :get-records
-                           (presentation-outcome!
-                            :get-records
-                            #(protocol53/get-records! provider zone get-opts))
-                           the-lease))]
-    (if (some #(same-logical-record? record %) existing)
-      {:owned? false
-       :zone zone
-       :owner owner
-       :digest digest}
-      (let [append-opts (provider-opts the-lease)
-            result (result! :append-records
-                            (presentation-outcome!
-                             :append-records
-                             #(protocol53/append-records! provider zone [record] append-opts))
-                            the-lease)
-            stored-records (:records result)]
-        (when-not (= 1 (count stored-records))
-          (throw (errors/ex ::ambiguous-append
-                            "Protocol53 append must return exactly one Stored Record"
-                            {:zone zone
-                             :outcome result
-                             errors/challenge-fallback-safe? false})))
-        {:owned? true
-         :zone zone
-         :owner owner
-         :digest digest
-         :record (first stored-records)}))))
+                   (challenge/dns01-txt-name (challenge/identifier-domain authorization))))]
+    (try
+      (let [digest (challenge/dns01-key-authorization challenge-map account-key)
+            zone (discover-zone the-lease (:resolvers config) owner)
+            record {:name (relative-name owner zone)
+                    :type "TXT"
+                    :ttl (:ttl config)
+                    :data digest}
+            get-opts (provider-opts the-lease)
+            existing (:records
+                      (result! :get-records
+                               (presentation-outcome!
+                                :get-records
+                                #(protocol53/get-records! provider zone get-opts))
+                               the-lease))]
+        (if (some #(same-logical-record? record %) existing)
+          (let [state {:owned? false
+                       :zone zone
+                       :owner owner
+                       :digest digest}]
+            (log/log! {:level :debug
+                       :id :ol.clave.acme.solver.dns/presentation-reused
+                       :data {:owner owner :zone zone}})
+            state)
+          (let [append-opts (provider-opts the-lease)
+                result (result! :append-records
+                                (presentation-outcome!
+                                 :append-records
+                                 #(protocol53/append-records! provider zone [record] append-opts))
+                                the-lease)
+                stored-records (:records result)]
+            (when-not (= 1 (count stored-records))
+              (throw (errors/ex ::ambiguous-append
+                                "Protocol53 append must return exactly one Stored Record"
+                                {:zone zone
+                                 :outcome result
+                                 errors/challenge-fallback-safe? false})))
+            (let [state {:owned? true
+                         :zone zone
+                         :owner owner
+                         :digest digest
+                         :record (first stored-records)}]
+              (log/log! {:level :debug
+                         :id :ol.clave.acme.solver.dns/presentation-owned
+                         :data {:owner owner :zone zone}})
+              state))))
+      (catch Exception error
+        (log-terminal-dns-failure! owner error)
+        (throw error)))))
 
 (defn propagation-target
   [the-lease resolvers owner]
@@ -601,24 +632,31 @@
 
 (defn wait-for-presentation
   [config the-lease _challenge {:keys [owner digest]}]
-  (when (= :lease-ended (lease/sleep the-lease (:propagation-delay-ms config)))
-    (lease/ensure-active the-lease))
-  (when (:propagation-checks? config)
-    (let [[propagation-lease stop] (lease/with-timeout the-lease (:propagation-timeout-ms config))]
-      (try
-        (loop []
-          (when (= :lease-ended (lease/sleep propagation-lease 2000))
-            (propagation-ended! the-lease owner))
-          (let [ready? (try
-                         (propagated? config propagation-lease owner digest)
-                         (catch clojure.lang.ExceptionInfo error
-                           (if (= :lease/deadline-exceeded (:type (ex-data error)))
-                             (propagation-ended! the-lease owner)
-                             (throw error))))]
-            (when-not ready?
-              (recur))))
-        (finally
-          (stop)))))
+  (try
+    (when (= :lease-ended (lease/sleep the-lease (:propagation-delay-ms config)))
+      (lease/ensure-active the-lease))
+    (when (:propagation-checks? config)
+      (let [[propagation-lease stop] (lease/with-timeout the-lease (:propagation-timeout-ms config))]
+        (try
+          (loop []
+            (when (= :lease-ended (lease/sleep propagation-lease 2000))
+              (propagation-ended! the-lease owner))
+            (let [ready? (try
+                           (propagated? config propagation-lease owner digest)
+                           (catch clojure.lang.ExceptionInfo error
+                             (if (= :lease/deadline-exceeded (:type (ex-data error)))
+                               (propagation-ended! the-lease owner)
+                               (throw error))))]
+              (if ready?
+                (log/log! {:level :debug
+                           :id :ol.clave.acme.solver.dns/propagation-ready
+                           :data {:owner owner}})
+                (recur))))
+          (finally
+            (stop)))))
+    (catch Exception error
+      (log-terminal-dns-failure! owner error)
+      (throw error)))
   nil)
 
 (defn cleanup-timeout
@@ -629,14 +667,17 @@
       (Duration/ofMinutes 2))))
 
 (defn cleanup
-  [provider config {:keys [owned? zone record]}]
+  [provider config {:keys [owned? zone owner record]}]
   (when owned?
     (result! :delete-records
              (presentation-outcome!
               :delete-records
               #(protocol53/delete-records!
                 provider zone [record] {:timeout (cleanup-timeout config)}))
-             nil))
+             nil)
+    (log/log! {:level :debug
+               :id :ol.clave.acme.solver.dns/cleanup
+               :data {:owner owner :zone zone}}))
   nil)
 
 (defn solver

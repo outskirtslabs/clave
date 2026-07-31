@@ -1,6 +1,6 @@
 = API Reference
 
-This release publishes 45 namespaces.
+This release publishes 46 namespaces.
 
 [cols="1,3",options="header",stripes=hover]
 |===
@@ -44,6 +44,9 @@ This release publishes 45 namespaces.
 
 | xref:api/ol-clave-acme-order.adoc[`ol.clave.acme.order`]
 | Helpers for building and inspecting ACME orders.
+
+| xref:api/ol-clave-acme-solver-dns.adoc[`ol.clave.acme.solver.dns`]
+| Protocol53-backed DNS-01 Challenge Solver.
 
 | xref:api/ol-clave-acme-solver-http.adoc[`ol.clave.acme.solver.http`]
 | HTTP-01 challenge solver with Ring middleware.

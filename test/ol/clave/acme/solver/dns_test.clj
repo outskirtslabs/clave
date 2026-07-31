@@ -10,13 +10,16 @@
    [ol.clave.impl.coredns-harness :as coredns]
    [ol.clave.impl.protocol53-provider :as test-provider]
    [ol.clave.lease :as lease]
-   [ol.clave.specs :as specs]))
+   [ol.clave.specs :as specs]
+   [taoensso.trove :as log]))
 
 (defn dns-challenge
   [domain]
   {::specs/token "dns-token"
-   :authorization {::specs/identifier {:type "dns" :value domain}}}) (def corefile
-                                                                       "example.test.:{{PORT}} {\n bind 127.0.0.1\n file zone.db example.test.\n log . \"{proto} {name} {type}\"\n errors\n}\n")
+   :authorization {::specs/identifier {:type "dns" :value domain}}})
+
+(def corefile
+  "example.test.:{{PORT}} {\n bind 127.0.0.1\n file zone.db example.test.\n log . \"{proto} {name} {type}\"\n errors\n}\n")
 
 (def blackhole-corefile
   ".:{{PORT}} {\n bind 127.0.0.1\n erratic {\n  drop 1\n }\n log . \"{proto} {name} {type}\"\n errors\n}\n")
@@ -35,6 +38,11 @@
   (coredns/with-coredns {:corefile corefile
                          :files {"zone.db" (zone-file records)}}
     f))
+
+(defn collect-log-fn
+  [events]
+  (fn [_namespace _coordinates level id lazy-event]
+    (swap! events conj (merge {:level level :id id} (force lazy-event)))))
 
 (deftest constructor-test
   (let [provider (test-provider/provider)
@@ -76,6 +84,7 @@
   (let [provider (test-provider/provider)
         invalid-options [nil
                          {:unknown true}
+                         {:logger (fn [_] nil)}
                          {:ttl -1}
                          {:propagation-checks? :yes}
                          {:propagation-delay-ms -1}
@@ -294,17 +303,20 @@
                        "_acme-challenge.example.test.")
                       nil
                       (catch clojure.lang.ExceptionInfo e e))]
-          (is (= expected-status (:dns-status (ex-data error)))))))) (let [cause (ex-info "unexpected JNDI failure" {:source :test})
-                                                                           error (with-redefs [impl/dns-context (fn [_] (throw cause))]
-                                                                                   (try
-                                                                                     (impl/propagation-target
-                                                                                      (lease/background)
-                                                                                      [(impl/resolver-parts "127.0.0.1")]
-                                                                                      "_acme-challenge.example.test.")
-                                                                                     nil
-                                                                                     (catch clojure.lang.ExceptionInfo e e)))]
-                                                                       (is (= :unexpected (:dns-status (ex-data error))))
-                                                                       (is (identical? cause (ex-cause error))))
+          (is (= expected-status (:dns-status (ex-data error))))))))
+
+  (let [cause (ex-info "unexpected JNDI failure" {:source :test})
+        error (with-redefs [impl/dns-context (fn [_] (throw cause))]
+                (try
+                  (impl/propagation-target
+                   (lease/background)
+                   [(impl/resolver-parts "127.0.0.1")]
+                   "_acme-challenge.example.test.")
+                  nil
+                  (catch clojure.lang.ExceptionInfo e
+                    e)))]
+    (is (= :unexpected (:dns-status (ex-data error))))
+    (is (identical? cause (ex-cause error))))
 
   (coredns/with-coredns
     {:corefile corefile
@@ -648,6 +660,70 @@
                (mapv (fn [[operation zone payload]]
                        [operation zone (when (vector? payload) payload)])
                      @(:operations provider))))))))
+
+(deftest lifecycle-telemetry-test
+  (let [challenge-map (dns-challenge "www.example.test")
+        account-key (account/generate-keypair)
+        digest (challenge/dns01-key-authorization challenge-map account-key)
+        owner "_acme-challenge.www.example.test."
+        existing {:name "_acme-challenge.www" :type "TXT" :ttl 900 :data digest}
+        events (atom [])]
+    (testing "presentation ownership, exact reuse, and cleanup expose only lifecycle coordinates"
+      (let [owned-provider (test-provider/provider)
+            owned-solver (dns/solver owned-provider {:propagation-checks? false})
+            reused-provider (test-provider/provider {:records {"example.test." [existing]}})
+            reused-solver (dns/solver reused-provider {:propagation-checks? false})]
+        (binding [log/*log-fn* (collect-log-fn events)]
+          (let [state (present-in-zone owned-solver (lease/background) challenge-map account-key)]
+            ((:cleanup owned-solver) (lease/background) challenge-map state))
+          (present-in-zone reused-solver (lease/background) challenge-map account-key))
+        (is (= [{:level :debug
+                 :id ::dns/presentation-owned
+                 :data {:owner owner :zone "example.test."}}
+                {:level :debug
+                 :id ::dns/cleanup
+                 :data {:owner owner :zone "example.test."}}
+                {:level :debug
+                 :id ::dns/presentation-reused
+                 :data {:owner owner :zone "example.test."}}]
+               (mapv #(select-keys % [:level :id :data]) @events)))))
+
+    (testing "propagation readiness emits the owner without the Challenge or digest"
+      (reset! events [])
+      (with-zone
+        [(str "ready 30 IN TXT \"" digest "\"")]
+        (fn [{:keys [resolver]}]
+          (let [solver (dns/solver (test-provider/provider)
+                                   {:resolvers [resolver]
+                                    :propagation-timeout-ms 5000})
+                state {:owner "ready.example.test." :digest digest}]
+            (binding [log/*log-fn* (collect-log-fn events)]
+              ((:wait solver) (lease/background) challenge-map state))
+            (is (= [{:level :debug
+                     :id ::dns/propagation-ready
+                     :data {:owner "ready.example.test."}}]
+                   (mapv #(select-keys % [:level :id :data]) @events)))))))
+
+    (testing "terminal DNS failure retains only safe structured diagnostics"
+      (reset! events [])
+      (coredns/with-coredns
+        {:corefile ".:{{PORT}} {\n bind 127.0.0.1\n template IN CNAME {\n  rcode REFUSED\n }\n errors\n}\n"
+         :files {}}
+        (fn [{:keys [resolver]}]
+          (let [solver (dns/solver (test-provider/provider) {:resolvers [resolver]})
+                error (binding [log/*log-fn* (collect-log-fn events)]
+                        (try
+                          ((:present solver) (lease/background) challenge-map account-key)
+                          nil
+                          (catch clojure.lang.ExceptionInfo e
+                            e)))]
+            (is (= [{:level :warn
+                     :id ::dns/terminal-dns-failure
+                     :data {:owner owner
+                            :error-type ::impl/dns-query-failed
+                            :dns-status :refused}}]
+                   (mapv #(select-keys % [:level :id :data]) @events)))
+            (is (identical? error (:error (first @events))))))))))
 
 (deftest ambiguous-append-is-terminal-test
   (let [challenge-map (dns-challenge "www.example.test")

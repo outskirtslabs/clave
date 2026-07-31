@@ -228,7 +228,7 @@
           {})))))
 
 (deftest protocol53-dns01-happy-path-test
-  (testing "obtain completes DNS-01 presentation and cleanup through Protocol53"
+  (testing "obtain observes DNS-01 propagation and removes only its Protocol53 Record"
     (let [owner (fn [zone [{:keys [name]}]]
                   (if (= name "@") zone (str name "." zone)))
           sibling {:name "_acme-challenge" :type "TXT" :ttl 60 :data "sibling"}
@@ -244,7 +244,7 @@
           solver (dns-solver/solver
                   provider
                   {:resolvers [(str "127.0.0.1:" (:dns-port pebble/*pebble-ports*))]
-                   :propagation-checks? false})]
+                   :propagation-timeout-ms 15000})]
       (with-redefs [dns-impl/discover-zone (fn [_lease _resolver _owner] "localhost.")]
         (let [[_session result] (clave/obtain
                                  (lease/background)

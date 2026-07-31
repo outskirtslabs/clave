@@ -5,11 +5,14 @@
    [ol.clave.acme.challenge :as challenge]
    [ol.clave.acme.commands :as commands]
    [ol.clave.acme.order :as order]
+   [ol.clave.acme.solver.dns :as dns-solver]
+   [ol.clave.acme.solver.dns.impl :as dns-impl]
    [ol.clave.acme.solver.http :as http-solver]
    [ol.clave.certificate :as clave]
    [ol.clave.certificate.impl.csr :as csr]
    [ol.clave.certificate.impl.keygen :as kg]
    [ol.clave.impl.pebble-harness :as pebble]
+   [ol.clave.impl.protocol53-provider :as test-provider]
    [ol.clave.impl.test-util :as util]
    [ol.clave.lease :as lease]
    [ol.clave.specs :as specs]))
@@ -223,3 +226,32 @@
           (clave/keypair)
           {:http-01 {:present (fn [_ _ _] nil)}}
           {})))))
+
+(deftest protocol53-dns01-happy-path-test
+  (testing "obtain completes DNS-01 presentation and cleanup through Protocol53"
+    (let [owner (fn [zone [{:keys [name]}]]
+                  (if (= name "@") zone (str name "." zone)))
+          provider (test-provider/provider
+                    {:on-append (fn [zone records]
+                                  (pebble/challtestsrv-set-txt
+                                   (owner zone records)
+                                   (:data (first records))))
+                     :on-delete (fn [zone records]
+                                  (pebble/challtestsrv-clear-txt
+                                   (owner zone records)))})
+          solver (dns-solver/solver
+                  provider
+                  {:resolvers [(str "127.0.0.1:" (:dns-port pebble/*pebble-ports*))]
+                   :propagation-checks? false})]
+      (with-redefs [dns-impl/discover-zone (fn [_lease _resolver _owner] "localhost.")]
+        (let [[_session result] (clave/obtain
+                                 (lease/background)
+                                 (util/fresh-session)
+                                 [(order/create-identifier :dns "localhost")]
+                                 (clave/keypair)
+                                 {:dns-01 solver}
+                                 {})]
+          (is (= "valid" (::specs/status (:order result))))
+          (is (str/includes? (-> result :certificates first :chain-pem)
+                             "BEGIN CERTIFICATE"))
+          (is (= {"localhost." []} @(:records provider))))))))

@@ -1,5 +1,11 @@
 {
   "git": {
+    "com.outskirtslabs/protocol53/4a0ad834256d7e1e1a6a95936ea5e7ca14f13988": {
+      "common_dir": "https/github.com/outskirtslabs/protocol53",
+      "rev": "4a0ad834256d7e1e1a6a95936ea5e7ca14f13988",
+      "sha256": "02a916i9hp9d5b3syh05ysf1kzln170zmjkkqv3g61sqzin42yri",
+      "url": "https://github.com/outskirtslabs/protocol53.git"
+    },
     "outskirtslabs/bb-tasks/9dbc6d77384b51ffde69007e98a0420b3cf6a0a7": {
       "common_dir": "https/github.com/outskirtslabs/bb-tasks",
       "rev": "9dbc6d77384b51ffde69007e98a0420b3cf6a0a7",

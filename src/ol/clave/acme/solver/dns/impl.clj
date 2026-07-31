@@ -299,14 +299,6 @@
                      :dns-status (:status result)}
                     (:cause result))))
 
-(defn dns-values
-  [resolvers name record-type]
-  (let [result (dns-query resolvers name record-type)]
-    (case (:status result)
-      :answer (:values result)
-      (:nxdomain :nodata :servfail :transport) []
-      (dns-query-error! name record-type result))))
-
 (defn discover-zone
   [the-lease resolvers owner]
   (loop [candidate owner
@@ -427,22 +419,112 @@
          :digest digest
          :record (first stored-records)}))))
 
+(defn propagation-target
+  [the-lease resolvers owner]
+  (lease/ensure-active the-lease)
+  (let [result (dns-query resolvers owner "CNAME")]
+    (case (:status result)
+      :answer (first (:values result))
+      :nodata owner
+      (:nxdomain :servfail :transport) nil
+      (dns-query-error! owner "CNAME" result))))
+
+(defn transient-discovery-error?
+  [error]
+  (let [{:keys [type dns-status]} (ex-data error)]
+    (or (#{::zone-not-found ::dns-transport-failed} type)
+        (and (= ::dns-query-failed type)
+             (= :servfail dns-status)))))
+
+(defn observation-resolvers
+  [config the-lease target]
+  (if (seq (:resolvers config))
+    (:resolvers config)
+    (let [zone (try
+                 (discover-zone the-lease [] target)
+                 (catch clojure.lang.ExceptionInfo error
+                   (if (transient-discovery-error? error)
+                     nil
+                     (throw error))))]
+      (when zone
+        (lease/ensure-active the-lease)
+        (let [result (dns-query [] zone "NS")]
+          (case (:status result)
+            :answer
+            (let [nameservers (:values result)]
+              (when-not (and (seq nameservers)
+                             (every? valid-presentation-name? nameservers))
+                (dns-query-error!
+                 zone
+                 "NS"
+                 (assoc result
+                        :status :malformed
+                        :cause (ex-info "Malformed DNS nameserver data"
+                                        {:name zone
+                                         :record-type "NS"
+                                         :values nameservers}))))
+              (mapv resolver-parts nameservers))
+
+            :nodata
+            (throw (errors/ex ::no-nameservers
+                              "DNS Zone has no nameservers"
+                              {:zone zone
+                               :target target}))
+
+            (:nxdomain :servfail :transport) nil
+            (dns-query-error! zone "NS" result)))))))
+
+(defn txt-ready?
+  [the-lease resolver target digest]
+  (lease/ensure-active the-lease)
+  (let [result (dns-query [resolver] target "TXT")]
+    (case (:status result)
+      :answer (boolean (some #{digest} (:values result)))
+      (:nxdomain :nodata :servfail :transport) false
+      (dns-query-error! target "TXT" result))))
+
+(defn propagated?
+  [config the-lease owner digest]
+  (if-let [target (propagation-target the-lease (:resolvers config) owner)]
+    (if-let [resolvers (observation-resolvers config the-lease target)]
+      (loop [[resolver & remaining] resolvers]
+        (if resolver
+          (let [ready? (txt-ready? the-lease resolver target digest)]
+            (case (:propagation-readiness config)
+              :all (and ready? (recur remaining))
+              :any (or ready? (recur remaining))))
+          (= :all (:propagation-readiness config))))
+      false)
+    false))
+
+(defn propagation-ended!
+  [issuance-lease owner]
+  (if (lease/active? issuance-lease)
+    (throw (errors/ex ::not-propagated
+                      "DNS Challenge presentation is not propagated"
+                      {:owner owner}))
+    (lease/ensure-active issuance-lease)))
+
 (defn wait-for-presentation
   [config the-lease _challenge {:keys [owner digest]}]
   (when (= :lease-ended (lease/sleep the-lease (:propagation-delay-ms config)))
     (lease/ensure-active the-lease))
   (when (:propagation-checks? config)
-    (let [resolvers (:resolvers config)
-          ready? (if (seq resolvers)
-                   (mapv #(some #{digest} (dns-values [%] owner "TXT")) resolvers)
-                   [(some #{digest} (dns-values [] owner "TXT"))])
-          propagated? (if (= :all (:propagation-readiness config))
-                        (every? true? ready?)
-                        (some true? ready?))]
-      (when-not propagated?
-        (throw (errors/ex ::not-propagated
-                          "DNS Challenge presentation is not propagated"
-                          {:owner owner})))))
+    (let [[propagation-lease stop] (lease/with-timeout the-lease (:propagation-timeout-ms config))]
+      (try
+        (loop []
+          (when (= :lease-ended (lease/sleep propagation-lease 2000))
+            (propagation-ended! the-lease owner))
+          (let [ready? (try
+                         (propagated? config propagation-lease owner digest)
+                         (catch clojure.lang.ExceptionInfo error
+                           (if (= :lease/deadline-exceeded (:type (ex-data error)))
+                             (propagation-ended! the-lease owner)
+                             (throw error))))]
+            (when-not ready?
+              (recur))))
+        (finally
+          (stop)))))
   nil)
 
 (defn cleanup

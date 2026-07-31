@@ -134,17 +134,246 @@
         (is (= output-before-wait (slurp (str output-path)))
             "Propagation-disabled waiting must not issue a TXT query")
         (is (nil? ((:cleanup solver) (lease/background) challenge-map state)))
-        (is (= {"example.test." []} @(:records provider))))))) (deftest resolver-policy-test
-                                                                 (let [provider (test-provider/provider)
-                                                                       resolvers ["resolver.example" "192.0.2.53" "192.0.2.54:5353"
-                                                                                  "2001:db8::53" "[2001:db8::54]:5353"]
-                                                                       config (impl/validate-construction! provider {:resolvers resolvers})]
-                                                                   (is (= [{:resolver "resolver.example" :host "resolver.example" :port 53}
-                                                                           {:resolver "192.0.2.53" :host "192.0.2.53" :port 53}
-                                                                           {:resolver "192.0.2.54:5353" :host "192.0.2.54" :port 5353}
-                                                                           {:resolver "2001:db8::53" :host "2001:db8::53" :port 53}
-                                                                           {:resolver "[2001:db8::54]:5353" :host "2001:db8::54" :port 5353}]
-                                                                          (:resolvers config)))))
+        (is (= {"example.test." []} @(:records provider)))))))
+
+(deftest configured-propagation-test
+  (let [digest "abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE"
+        owner "_acme-challenge.example.test."
+        records ["_acme-challenge 30 IN CNAME delegated.example.test."
+                 (str "delegated 30 IN TXT \"" digest "\"")
+                 "delegated 30 IN TXT \"sibling\""]]
+    (with-zone
+      records
+      (fn [{first-resolver :resolver first-output :output-path}]
+        (with-zone
+          records
+          (fn [{second-resolver :resolver second-output :output-path}]
+            (let [solver (dns/solver (test-provider/provider)
+                                     {:resolvers [first-resolver second-resolver]
+                                      :propagation-timeout-ms 5000})
+                  state {:owner owner :digest digest}
+                  started (System/nanoTime)]
+              (is (nil? ((:wait solver) (lease/background) nil state)))
+              (is (<= 1900.0 (/ (double (- (System/nanoTime) started)) 1000000.0)))
+              (is (= state {:owner owner :digest digest})
+                  "Propagation CNAMEs must not change the presentation state")
+              (doseq [output [first-output second-output]]
+                (let [log (slurp (str output))]
+                  (is (str/includes? log "delegated.example.test. TXT"))
+                  (is (not (str/includes? log "delegated.example.test. CNAME")))
+                  (is (not (str/includes? log "_acme-challenge.example.test. TXT"))))))))))))
+
+(deftest any-readiness-continues-after-transient-server-test
+  (coredns/with-coredns
+    {:corefile ".:{{PORT}} {\n bind 127.0.0.1\n template IN CNAME {\n  rcode NOERROR\n }\n template IN TXT {\n  rcode SERVFAIL\n }\n log . \"{proto} {name} {type}\"\n errors\n}\n"
+     :files {}}
+    (fn [{transient-resolver :resolver transient-output :output-path}]
+      (with-zone
+        ["_acme-challenge 30 IN TXT \"abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE\""]
+        (fn [{ready-resolver :resolver ready-output :output-path}]
+          (let [solver (dns/solver (test-provider/provider)
+                                   {:resolvers [transient-resolver ready-resolver]
+                                    :propagation-readiness :any
+                                    :propagation-timeout-ms 5000})]
+            (is (nil? ((:wait solver)
+                       (lease/background)
+                       nil
+                       {:owner "_acme-challenge.example.test."
+                        :digest "abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE"})))
+            (is (str/includes? (slurp (str transient-output))
+                               "_acme-challenge.example.test. TXT"))
+            (is (str/includes? (slurp (str ready-output))
+                               "_acme-challenge.example.test. TXT"))))))))
+
+(deftest all-readiness-retries-until-timeout-test
+  (with-zone
+    ["_acme-challenge 30 IN TXT \"altered\""]
+    (fn [{not-ready-resolver :resolver not-ready-output :output-path}]
+      (with-zone
+        ["_acme-challenge 30 IN TXT \"abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE\""]
+        (fn [{ready-resolver :resolver ready-output :output-path}]
+          (let [solver (dns/solver (test-provider/provider)
+                                   {:resolvers [not-ready-resolver ready-resolver]
+                                    :propagation-timeout-ms 2300})
+                error (try
+                        ((:wait solver)
+                         (lease/background)
+                         nil
+                         {:owner "_acme-challenge.example.test."
+                          :digest "abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE"})
+                        nil
+                        (catch clojure.lang.ExceptionInfo e e))]
+            (is (= {:type ::impl/not-propagated
+                    :owner "_acme-challenge.example.test."}
+                   (ex-data error)))
+            (is (str/includes? (slurp (str not-ready-output))
+                               "_acme-challenge.example.test. TXT"))
+            (is (not (str/includes? (slurp (str ready-output))
+                                    "_acme-challenge.example.test. TXT")))))))))
+
+(deftest discovered-propagation-through-nameserver-test
+  (with-zone
+    ["_acme-challenge 30 IN TXT \"abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE\""]
+    (fn [{:keys [resolver output-path]}]
+      (let [actual-candidates (impl/resolver-candidates (impl/resolver-parts resolver))
+            logical-resolvers (atom [])
+            solver (dns/solver (test-provider/provider) {:propagation-timeout-ms 5000})]
+        (with-redefs [impl/resolver-candidates
+                      (fn [logical-resolver]
+                        (swap! logical-resolvers conj (some-> logical-resolver :resolver))
+                        (mapv #(assoc % :resolver (some-> logical-resolver :resolver))
+                              actual-candidates))]
+          (is (nil? ((:wait solver)
+                     (lease/background)
+                     nil
+                     {:owner "_acme-challenge.example.test."
+                      :digest "abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE"}))))
+        (let [log (slurp (str output-path))]
+          (is (every? #(str/includes? log %)
+                      ["_acme-challenge.example.test. CNAME"
+                       "_acme-challenge.example.test. SOA"
+                       "example.test. SOA"
+                       "example.test. NS"
+                       "_acme-challenge.example.test. TXT"])))
+        (is (= ["ns.example.test."] (filterv some? @logical-resolvers)))))))
+
+(deftest exact-txt-comparison-test
+  (let [digest "abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE"]
+    (with-zone
+      [(str "exact 30 IN TXT \"" digest "\"")
+       "exact 30 IN TXT \"sibling\""
+       (str "altered 30 IN TXT \"" digest "x\"")
+       (str "padded 30 IN TXT \"" digest " \"")
+       "split 30 IN TXT \"abcdefghijklmnopqrstuvwxyz\" \"0123456789-_ABCDE\""
+       "nodata 30 IN A 192.0.2.1"]
+      (fn [{:keys [resolver]}]
+        (let [server (impl/resolver-parts resolver)
+              ready? #(impl/txt-ready? (lease/background) server % digest)]
+          (is (= {:exact true
+                  :altered false
+                  :padded false
+                  :split false
+                  :nodata false
+                  :nxdomain false}
+                 {:exact (ready? "exact.example.test.")
+                  :altered (ready? "altered.example.test.")
+                  :padded (ready? "padded.example.test.")
+                  :split (ready? "split.example.test.")
+                  :nodata (ready? "nodata.example.test.")
+                  :nxdomain (ready? "absent.example.test.")})))))))
+
+(deftest transport-is-not-ready-test
+  (coredns/with-coredns
+    {:corefile ".:{{PORT}} {\n bind 127.0.0.1\n erratic {\n  drop 1\n }\n errors\n}\n"
+     :files {}}
+    (fn [{:keys [resolver]}]
+      (is (false? (impl/txt-ready?
+                   (lease/background)
+                   (impl/resolver-parts resolver)
+                   "_acme-challenge.example.test."
+                   "abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE"))))))
+
+(deftest terminal-propagation-data-test
+  (doseq [[corefile expected-status]
+          [[".:{{PORT}} {\n bind 127.0.0.1\n template IN CNAME {\n  rcode REFUSED\n }\n errors\n}\n"
+            :refused]
+           [".:{{PORT}} {\n bind 127.0.0.1\n template IN CNAME {\n  answer \"{{ .Name }} 60 IN CNAME one.example.\"\n  answer \"{{ .Name }} 60 IN CNAME two.example.\"\n }\n errors\n}\n"
+            :malformed]]]
+    (coredns/with-coredns
+      {:corefile corefile :files {}}
+      (fn [{:keys [resolver]}]
+        (let [error (try
+                      (impl/propagation-target
+                       (lease/background)
+                       [(impl/resolver-parts resolver)]
+                       "_acme-challenge.example.test.")
+                      nil
+                      (catch clojure.lang.ExceptionInfo e e))]
+          (is (= expected-status (:dns-status (ex-data error)))))))) (let [cause (ex-info "unexpected JNDI failure" {:source :test})
+                                                                           error (with-redefs [impl/dns-context (fn [_] (throw cause))]
+                                                                                   (try
+                                                                                     (impl/propagation-target
+                                                                                      (lease/background)
+                                                                                      [(impl/resolver-parts "127.0.0.1")]
+                                                                                      "_acme-challenge.example.test.")
+                                                                                     nil
+                                                                                     (catch clojure.lang.ExceptionInfo e e)))]
+                                                                       (is (= :unexpected (:dns-status (ex-data error))))
+                                                                       (is (identical? cause (ex-cause error))))
+
+  (coredns/with-coredns
+    {:corefile corefile
+     :files {"zone.db"
+             (str "$ORIGIN example.test.\n"
+                  "@ 30 IN SOA ns.example.test. hostmaster.example.test. 1 60 30 3600 30\n"
+                  "_acme-challenge 30 IN TXT \"abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE\"\n")}}
+    (fn [{:keys [resolver]}]
+      (let [actual-candidates (impl/resolver-candidates (impl/resolver-parts resolver))
+            error (with-redefs [impl/resolver-candidates
+                                (fn [logical-resolver]
+                                  (mapv #(assoc % :resolver (some-> logical-resolver :resolver))
+                                        actual-candidates))]
+                    (try
+                      (impl/observation-resolvers
+                       {:resolvers []}
+                       (lease/background)
+                       "_acme-challenge.example.test.")
+                      nil
+                      (catch clojure.lang.ExceptionInfo e e)))]
+        (is (= {:type ::impl/no-nameservers
+                :zone "example.test."
+                :target "_acme-challenge.example.test."}
+               (ex-data error)))))))
+
+(deftest propagation-polls-fresh-discovery-test
+  (let [digest "abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE"]
+    (with-zone
+      ["_acme-challenge 30 IN TXT \"stale\""]
+      (fn [{stale-resolver :resolver stale-output :output-path}]
+        (with-zone
+          [(str "_acme-challenge 30 IN TXT \"" digest "\"")]
+          (fn [{fresh-resolver :resolver fresh-output :output-path}]
+            (let [stale-candidates (impl/resolver-candidates (impl/resolver-parts stale-resolver))
+                  fresh-endpoint (first (impl/resolver-candidates (impl/resolver-parts fresh-resolver)))
+                  original-query impl/dns-query-once
+                  txt-round (atom 0)
+                  solver (dns/solver (test-provider/provider) {:propagation-timeout-ms 7000})]
+              (with-redefs [impl/resolver-candidates
+                            (fn [logical-resolver]
+                              (mapv #(assoc % :resolver (some-> logical-resolver :resolver))
+                                    stale-candidates))
+                            impl/dns-query-once
+                            (fn [endpoint name record-type]
+                              (original-query
+                               (if (and (= "TXT" record-type)
+                                        (< 1 (swap! txt-round inc)))
+                                 fresh-endpoint
+                                 endpoint)
+                               name
+                               record-type))]
+                (is (nil? ((:wait solver)
+                           (lease/background)
+                           nil
+                           {:owner "_acme-challenge.example.test."
+                            :digest digest}))))
+              (let [stale-log (slurp (str stale-output))]
+                (is (= 2 (count (re-seq #"example\.test\. NS" stale-log))))
+                (is (str/includes? stale-log "_acme-challenge.example.test. TXT")))
+              (is (= 2 @txt-round))
+              (is (str/includes? (slurp (str fresh-output))
+                                 "_acme-challenge.example.test. TXT")))))))))
+
+(deftest resolver-policy-test
+  (let [provider (test-provider/provider)
+        resolvers ["resolver.example" "192.0.2.53" "192.0.2.54:5353"
+                   "2001:db8::53" "[2001:db8::54]:5353"]
+        config (impl/validate-construction! provider {:resolvers resolvers})]
+    (is (= [{:resolver "resolver.example" :host "resolver.example" :port 53}
+            {:resolver "192.0.2.53" :host "192.0.2.53" :port 53}
+            {:resolver "192.0.2.54:5353" :host "192.0.2.54" :port 5353}
+            {:resolver "2001:db8::53" :host "2001:db8::53" :port 53}
+            {:resolver "[2001:db8::54]:5353" :host "2001:db8::54" :port 5353}]
+           (:resolvers config)))))
 
 (deftest jndi-query-policy-test
   (let [large-records (mapv #(str "large 30 IN TXT \"value-" % "-"

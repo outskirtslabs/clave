@@ -71,6 +71,7 @@
 (def authorization-timeout ::authorization-timeout)
 (def challenge-rejected ::challenge-rejected)
 (def no-compatible-challenge ::no-compatible-challenge)
+(def challenge-fallback-safe? ::challenge-fallback-safe?)
 
 ;; Porcelain layer errors
 (def invalid-solver ::invalid-solver)

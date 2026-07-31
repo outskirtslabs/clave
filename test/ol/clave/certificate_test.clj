@@ -3,6 +3,7 @@
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [ol.clave.acme.account :as account]
+   [ol.clave.acme.commands :as cmd]
    [ol.clave.acme.impl.stats :as stats]
    [ol.clave.acme.solver.http :as http-solver]
    [ol.clave.automation.impl.config :as config]
@@ -10,6 +11,7 @@
    [ol.clave.certificate.impl.keygen :as keygen]
    [ol.clave.errors :as errors]
    [ol.clave.impl.test-util :as test-util]
+   [ol.clave.lease :as lease]
    [ol.clave.specs :as specs]
    [ol.clave.storage :as storage]))
 
@@ -192,6 +194,194 @@
           (let [data (ex-data e)]
             (is (= #{:http-01 :dns-01} (:failed-types data))
                 "Error should show which challenge types failed")))))))
+
+(defn authorization
+  [identifier challenge-types]
+  {::specs/status "pending"
+   ::specs/authorization-location (str "authz-" identifier)
+   ::specs/identifier {:type "dns" :value identifier}
+   ::specs/challenges (mapv (fn [challenge-type]
+                              {::specs/type (name challenge-type)
+                               ::specs/token (str (name challenge-type) "-token")})
+                            challenge-types)})
+
+(defn run-obtain
+  [the-lease authzs solvers events poll-authorization]
+  (let [authzs-by-url (into {} (map (juxt ::specs/authorization-location identity)) authzs)
+        initial-order {::specs/authorizations (mapv ::specs/authorization-location authzs)
+                       ::specs/order-location "order-1"}
+        ready-order {::specs/status "ready"
+                     ::specs/order-location "order-1"}
+        final-order {::specs/status "valid"
+                     ::specs/order-location "order-1"
+                     ::specs/certificate "certificate-1"}
+        session {::specs/account-key (account/generate-keypair)
+                 ::specs/directory-url "directory"
+                 ::specs/account-kid "account"}]
+    (with-redefs [cmd/new-order (fn [_ s _] [s initial-order])
+                  cmd/get-authorization (fn [_ s url] [s (get authzs-by-url url)])
+                  cmd/respond-challenge (fn [_ s challenge _]
+                                          (swap! events conj [:respond (::specs/token challenge)])
+                                          [s nil])
+                  cmd/poll-authorization poll-authorization
+                  cmd/get-order (fn [_ s _]
+                                  (swap! events conj :order-ready)
+                                  [s ready-order])
+                  cmd/finalize-order (fn [_ s _ _]
+                                       (swap! events conj :finalize)
+                                       [s final-order])
+                  cmd/poll-order (fn [_ s _]
+                                   (swap! events conj :poll-order)
+                                   [s final-order])
+                  cmd/get-certificate (fn [_ s _]
+                                        (swap! events conj :download)
+                                        [s {:preferred {::specs/pem "certificate"}}])]
+      (try
+        {:value (certificate/obtain the-lease session
+                                    (mapv ::specs/identifier authzs)
+                                    (keygen/generate :p256)
+                                    solvers
+                                    {:preferred-challenges [:http-01 :dns-01]})}
+        (catch Exception e
+          {:error e})))))
+
+(deftest presentation-failure-classification-test
+  (doseq [[classification failure-data]
+          [[:implicit {}]
+           [:explicit-safe {errors/challenge-fallback-safe? true}]]]
+    (testing (name classification)
+      (let [events (atom [])
+            failure (ex-info "presentation failed" failure-data)
+            authz (authorization "example.com" [:http-01 :dns-01])
+            solvers {:http-01 {:present (fn [_ _ _]
+                                          (swap! events conj [:present :http])
+                                          (throw failure))
+                               :cleanup (fn [_ _ _])}
+                     :dns-01 {:present (fn [_ _ _]
+                                         (swap! events conj [:present :dns])
+                                         :dns-state)
+                              :cleanup (fn [_ _ _]
+                                         (swap! events conj [:cleanup :dns]))}}
+            result (run-obtain (lease/background) [authz] solvers events
+                               (fn [_ s _] [s authz]))]
+        (is (nil? (:error result)))
+        (is (= [[:present :http] [:present :dns]]
+               (take 2 @events)))))))
+
+(deftest unsafe-presentation-failure-is-terminal-test
+  (let [events (atom [])
+        failure (ex-info "possibly changed" {errors/challenge-fallback-safe? false})
+        authz (authorization "example.com" [:http-01 :dns-01])
+        solvers {:http-01 {:present (fn [_ _ _]
+                                      (swap! events conj [:present :http])
+                                      (throw failure))
+                           :cleanup (fn [_ _ _])}
+                 :dns-01 {:present (fn [_ _ _]
+                                     (swap! events conj [:present :dns]))
+                          :cleanup (fn [_ _ _])}}
+        result (run-obtain (lease/background) [authz] solvers events
+                           (fn [_ s _] [s authz]))]
+    (is (identical? failure (:error result)))
+    (is (= [[:present :http]] @events))))
+
+(deftest ended-lease-prevents-safe-fallback-test
+  (let [[the-lease cancel] (lease/with-cancel (lease/background))
+        events (atom [])
+        failure (ex-info "unchanged" {errors/challenge-fallback-safe? true})
+        authz (authorization "example.com" [:http-01 :dns-01])
+        solvers {:http-01 {:present (fn [_ _ _]
+                                      (swap! events conj [:present :http])
+                                      (cancel)
+                                      (throw failure))
+                           :cleanup (fn [_ _ _])}
+                 :dns-01 {:present (fn [_ _ _]
+                                     (swap! events conj [:present :dns]))
+                          :cleanup (fn [_ _ _])}}
+        result (run-obtain the-lease [authz] solvers events
+                           (fn [_ s _] [s authz]))]
+    (is (identical? failure (:error result)))
+    (is (= [[:present :http]] @events))))
+
+(deftest terminal-presentation-failure-cleans-earlier-presentations-test
+  (let [events (atom [])
+        failure (ex-info "possibly changed" {errors/challenge-fallback-safe? false})
+        authzs [(authorization "first.example" [:http-01])
+                (authorization "second.example" [:http-01])]
+        solver {:present (fn [_ challenge _]
+                           (let [identifier (get-in challenge [:authorization ::specs/identifier :value])]
+                             (swap! events conj [:present identifier])
+                             (if (= "second.example" identifier)
+                               (throw failure)
+                               identifier)))
+                :cleanup (fn [_ _ state]
+                           (swap! events conj [:cleanup state]))}
+        result (run-obtain (lease/background) authzs {:http-01 solver} events
+                           (fn [_ s _] [s nil]))]
+    (is (identical? failure (:error result)))
+    (is (= [[:present "first.example"]
+            [:present "second.example"]
+            [:cleanup "first.example"]]
+           @events))))
+
+(deftest completed-authorizations-clean-before-finalization-test
+  (let [events (atom [])
+        authzs [(authorization "first.example" [:http-01])
+                (authorization "second.example" [:http-01])]
+        solver {:present (fn [_ challenge _]
+                           (let [identifier (get-in challenge [:authorization ::specs/identifier :value])]
+                             (swap! events conj [:present identifier])
+                             identifier))
+                :cleanup (fn [_ _ state]
+                           (swap! events conj [:cleanup state]))}
+        result (run-obtain (lease/background) authzs {:http-01 solver} events
+                           (fn [_ s url]
+                             (swap! events conj [:poll url])
+                             [s nil]))]
+    (is (nil? (:error result)))
+    (is (= [[:present "first.example"]
+            [:present "second.example"]
+            [:respond "http-01-token"]
+            [:respond "http-01-token"]
+            [:poll "authz-first.example"]
+            [:cleanup "first.example"]
+            [:poll "authz-second.example"]
+            [:cleanup "second.example"]
+            :order-ready
+            :finalize
+            :poll-order
+            :download]
+           @events))))
+
+(deftest polling-failure-spends-cleanup-attempt-and-leaves-only-unreached-presentations-test
+  (let [events (atom [])
+        poll-failure (ex-info "poll failed" {:poll :failed})
+        authzs [(authorization "first.example" [:http-01])
+                (authorization "second.example" [:http-01])
+                (authorization "third.example" [:http-01])]
+        solver {:present (fn [_ challenge _]
+                           (let [identifier (get-in challenge [:authorization ::specs/identifier :value])]
+                             (swap! events conj [:present identifier])
+                             identifier))
+                :cleanup (fn [_ _ state]
+                           (swap! events conj [:cleanup state])
+                           (when (= "first.example" state)
+                             (throw (ex-info "cleanup failed" {:cleanup :failed}))))}
+        result (run-obtain (lease/background) authzs {:http-01 solver} events
+                           (fn [_ _ url]
+                             (swap! events conj [:poll url])
+                             (throw poll-failure)))]
+    (is (identical? poll-failure (:error result)))
+    (is (= [[:present "first.example"]
+            [:present "second.example"]
+            [:present "third.example"]
+            [:respond "http-01-token"]
+            [:respond "http-01-token"]
+            [:respond "http-01-token"]
+            [:poll "authz-first.example"]
+            [:cleanup "first.example"]
+            [:cleanup "second.example"]
+            [:cleanup "third.example"]]
+           @events))))
 
 ;;;; Distributed Challenge Token Storage Tests
 

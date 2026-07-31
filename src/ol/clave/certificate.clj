@@ -14,6 +14,11 @@
   - `:wait` (optional) - waits for slow provisioning (e.g., DNS propagation)
   - `:payload` (optional) - generates custom challenge response payload
 
+  A presentation exception may include `errors/challenge-fallback-safe?` in its
+  `ex-data`. `false` terminates alternate-challenge fallback, while `true`
+  permits it while the Lease remains active. Omitting it preserves the default
+  fallback behavior.
+
   See [[ol.clave.solver.http]] for an HTTP-01 solver with Ring middleware.
 
   See also [[ol.clave.commands]] for low-level plumbing operations."
@@ -205,18 +210,22 @@
 
 ;;;; Main Workflow
 
+(defn- cleanup-challenge!
+  "Runs one cleanup, logging and suppressing failures."
+  [the-lease {:keys [solver challenge state]}]
+  (try
+    ((:cleanup solver) the-lease challenge state)
+    (catch Exception e
+      (log/log! {:level :warn
+                 :id    ::challenge-cleanup-failed
+                 :data  {:domain (get-in challenge [:authorization ::specs/identifier :value])
+                         :challenge-type (::specs/type challenge)}
+                 :error e}))))
+
 (defn- cleanup-all!
-  "Run cleanup for all presented challenges. Logs errors but doesn't propagate."
+  "Runs cleanup for all presented challenges."
   [the-lease presented-challenges]
-  (doseq [{:keys [solver challenge state]} presented-challenges]
-    (try
-      ((:cleanup solver) the-lease challenge state)
-      (catch Exception e
-        (log/log! {:level :warn
-                   :id    ::challenge-cleanup-failed
-                   :data  {:domain (get-in challenge [:authorization ::specs/identifier :value])
-                           :challenge-type (::specs/type challenge)}
-                   :error e})))))
+  (run! #(cleanup-challenge! the-lease %) presented-challenges))
 
 (defn- present-challenges!
   "Present challenges for all pending authorizations.
@@ -244,10 +253,7 @@
         ;; Clean up any already-presented challenges
         (cleanup-all! the-lease @presented)
         ;; Return error with the failed challenge type
-        (let [failed-type (some (fn [{:keys [challenge-type]}]
-                                  (when-not (some #(= challenge-type (:challenge-type %)) @presented)
-                                    challenge-type))
-                                selected)]
+        (let [failed-type (:challenge-type (nth selected (count @presented) nil))]
           {:status :error :failed-type failed-type :error e})))))
 
 (defn- wait-for-order-ready
@@ -364,6 +370,10 @@
                           (:no-fallback result)
                           {:last-error (:error result)}
 
+                          (or (not (lease/active? the-lease))
+                              (false? (get (ex-data (:error result)) errors/challenge-fallback-safe?)))
+                          {:last-error (:error result)}
+
                           (>= retries max-solver-retries)
                           {:last-error (:error result)}
 
@@ -397,17 +407,24 @@
                                     session
                                     selected)
                     ;; Phase 8: Authorization Polling
-                    session (reduce (fn [sess {:keys [authz challenge-type]}]
-                                      (try
-                                        (let [authz-url (::specs/authorization-location authz)
-                                              [sess _final-authz] (cmd/poll-authorization the-lease sess authz-url)]
-                                          (stats/record challenge-type true)
-                                          sess)
-                                        (catch Exception e
-                                          (stats/record challenge-type false)
-                                          (throw e))))
+                    session (reduce (fn [sess {:keys [challenge challenge-type] :as presentation}]
+                                      (let [authz (:authorization challenge)]
+                                        (try
+                                          (let [authz-url (::specs/authorization-location authz)
+                                                [sess _final-authz] (cmd/poll-authorization the-lease sess authz-url)]
+                                            (stats/record challenge-type true)
+                                            sess)
+                                          (catch Exception e
+                                            (stats/record challenge-type false)
+                                            (throw e))
+                                          (finally
+                                            (swap! presented-challenges
+                                                   #(filterv (fn [outstanding]
+                                                               (not (identical? outstanding presentation)))
+                                                             %))
+                                            (cleanup-challenge! the-lease presentation)))))
                                     session
-                                    selected)]
+                                    presented)]
                 (lease/ensure-active the-lease)
 
                 ;; Phase 9: Cleanup happens in finally

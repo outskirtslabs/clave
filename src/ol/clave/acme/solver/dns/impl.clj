@@ -10,10 +10,10 @@
    [ol.protocol53.protocols :as protocols])
   (:import
    [java.lang ModuleLayer]
-   [java.net Inet6Address InetAddress URI UnknownHostException]
+   [java.net Inet6Address InetAddress URI]
    [java.time Duration]
    [java.util Hashtable]
-   [javax.naming CommunicationException Context NameNotFoundException NamingException
+   [javax.naming CommunicationException Context NameNotFoundException
     OperationNotSupportedException ServiceUnavailableException]
    [javax.naming.directory Attribute Attributes DirContext InitialDirContext]))
 
@@ -27,6 +27,8 @@
    :propagation-readiness  :all
    :resolvers              []
    :presentation-name      nil})
+
+(def dns-query-timeout-ms 10000)
 
 (def option-keys (set (keys defaults)))
 
@@ -184,20 +186,6 @@
       "."
       (subs absolute-name (inc first-dot)))))
 
-(defn resolver-candidates
-  [resolver]
-  (if resolver
-    (try
-      (mapv (fn [^InetAddress address]
-              {:resolver (:resolver resolver)
-               :address address
-               :port (:port resolver)})
-            (InetAddress/getAllByName ^String (:host resolver)))
-      (catch UnknownHostException cause
-        [{:resolver (:resolver resolver)
-          :resolution-error cause}]))
-    [nil]))
-
 (defn dns-context
   ^DirContext [endpoint]
   (let [environment (doto (Hashtable.)
@@ -221,32 +209,135 @@
       (vec (enumeration-seq values)))
     []))
 
-(defn dns-query-once
-  [endpoint name record-type]
-  (if-let [cause (:resolution-error endpoint)]
-    {:status :transport :resolver (:resolver endpoint) :cause cause}
+(defn close-context!
+  [closed? ^DirContext context]
+  (when (compare-and-set! closed? false true)
     (try
-      (with-open [context (dns-context endpoint)]
-        (let [^"[Ljava.lang.String;" attribute-ids (into-array String [record-type])
-              ^Attributes attributes (.getAttributes ^DirContext context
-                                                     ^String name
-                                                     attribute-ids)
-              values (attribute-values (.get attributes ^String record-type))]
-          {:status (if (seq values) :answer :nodata)
-           :resolver (:resolver endpoint)
-           :values values}))
-      (catch NameNotFoundException cause
-        {:status :nxdomain :resolver (:resolver endpoint) :cause cause})
-      (catch ServiceUnavailableException cause
-        {:status :servfail :resolver (:resolver endpoint) :cause cause})
-      (catch OperationNotSupportedException cause
-        {:status :refused :resolver (:resolver endpoint) :cause cause})
-      (catch CommunicationException cause
-        {:status :transport :resolver (:resolver endpoint) :cause cause})
-      (catch NamingException cause
-        {:status :unexpected :resolver (:resolver endpoint) :cause cause})
+      (.close context)
+      (catch Exception _))))
+
+(defn dns-exception-status
+  [error]
+  (or (some (fn [cause]
+              (cond
+                (instance? NameNotFoundException cause) :nxdomain
+                (instance? ServiceUnavailableException cause) :servfail
+                (instance? OperationNotSupportedException cause) :refused
+                (instance? CommunicationException cause) :transport
+                (= :lease/deadline-exceeded (:type (ex-data cause))) :transport))
+            (take-while some? (iterate ex-cause error)))
+      :unexpected))
+
+(defn jndi-query
+  [query-lease endpoint name record-type]
+  (lease/ensure-active query-lease)
+  (let [context (dns-context endpoint)
+        closed? (atom false)
+        close! #(close-context! closed? context)
+        closer (Thread/startVirtualThread
+                ^Runnable
+                (fn []
+                  (try
+                    @(lease/done-signal query-lease)
+                    (close!)
+                    (catch InterruptedException _))))]
+    (try
+      (let [^"[Ljava.lang.String;" attribute-ids (into-array String [record-type])
+            ^Attributes attributes (.getAttributes context ^String name attribute-ids)
+            values (attribute-values (.get attributes ^String record-type))]
+        {:status (if (seq values) :answer :nodata)
+         :resolver (:resolver endpoint)
+         :values values})
+      (finally
+        (close!)
+        (.interrupt closer)))))
+
+(defn dns-query-once
+  [the-lease endpoint name record-type]
+  (lease/ensure-active the-lease)
+  (if-let [status (:resolution-status endpoint)]
+    {:status status
+     :resolver (:resolver endpoint)
+     :cause (:resolution-error endpoint)}
+    (let [[query-lease stop] (lease/with-timeout the-lease dns-query-timeout-ms)
+          result (try
+                   (try
+                     (let [result (jndi-query query-lease endpoint name record-type)]
+                       (lease/ensure-active query-lease)
+                       result)
+                     (catch Exception cause
+                       {:status (dns-exception-status cause)
+                        :resolver (:resolver endpoint)
+                        :cause cause}))
+                   (finally
+                     (stop)))]
+      (lease/ensure-active the-lease)
+      result)))
+
+(defn hostname-addresses
+  [the-lease hostname]
+  (let [query-name (absolute-name hostname)
+        results (mapv #(dns-query-once the-lease nil query-name %)
+                      ["A" "AAAA"])
+        terminal (some #(when (#{:refused :malformed :unexpected} (:status %)) %)
+                       results)
+        values (into []
+                     (comp (filter #(= :answer (:status %)))
+                           (mapcat :values))
+                     results)]
+    (when terminal
+      (throw (errors/ex ::hostname-resolution-failed
+                        "JVM DNS resolver failed terminally"
+                        {:hostname hostname
+                         :dns-status (:status terminal)}
+                        (:cause terminal))))
+    (when-not (every? #(and (string? %)
+                            (or (valid-ipv4? %)
+                                (valid-ipv6? %)))
+                      values)
+      (throw (errors/ex ::hostname-resolution-failed
+                        "JVM DNS resolver returned malformed address data"
+                        {:hostname hostname
+                         :dns-status :malformed
+                         :values values})))
+    (when-not (seq values)
+      (throw (errors/ex ::hostname-resolution-failed
+                        "JVM DNS resolver returned no addresses"
+                        {:hostname hostname
+                         :dns-status :transport
+                         :dns-statuses (mapv :status results)}
+                        (some :cause results))))
+    (mapv #(InetAddress/getByName ^String %) values)))
+
+(defn resolver-candidates
+  [the-lease resolver]
+  (lease/ensure-active the-lease)
+  (if resolver
+    (try
+      (let [host (:host resolver)
+            addresses (if (or (valid-ipv4? host) (valid-ipv6? host))
+                        [(InetAddress/getByName ^String host)]
+                        (let [[resolution-lease stop]
+                              (lease/with-timeout the-lease dns-query-timeout-ms)]
+                          (try
+                            (hostname-addresses resolution-lease host)
+                            (finally
+                              (stop)))))]
+        (mapv (fn [^InetAddress address]
+                {:resolver (:resolver resolver)
+                 :address address
+                 :port (:port resolver)})
+              addresses))
       (catch Exception cause
-        {:status :unexpected :resolver (:resolver endpoint) :cause cause}))))
+        (lease/ensure-active the-lease)
+        [{:resolver (:resolver resolver)
+          :resolution-status (or (:dns-status (ex-data cause))
+                                 (when (= :lease/deadline-exceeded
+                                          (:type (ex-data cause)))
+                                   :transport)
+                                 :unexpected)
+          :resolution-error cause}]))
+    [nil]))
 
 (defn valid-soa-value?
   [value]
@@ -270,12 +361,15 @@
     (every? string? values)))
 
 (defn dns-query
-  [resolvers name record-type]
-  (loop [endpoints (mapcat resolver-candidates (if (seq resolvers) resolvers [nil]))
+  [the-lease resolvers name record-type]
+  (lease/ensure-active the-lease)
+  (loop [endpoints (mapcat #(resolver-candidates the-lease %)
+                           (if (seq resolvers) resolvers [nil]))
          last-transport nil]
+    (lease/ensure-active the-lease)
     (if (seq endpoints)
       (let [endpoint (first endpoints)
-            result (dns-query-once endpoint name record-type)]
+            result (dns-query-once the-lease endpoint name record-type)]
         (if (= :transport (:status result))
           (recur (next endpoints) result)
           (if (and (= :answer (:status result))
@@ -314,12 +408,12 @@
         (throw (errors/ex ::zone-not-found
                           "No DNS Zone found for Challenge presentation"
                           {:owner owner}))))
-    (let [cname (dns-query resolvers candidate "CNAME")]
+    (let [cname (dns-query the-lease resolvers candidate "CNAME")]
       (case (:status cname)
         :answer (recur (parent-name candidate) last-transport)
         :nxdomain (recur (parent-name candidate) last-transport)
         :transport (recur (parent-name candidate) cname)
-        :nodata (let [soa (dns-query resolvers candidate "SOA")]
+        :nodata (let [soa (dns-query the-lease resolvers candidate "SOA")]
                   (case (:status soa)
                     :answer candidate
                     (:nxdomain :nodata) (recur (parent-name candidate) last-transport)
@@ -422,7 +516,7 @@
 (defn propagation-target
   [the-lease resolvers owner]
   (lease/ensure-active the-lease)
-  (let [result (dns-query resolvers owner "CNAME")]
+  (let [result (dns-query the-lease resolvers owner "CNAME")]
     (case (:status result)
       :answer (first (:values result))
       :nodata owner
@@ -448,7 +542,7 @@
                      (throw error))))]
       (when zone
         (lease/ensure-active the-lease)
-        (let [result (dns-query [] zone "NS")]
+        (let [result (dns-query the-lease [] zone "NS")]
           (case (:status result)
             :answer
             (let [nameservers (:values result)]
@@ -477,7 +571,7 @@
 (defn txt-ready?
   [the-lease resolver target digest]
   (lease/ensure-active the-lease)
-  (let [result (dns-query [resolver] target "TXT")]
+  (let [result (dns-query the-lease [resolver] target "TXT")]
     (case (:status result)
       :answer (boolean (some #{digest} (:values result)))
       (:nxdomain :nodata :servfail :transport) false
@@ -527,13 +621,21 @@
           (stop)))))
   nil)
 
+(defn cleanup-timeout
+  [config]
+  (let [timeout-ms (:propagation-timeout-ms config)]
+    (if (and (integer? timeout-ms) (pos? timeout-ms))
+      (Duration/ofMillis timeout-ms)
+      (Duration/ofMinutes 2))))
+
 (defn cleanup
   [provider config {:keys [owned? zone record]}]
   (when owned?
     (result! :delete-records
-             (protocol53/delete-records!
-              provider zone [record]
-              {:timeout (Duration/ofMillis (:propagation-timeout-ms config))})
+             (presentation-outcome!
+              :delete-records
+              #(protocol53/delete-records!
+                provider zone [record] {:timeout (cleanup-timeout config)}))
              nil))
   nil)
 

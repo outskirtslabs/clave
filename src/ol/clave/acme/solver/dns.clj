@@ -14,6 +14,16 @@
   Construction validates the Provider, OpenJDK JNDI DNS support, and `opts`
   without performing Provider or DNS work.
 
+  Lease cancellation prevents new Provider and DNS work. Protocol53 invokes a
+  Provider synchronously, so cancellation cannot guarantee interruption of a
+  Provider call already in flight. If an append succeeds while cancellation
+  races it, `:present` returns the owned state so `:cleanup` can remove the
+  Stored Record under a fresh timeout.
+
+  Each JNDI DNS query uses a separate context capped at ten seconds and closes
+  that context when its effective Lease ends. Thread interruption alone is not
+  a supported DNS-query cancellation mechanism.
+
   Options:
 
   | key                       | description |

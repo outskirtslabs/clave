@@ -18,6 +18,9 @@
    :authorization {::specs/identifier {:type "dns" :value domain}}}) (def corefile
                                                                        "example.test.:{{PORT}} {\n bind 127.0.0.1\n file zone.db example.test.\n log . \"{proto} {name} {type}\"\n errors\n}\n")
 
+(def blackhole-corefile
+  ".:{{PORT}} {\n bind 127.0.0.1\n erratic {\n  drop 1\n }\n log . \"{proto} {name} {type}\"\n errors\n}\n")
+
 (defn zone-file
   [records]
   (str "$ORIGIN example.test.\n"
@@ -215,11 +218,13 @@
   (with-zone
     ["_acme-challenge 30 IN TXT \"abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE\""]
     (fn [{:keys [resolver output-path]}]
-      (let [actual-candidates (impl/resolver-candidates (impl/resolver-parts resolver))
+      (let [actual-candidates (impl/resolver-candidates
+                               (lease/background)
+                               (impl/resolver-parts resolver))
             logical-resolvers (atom [])
             solver (dns/solver (test-provider/provider) {:propagation-timeout-ms 5000})]
         (with-redefs [impl/resolver-candidates
-                      (fn [logical-resolver]
+                      (fn [_the-lease logical-resolver]
                         (swap! logical-resolvers conj (some-> logical-resolver :resolver))
                         (mapv #(assoc % :resolver (some-> logical-resolver :resolver))
                               actual-candidates))]
@@ -308,9 +313,11 @@
                   "@ 30 IN SOA ns.example.test. hostmaster.example.test. 1 60 30 3600 30\n"
                   "_acme-challenge 30 IN TXT \"abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE\"\n")}}
     (fn [{:keys [resolver]}]
-      (let [actual-candidates (impl/resolver-candidates (impl/resolver-parts resolver))
+      (let [actual-candidates (impl/resolver-candidates
+                               (lease/background)
+                               (impl/resolver-parts resolver))
             error (with-redefs [impl/resolver-candidates
-                                (fn [logical-resolver]
+                                (fn [_the-lease logical-resolver]
                                   (mapv #(assoc % :resolver (some-> logical-resolver :resolver))
                                         actual-candidates))]
                     (try
@@ -333,18 +340,23 @@
         (with-zone
           [(str "_acme-challenge 30 IN TXT \"" digest "\"")]
           (fn [{fresh-resolver :resolver fresh-output :output-path}]
-            (let [stale-candidates (impl/resolver-candidates (impl/resolver-parts stale-resolver))
-                  fresh-endpoint (first (impl/resolver-candidates (impl/resolver-parts fresh-resolver)))
+            (let [stale-candidates (impl/resolver-candidates
+                                    (lease/background)
+                                    (impl/resolver-parts stale-resolver))
+                  fresh-endpoint (first (impl/resolver-candidates
+                                         (lease/background)
+                                         (impl/resolver-parts fresh-resolver)))
                   original-query impl/dns-query-once
                   txt-round (atom 0)
                   solver (dns/solver (test-provider/provider) {:propagation-timeout-ms 7000})]
               (with-redefs [impl/resolver-candidates
-                            (fn [logical-resolver]
+                            (fn [_the-lease logical-resolver]
                               (mapv #(assoc % :resolver (some-> logical-resolver :resolver))
                                     stale-candidates))
                             impl/dns-query-once
-                            (fn [endpoint name record-type]
+                            (fn [the-lease endpoint name record-type]
                               (original-query
+                               the-lease
                                (if (and (= "TXT" record-type)
                                         (< 1 (swap! txt-round inc)))
                                  fresh-endpoint
@@ -383,10 +395,11 @@
       large-records
       (fn [{:keys [port output-path]}]
         (let [resolver (impl/resolver-parts (str "localhost:" port))
-              soa (impl/dns-query [resolver] "example.test." "SOA")
-              authority-only (impl/dns-query [resolver] "ns.example.test." "SOA")
-              missing (impl/dns-query [resolver] "absent.example.test." "CNAME")
-              large (impl/dns-query [resolver] "large.example.test." "TXT")]
+              the-lease (lease/background)
+              soa (impl/dns-query the-lease [resolver] "example.test." "SOA")
+              authority-only (impl/dns-query the-lease [resolver] "ns.example.test." "SOA")
+              missing (impl/dns-query the-lease [resolver] "absent.example.test." "CNAME")
+              large (impl/dns-query the-lease [resolver] "large.example.test." "TXT")]
           (Thread/sleep 25)
           (is (= {:status :answer
                   :resolver (str "localhost:" port)
@@ -409,6 +422,7 @@
           []
           (fn [{answer-resolver :resolver}]
             (let [result (impl/dns-query
+                          (lease/background)
                           (mapv impl/resolver-parts [drop-resolver answer-resolver])
                           "example.test."
                           "SOA")]
@@ -423,10 +437,10 @@
     (let [endpoints (atom [])
           transport (javax.naming.CommunicationException. "system DNS unavailable")
           result (with-redefs [impl/dns-query-once
-                               (fn [endpoint _name _record-type]
+                               (fn [_the-lease endpoint _name _record-type]
                                  (swap! endpoints conj endpoint)
                                  {:status :transport :resolver nil :cause transport})]
-                   (impl/dns-query [] "example.test." "SOA"))]
+                   (impl/dns-query (lease/background) [] "example.test." "SOA"))]
       (is (= [nil] @endpoints))
       (is (= {:status :transport :resolver nil :cause transport} result)))))
 
@@ -547,7 +561,7 @@
   (testing "unusable system DNS retains its transport cause after the suffix walk"
     (let [transport (javax.naming.CommunicationException. "system DNS unavailable")
           error (with-redefs [impl/dns-query-once
-                              (fn [_endpoint _name _record-type]
+                              (fn [_the-lease _endpoint _name _record-type]
                                 {:status :transport :resolver nil :cause transport})]
                   (try
                     (impl/discover-zone (lease/background) [] "owner.example.test.")
@@ -756,3 +770,262 @@
               :type ::impl/protocol53-operation-failed}
              (ex-data error)))
       (is (= [:get :append] (mapv first @(:operations provider)))))))
+
+(deftest provider-lifetime-test
+  (let [challenge-map (dns-challenge "www.example.test")
+        account-key (account/generate-keypair)]
+    (testing "bounded and unbounded issuance Leases provide finite Provider budgets"
+      (let [deadline (+ (System/nanoTime) 5000000000)
+            [bounded stop] (lease/with-deadline (lease/background) deadline)
+            bounded-provider (test-provider/provider)
+            unbounded-provider (test-provider/provider)]
+        (try
+          (present-in-zone (dns/solver bounded-provider {:propagation-checks? false})
+                           bounded challenge-map account-key)
+          (let [[get-opts append-opts] (mapv last @(:operations bounded-provider))]
+            (is (= [{:deadline deadline} {:deadline deadline}]
+                   [get-opts append-opts])))
+          (finally
+            (stop)))
+        (present-in-zone (dns/solver unbounded-provider {:propagation-checks? false})
+                         (lease/background) challenge-map account-key)
+        (let [now (System/nanoTime)
+              [get-deadline append-deadline]
+              (mapv (comp :deadline last) @(:operations unbounded-provider))]
+          (is (every? #(<= 119000000000 (- % now) 121000000000)
+                      [get-deadline append-deadline]))
+          (is (< get-deadline append-deadline)))))
+
+    (testing "an ended or expired Lease prevents Provider dispatch"
+      (let [[ended cancel] (lease/with-cancel (lease/background))
+            provider (test-provider/provider)]
+        (cancel)
+        (is (thrown? clojure.lang.ExceptionInfo
+                     (present-in-zone (dns/solver provider {:propagation-checks? false})
+                                      ended challenge-map account-key)))
+        (is (empty? @(:operations provider))))
+      (let [[expired stop] (lease/with-timeout (lease/background) 0)
+            provider (test-provider/provider)]
+        (try
+          (is (thrown? clojure.lang.ExceptionInfo
+                       (present-in-zone (dns/solver provider {:propagation-checks? false})
+                                        expired challenge-map account-key)))
+          (is (empty? @(:operations provider)))
+          (finally
+            (stop)))))
+
+    (testing "successful append state survives cancellation of the synchronous call"
+      (let [entered (promise)
+            release (promise)
+            outcome (promise)
+            [issuance-lease cancel] (lease/with-cancel (lease/background))
+            provider (test-provider/provider
+                      {:on-append (fn [_zone _records]
+                                    (deliver entered true)
+                                    @release)})
+            solver (dns/solver provider {:propagation-checks? false
+                                         :propagation-timeout-ms 37})
+            thread (Thread/startVirtualThread
+                    ^Runnable
+                    (fn []
+                      (deliver outcome
+                               (try
+                                 (present-in-zone solver issuance-lease challenge-map account-key)
+                                 (catch Throwable error
+                                   error)))))]
+        (try
+          @entered
+          (cancel)
+          (is (= ::pending (deref outcome 50 ::pending))
+              "Cancellation cannot interrupt an in-flight synchronous Provider call")
+          (deliver release true)
+          (let [state (deref outcome 1000 ::pending)
+                cleanup-started (System/nanoTime)
+                cleanup-result ((:cleanup solver) issuance-lease challenge-map state)
+                delete-deadline (:deadline (last (last @(:operations provider))))]
+            (is (= true (:owned? state)))
+            (is (nil? cleanup-result))
+            (is (= [] (get @(:records provider) "example.test.")))
+            (is (<= 35000000
+                    (- delete-deadline cleanup-started)
+                    1000000000)))
+          (finally
+            (deliver release true)
+            (.join thread 1000)))))))
+
+(deftest cleanup-default-budget-test
+  (let [record {:name "_acme-challenge" :type "TXT" :ttl 0 :data "digest"}
+        provider (test-provider/provider {:records {"example.test." [record]}})
+        started (System/nanoTime)]
+    (is (nil? (impl/cleanup provider {} {:owned? true
+                                         :zone "example.test."
+                                         :record record})))
+    (let [[operation zone selectors opts] (first @(:operations provider))]
+      (is (= [:delete "example.test." [record]] [operation zone selectors]))
+      (is (<= 119000000000
+              (- (:deadline opts) started)
+              121000000000)))
+    (is (= {"example.test." []} @(:records provider)))))
+
+(deftest jndi-query-lifetime-test
+  (testing "classification follows exception types through the cause chain"
+    (let [outer (javax.naming.NamingException. "localized outer message")
+          transport (javax.naming.CommunicationException. "localized cause message")]
+      (.setRootCause outer transport)
+      (is (= :transport (impl/dns-exception-status outer)))))
+
+  (testing "hostname resolution preserves terminal and transient status policy"
+    (let [the-lease (lease/background)
+          resolver (impl/resolver-parts "resolver.example")
+          actual-query impl/dns-query-once
+          failure (javax.naming.OperationNotSupportedException. "typed failure")
+          cases [[{"A" {:status :refused :cause failure}
+                   "AAAA" {:status :refused :cause failure}}
+                  :refused]
+                 [{"A" {:status :answer :values ["not-an-address"]}
+                   "AAAA" {:status :nodata :values []}}
+                  :malformed]
+                 [{"A" {:status :unexpected :cause failure}
+                   "AAAA" {:status :nodata :values []}}
+                  :unexpected]
+                 [{"A" {:status :servfail :cause failure}
+                   "AAAA" {:status :nodata :values []}}
+                  :transport]]]
+      (doseq [[responses expected-status] cases]
+        (let [candidate (with-redefs [impl/dns-query-once
+                                      (fn [_lease _endpoint _name record-type]
+                                        (get responses record-type))]
+                          (first (impl/resolver-candidates the-lease resolver)))
+              result (actual-query the-lease candidate "owner.example." "TXT")]
+          (is (= {:status expected-status :resolver "resolver.example"}
+                 (select-keys result [:status :resolver])))))))
+
+  (testing "hostname resolution closes its JNDI query at the Lease deadline"
+    (coredns/with-coredns
+      {:corefile blackhole-corefile
+       :files {}}
+      (fn [{:keys [port resolver output-path]}]
+        (let [[resolution-lease stop] (lease/with-timeout (lease/background) 200)
+              endpoint {:resolver resolver
+                        :address (java.net.InetAddress/getByName "127.0.0.1")
+                        :port port}
+              actual-context impl/dns-context
+              started (System/nanoTime)]
+          (try
+            (let [error (with-redefs [impl/dns-context
+                                      (fn [_system-endpoint]
+                                        (actual-context endpoint))]
+                          (try
+                            (impl/hostname-addresses
+                             resolution-lease "ns.example.test")
+                            nil
+                            (catch clojure.lang.ExceptionInfo error
+                              error)))
+                  elapsed-ms (/ (double (- (System/nanoTime) started)) 1000000.0)]
+              (is (= :lease/deadline-exceeded (:type (ex-data error))))
+              (is (< elapsed-ms 750.0))
+              (is (str/includes? (slurp (str output-path))
+                                 "ns.example.test. A")))
+            (finally
+              (stop)))))))
+
+  (testing "Lease cancellation closes a deterministic blackhole lookup"
+    (coredns/with-coredns
+      {:corefile blackhole-corefile
+       :files {}}
+      (fn [{:keys [resolver output-path]}]
+        (let [[query-lease cancel] (lease/with-cancel (lease/background))
+              outcome (promise)
+              started (System/nanoTime)
+              thread (Thread/startVirtualThread
+                      ^Runnable
+                      (fn []
+                        (deliver outcome
+                                 (try
+                                   (impl/dns-query query-lease
+                                                   [(impl/resolver-parts resolver)]
+                                                   "blackhole.example.test."
+                                                   "TXT")
+                                   (catch Throwable error
+                                     error)))))]
+          (try
+            (is (loop [attempts 100]
+                  (cond
+                    (str/includes? (slurp (str output-path))
+                                   "blackhole.example.test. TXT") true
+                    (zero? attempts) false
+                    :else (do
+                            (Thread/sleep 10)
+                            (recur (dec attempts))))))
+            (cancel)
+            (let [error (deref outcome 1000 ::pending)
+                  elapsed-ms (/ (double (- (System/nanoTime) started)) 1000000.0)]
+              (is (= :lease/cancelled (:type (ex-data error))))
+              (is (< elapsed-ms 1500.0)))
+            (finally
+              (cancel)
+              (.join thread 1000)))))))
+  (is (= 10000 impl/dns-query-timeout-ms)))
+
+(deftest propagation-deadline-test
+  (testing "the propagation timeout starts after the optional delay"
+    (let [solver (dns/solver (test-provider/provider)
+                             {:resolvers ["127.0.0.1:9"]
+                              :propagation-delay-ms 100
+                              :propagation-timeout-ms 100})
+          started (System/nanoTime)
+          error (try
+                  ((:wait solver)
+                   (lease/background)
+                   nil
+                   {:owner "_acme-challenge.example.test." :digest "digest"})
+                  nil
+                  (catch clojure.lang.ExceptionInfo error
+                    error))
+          elapsed-ms (/ (double (- (System/nanoTime) started)) 1000000.0)]
+      (is (= ::impl/not-propagated (:type (ex-data error))))
+      (is (<= 150.0 elapsed-ms 1000.0))))
+
+  (testing "the earlier issuance deadline bounds polling sleep"
+    (let [[issuance-lease stop] (lease/with-timeout (lease/background) 100)
+          solver (dns/solver (test-provider/provider)
+                             {:resolvers ["127.0.0.1:9"]
+                              :propagation-timeout-ms 5000})
+          started (System/nanoTime)]
+      (try
+        (let [error (try
+                      ((:wait solver)
+                       issuance-lease
+                       nil
+                       {:owner "_acme-challenge.example.test." :digest "digest"})
+                      nil
+                      (catch clojure.lang.ExceptionInfo error
+                        error))
+              elapsed-ms (/ (double (- (System/nanoTime) started)) 1000000.0)]
+          (is (= :lease/deadline-exceeded (:type (ex-data error))))
+          (is (< elapsed-ms 1000.0)))
+        (finally
+          (stop)))))
+
+  (testing "the propagation deadline closes an in-flight DNS query"
+    (coredns/with-coredns
+      {:corefile blackhole-corefile
+       :files {}}
+      (fn [{:keys [resolver output-path]}]
+        (let [solver (dns/solver (test-provider/provider)
+                                 {:resolvers [resolver]
+                                  :propagation-timeout-ms 2250})
+              started (System/nanoTime)
+              error (try
+                      ((:wait solver)
+                       (lease/background)
+                       nil
+                       {:owner "_acme-challenge.example.test." :digest "digest"})
+                      nil
+                      (catch clojure.lang.ExceptionInfo error
+                        error))
+              elapsed-ms (/ (double (- (System/nanoTime) started)) 1000000.0)]
+          (is (= ::impl/not-propagated (:type (ex-data error))))
+          (is (<= 2000.0 elapsed-ms 3500.0))
+          (is (str/includes? (slurp (str output-path))
+                             "_acme-challenge.example.test. CNAME")))))))

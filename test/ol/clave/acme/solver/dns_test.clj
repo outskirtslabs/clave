@@ -405,25 +405,41 @@
                             (range 30))]
     (with-zone
       large-records
-      (fn [{:keys [port output-path]}]
-        (let [resolver (impl/resolver-parts (str "localhost:" port))
+      (fn [{:keys [resolver output-path]}]
+        (let [parsed-resolver (impl/resolver-parts resolver)
               the-lease (lease/background)
-              soa (impl/dns-query the-lease [resolver] "example.test." "SOA")
-              authority-only (impl/dns-query the-lease [resolver] "ns.example.test." "SOA")
-              missing (impl/dns-query the-lease [resolver] "absent.example.test." "CNAME")
-              large (impl/dns-query the-lease [resolver] "large.example.test." "TXT")]
+              soa (impl/dns-query the-lease [parsed-resolver] "example.test." "SOA")
+              authority-only (impl/dns-query the-lease [parsed-resolver] "ns.example.test." "SOA")
+              missing (impl/dns-query the-lease [parsed-resolver] "absent.example.test." "CNAME")
+              large (impl/dns-query the-lease [parsed-resolver] "large.example.test." "TXT")]
           (Thread/sleep 25)
           (is (= {:status :answer
-                  :resolver (str "localhost:" port)
+                  :resolver resolver
                   :values ["ns.example.test. hostmaster.example.test. 1 60 30 3600 30"]}
                  soa))
-          (is (= {:status :nodata :resolver (str "localhost:" port) :values []}
+          (is (= {:status :nodata :resolver resolver :values []}
                  authority-only))
-          (is (= {:status :nxdomain :resolver (str "localhost:" port)}
+          (is (= {:status :nxdomain :resolver resolver}
                  (dissoc missing :cause)))
           (is (= {:status :answer :count 30}
                  {:status (:status large) :count (count (:values large))}))
           (is (str/includes? (slurp (str output-path)) "tcp large.example.test. TXT"))))))
+
+  (testing "configured resolver hostnames resolve through deterministic JVM DNS answers"
+    (let [resolver (impl/resolver-parts "resolver.example:5353")
+          responses {"A" {:status :answer :values ["192.0.2.53"]}
+                     "AAAA" {:status :answer :values ["2001:db8::53"]}}
+          candidates (with-redefs [impl/dns-query-once
+                                   (fn [_the-lease _endpoint _name record-type]
+                                     (get responses record-type))]
+                       (impl/resolver-candidates (lease/background) resolver))]
+      (is (= [{:resolver "resolver.example:5353"
+               :address (java.net.InetAddress/getByName "192.0.2.53")
+               :port 5353}
+              {:resolver "resolver.example:5353"
+               :address (java.net.InetAddress/getByName "2001:db8::53")
+               :port 5353}]
+             candidates))))
 
   (testing "configured resolvers are attempted in order without a public fallback"
     (coredns/with-coredns

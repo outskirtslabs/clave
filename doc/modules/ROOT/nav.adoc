@@ -1,4 +1,5 @@
 * xref:index.adoc[Home]
+* xref:protocol53-dns01.adoc[DNS-01 with Protocol53]
 * xref:changelog.adoc[Changelog]
 * xref:security.adoc[Security]
 

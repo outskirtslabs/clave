@@ -1,0 +1,134 @@
+= Solve DNS-01 challenges with Protocol53
+
+Clave's optional DNS-01 Challenge Solver uses
+https://docs.outskirtslabs.com/ol.protocol53/next/[Protocol53] to create and
+remove the TXT Records required by ACME validation.
+
+Your application selects and constructs one Protocol53 Provider. Clave does not
+scan environment variables, maintain a Provider registry, or construct a
+Provider. Protocol53 and its Provider artifacts remain optional; Clave's base
+runtime dependencies stay unchanged.
+
+== Add a Provider
+
+Add one Protocol53 Provider artifact. The Provider artifact brings the shared
+Protocol53 API. This example uses Cloudflare:
+
+[source,clojure]
+----
+{:deps
+ {com.outskirtslabs/protocol53-cloudflare
+  {:git/url "https://github.com/outskirtslabs/protocol53.git"
+   :git/sha "4a0ad834256d7e1e1a6a95936ea5e7ca14f13988"
+   :deps/root "providers/cloudflare"}}}
+----
+
+A custom Provider must add the Protocol53 API itself. The Provider must support
+Get Records, Append Records, and Delete Records.
+
+== Construct the solver
+
+Construct the Provider explicitly, then pass it to `dns/solver`:
+
+[source,clojure]
+----
+(require '[ol.clave.acme.solver.dns :as dns]
+         '[ol.clave.automation :as auto]
+         '[ol.protocol53.cloudflare :as cloudflare])
+
+(def dns-provider
+  (cloudflare/provider
+   {:api-token (System/getenv "CLOUDFLARE_API_TOKEN")}))
+
+(def dns-01
+  (dns/solver dns-provider))
+
+(def system
+  (auto/create
+   {:storage certificate-storage
+    :issuers [...]
+    :solvers {:dns-01 dns-01}}))
+----
+
+The constructor accepts a Provider alone or a Provider with options:
+
+[source,clojure]
+----
+(dns/solver dns-provider)
+(dns/solver dns-provider {:ttl 120})
+----
+
+== Configure presentation and propagation
+
+[cols="1,2,1",options="header"]
+|===
+| Option | Accepted value | Default
+
+| `:ttl`
+| Non-negative integer DNS seconds
+| `0`
+
+| `:propagation-checks?`
+| Boolean
+| `true`
+
+| `:propagation-delay-ms`
+| Non-negative integer milliseconds
+| `0`
+
+| `:propagation-timeout-ms`
+| Positive integer milliseconds
+| `120000`
+
+| `:propagation-readiness`
+| `:all` or `:any`
+| `:all`
+
+| `:resolvers`
+| Vector of hostnames, IPv4, IPv6, or explicit-port resolver strings
+| `[]` (JVM/system DNS)
+
+| `:presentation-name`
+| Exact absolute TXT Record Name, or `nil`
+| `nil`
+|===
+
+Configured resolvers form an exclusive trust boundary and retain their order.
+Clave never falls back silently to a public resolver. With an empty resolver
+vector, it uses JVM/system DNS. A propagation delay still runs when propagation
+checks are disabled.
+
+Use `:presentation-name` for manual delegation. Its value is the complete
+absolute TXT Record Name and must end with a dot. Clave does not add
+`_acme-challenge` or follow that name's CNAME when presenting the Record.
+
+== Account for runtime and concurrency limits
+
+The solver requires OpenJDK's `jdk.naming.dns` module. Construction fails
+immediately when the module or JNDI DNS Provider is unavailable. Each DNS query
+has a finite Lease-derived budget.
+
+Protocol53 invokes Providers synchronously. Cancelling a Lease stops new work
+but cannot guarantee interruption of a Provider call already in flight.
+
+Clave adds no solver-level mutation lock or Provider retry. Concurrent
+certificate operations can call a Provider simultaneously. The Provider,
+upstream DNS API, or application must coordinate unsafe mutations to the same
+RRset.
+
+== Observe the DNS lifecycle
+
+The solver emits structured events through Clave's Trove facade:
+
+* `:ol.clave.acme.solver.dns/presentation-owned`
+* `:ol.clave.acme.solver.dns/presentation-reused`
+* `:ol.clave.acme.solver.dns/propagation-ready`
+* `:ol.clave.acme.solver.dns/cleanup`
+* `:ol.clave.acme.solver.dns/terminal-dns-failure`
+
+Events contain DNS lifecycle coordinates only. The solver accepts no per-solver
+logger and emits no credentials, Provider configuration, account keys, or
+complete Challenge objects.
+
+See xref:api/ol-clave-acme-solver-dns.adoc[`ol.clave.acme.solver.dns`] for the
+API reference.

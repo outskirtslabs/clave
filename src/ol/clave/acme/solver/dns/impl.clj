@@ -10,10 +10,11 @@
    [ol.protocol53.protocols :as protocols])
   (:import
    [java.lang ModuleLayer]
+   [java.net Inet6Address InetAddress URI UnknownHostException]
    [java.time Duration]
-   [java.net URI]
    [java.util Hashtable]
-   [javax.naming Context NameNotFoundException]
+   [javax.naming CommunicationException Context NameNotFoundException NamingException
+    OperationNotSupportedException ServiceUnavailableException]
    [javax.naming.directory Attribute Attributes DirContext InitialDirContext]))
 
 (set! *warn-on-reflection* true)
@@ -108,17 +109,21 @@
       (when-let [[_ host port] (re-matches #"^\[([^\]]+)\](?::([^:]+))?$" resolver)]
         (when (and (valid-ipv6? host)
                    (or (nil? port) (valid-port? port)))
-          {:host host :port (or (some-> port parse-long) 53) :ipv6? true}))
+          {:resolver resolver
+           :host host
+           :port (or (some-> port parse-long) 53)}))
 
       (< 1 (count (filter #{\:} resolver)))
       (when (valid-ipv6? resolver)
-        {:host resolver :port 53 :ipv6? true})
+        {:resolver resolver :host resolver :port 53})
 
       :else
       (when-let [[_ host port] (re-matches #"^([^:]+)(?::([^:]+))?$" resolver)]
         (when (and (valid-resolver-host? host)
                    (or (nil? port) (valid-port? port)))
-          {:host host :port (or (some-> port parse-long) 53) :ipv6? false})))))
+          {:resolver resolver
+           :host host
+           :port (or (some-> port parse-long) 53)})))))
 
 (defn validate-opts!
   [opts]
@@ -146,7 +151,7 @@
   (when-not (or (nil? (:presentation-name config))
                 (valid-presentation-name? (:presentation-name config)))
     (invalid! ":presentation-name must be nil or a valid absolute DNS name" {:options config}))
-  config)
+  (update config :resolvers #(mapv resolver-parts %)))
 
 (defn validate-provider!
   [provider]
@@ -179,21 +184,34 @@
       "."
       (subs absolute-name (inc first-dot)))))
 
-(defn resolver-server
+(defn resolver-candidates
   [resolver]
-  (when resolver
-    (let [{:keys [host port ipv6?]} (resolver-parts resolver)]
-      (str (if ipv6? (str "[" host "]") host) ":" port))))
+  (if resolver
+    (try
+      (mapv (fn [^InetAddress address]
+              {:resolver (:resolver resolver)
+               :address address
+               :port (:port resolver)})
+            (InetAddress/getAllByName ^String (:host resolver)))
+      (catch UnknownHostException cause
+        [{:resolver (:resolver resolver)
+          :resolution-error cause}]))
+    [nil]))
 
 (defn dns-context
-  ^DirContext [resolver]
+  ^DirContext [endpoint]
   (let [environment (doto (Hashtable.)
                       (.put Context/INITIAL_CONTEXT_FACTORY "com.sun.jndi.dns.DnsContextFactory")
                       (.put "com.sun.jndi.dns.recursion" "true")
                       (.put "com.sun.jndi.dns.timeout.initial" "1000")
                       (.put "com.sun.jndi.dns.timeout.retries" "1"))]
-    (when-let [server (resolver-server resolver)]
-      (.put environment Context/PROVIDER_URL (str "dns://" server "/.")))
+    (when endpoint
+      (let [^InetAddress address (:address endpoint)
+            host (.getHostAddress address)
+            server (if (instance? Inet6Address address)
+                     (str "[" host "]:" (:port endpoint))
+                     (str host ":" (:port endpoint)))]
+        (.put environment Context/PROVIDER_URL (str "dns://" server "/."))))
     (InitialDirContext. environment)))
 
 (defn attribute-values
@@ -203,29 +221,119 @@
       (vec (enumeration-seq values)))
     []))
 
+(defn dns-query-once
+  [endpoint name record-type]
+  (if-let [cause (:resolution-error endpoint)]
+    {:status :transport :resolver (:resolver endpoint) :cause cause}
+    (try
+      (with-open [context (dns-context endpoint)]
+        (let [^"[Ljava.lang.String;" attribute-ids (into-array String [record-type])
+              ^Attributes attributes (.getAttributes ^DirContext context
+                                                     ^String name
+                                                     attribute-ids)
+              values (attribute-values (.get attributes ^String record-type))]
+          {:status (if (seq values) :answer :nodata)
+           :resolver (:resolver endpoint)
+           :values values}))
+      (catch NameNotFoundException cause
+        {:status :nxdomain :resolver (:resolver endpoint) :cause cause})
+      (catch ServiceUnavailableException cause
+        {:status :servfail :resolver (:resolver endpoint) :cause cause})
+      (catch OperationNotSupportedException cause
+        {:status :refused :resolver (:resolver endpoint) :cause cause})
+      (catch CommunicationException cause
+        {:status :transport :resolver (:resolver endpoint) :cause cause})
+      (catch NamingException cause
+        {:status :unexpected :resolver (:resolver endpoint) :cause cause})
+      (catch Exception cause
+        {:status :unexpected :resolver (:resolver endpoint) :cause cause}))))
+
+(defn valid-soa-value?
+  [value]
+  (when (string? value)
+    (let [[primary mailbox & numbers :as fields] (str/split value #"\s+")]
+      (and (= 7 (count fields))
+           (valid-presentation-name? primary)
+           (valid-presentation-name? mailbox)
+           (every? (fn [number]
+                     (when-let [value (parse-long number)]
+                       (<= 0 value 4294967295)))
+                   numbers)))))
+
+(defn valid-dns-values?
+  [record-type values]
+  (case record-type
+    "CNAME" (and (= 1 (count values))
+                 (valid-presentation-name? (first values)))
+    "SOA" (and (= 1 (count values))
+               (valid-soa-value? (first values)))
+    (every? string? values)))
+
+(defn dns-query
+  [resolvers name record-type]
+  (loop [endpoints (mapcat resolver-candidates (if (seq resolvers) resolvers [nil]))
+         last-transport nil]
+    (if (seq endpoints)
+      (let [endpoint (first endpoints)
+            result (dns-query-once endpoint name record-type)]
+        (if (= :transport (:status result))
+          (recur (next endpoints) result)
+          (if (and (= :answer (:status result))
+                   (not (valid-dns-values? record-type (:values result))))
+            (assoc result
+                   :status :malformed
+                   :cause (ex-info "Malformed DNS response data"
+                                   {:name name
+                                    :record-type record-type
+                                    :values (:values result)}))
+            result)))
+      last-transport)))
+
+(defn dns-query-error!
+  [query-name record-type result]
+  (throw (errors/ex ::dns-query-failed
+                    (str "DNS " record-type " query failed with " (name (:status result)))
+                    {:name query-name
+                     :record-type record-type
+                     :resolver (:resolver result)
+                     :dns-status (:status result)}
+                    (:cause result))))
+
 (defn dns-values
-  [resolver name record-type]
-  (try
-    (with-open [context (dns-context resolver)]
-      (let [^"[Ljava.lang.String;" attribute-ids (into-array String [record-type])
-            ^Attributes attributes (.getAttributes ^DirContext context
-                                                   ^String name
-                                                   attribute-ids)]
-        (attribute-values (.get attributes ^String record-type))))
-    (catch NameNotFoundException _
-      [])))
+  [resolvers name record-type]
+  (let [result (dns-query resolvers name record-type)]
+    (case (:status result)
+      :answer (:values result)
+      (:nxdomain :nodata :servfail :transport) []
+      (dns-query-error! name record-type result))))
 
 (defn discover-zone
-  [the-lease resolver owner]
-  (loop [candidate owner]
+  [the-lease resolvers owner]
+  (loop [candidate owner
+         last-transport nil]
     (lease/ensure-active the-lease)
     (when (= candidate ".")
-      (throw (errors/ex ::zone-not-found
-                        "No DNS Zone found for Challenge presentation"
-                        {:owner owner})))
-    (if (seq (dns-values resolver candidate "SOA"))
-      candidate
-      (recur (parent-name candidate)))))
+      (if last-transport
+        (throw (errors/ex ::dns-transport-failed
+                          "DNS Zone discovery exhausted transport attempts"
+                          {:owner owner
+                           :resolver (:resolver last-transport)}
+                          (:cause last-transport)))
+        (throw (errors/ex ::zone-not-found
+                          "No DNS Zone found for Challenge presentation"
+                          {:owner owner}))))
+    (let [cname (dns-query resolvers candidate "CNAME")]
+      (case (:status cname)
+        :answer (recur (parent-name candidate) last-transport)
+        :nxdomain (recur (parent-name candidate) last-transport)
+        :transport (recur (parent-name candidate) cname)
+        :nodata (let [soa (dns-query resolvers candidate "SOA")]
+                  (case (:status soa)
+                    :answer candidate
+                    (:nxdomain :nodata) (recur (parent-name candidate) last-transport)
+                    :transport (recur (parent-name candidate) soa)
+                    (dns-query-error! candidate "SOA" soa)))
+        (dns-query-error! candidate "CNAME" cname)))))
 
 (defn relative-name
   [owner zone]
@@ -283,8 +391,7 @@
                (or (:presentation-name config)
                    (challenge/dns01-txt-name (challenge/identifier-domain authorization))))
         digest (challenge/dns01-key-authorization challenge-map account-key)
-        resolver (first (:resolvers config))
-        zone (discover-zone the-lease resolver owner)
+        zone (discover-zone the-lease (:resolvers config) owner)
         record {:name (relative-name owner zone)
                 :type "TXT"
                 :ttl (:ttl config)
@@ -325,8 +432,10 @@
   (when (= :lease-ended (lease/sleep the-lease (:propagation-delay-ms config)))
     (lease/ensure-active the-lease))
   (when (:propagation-checks? config)
-    (let [resolvers (if (seq (:resolvers config)) (:resolvers config) [nil])
-          ready? (mapv #(some #{digest} (dns-values % owner "TXT")) resolvers)
+    (let [resolvers (:resolvers config)
+          ready? (if (seq resolvers)
+                   (mapv #(some #{digest} (dns-values [%] owner "TXT")) resolvers)
+                   [(some #{digest} (dns-values [] owner "TXT"))])
           propagated? (if (= :all (:propagation-readiness config))
                         (every? true? ready?)
                         (some true? ready?))]

@@ -36,6 +36,7 @@
             pkgs.cljfmt
             pkgs.clj-kondo
             pkgs.cfssl
+            pkgs.coredns
             pkgs.pebble
           ];
         };
@@ -60,6 +61,7 @@
           ];
           commands = [
             { package = pkgs.cfssl; }
+            { package = pkgs.coredns; }
             { package = pkgs.pebble; }
           ];
           packages = [

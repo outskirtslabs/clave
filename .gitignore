@@ -12,4 +12,5 @@ example-project
 .box*
 .cljdoc-preview
 .tmuxb_session
-.claude/
+.worktrees/
+.scratch-org/

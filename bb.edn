@@ -81,6 +81,10 @@
          {:doc "Update the clojure nix lockfile"
           :task (shell "nix run .#locker")}
 
+         nix:bump {:doc "Update the flake inputs" :task (shell "nix flake update")}
+         nix:check {:doc "Run nix flake check" :task (shell "nix flake check")}
+         bump {:depends [nix:bump lockfile nix:check]}
+
          qa
          {:doc     "Run full quality assurance: format, lint, and test"
           :depends [fmt lint test:parallel]}

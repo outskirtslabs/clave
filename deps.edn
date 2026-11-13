@@ -1,24 +1,25 @@
 {:paths   ["src"]
  :deps    {com.taoensso/trove {:mvn/version "1.2.0"}
            org.babashka/json  {:mvn/version "0.1.7"}}
+ :aliases {:kaocha {:extra-deps {cheshire/cheshire {:mvn/version "6.2.1"}
                                  mvxcvi/alphabase  {:mvn/version "3.0.185"}}
                     :main-opts  ["-m" "kaocha.runner"]}
            :dev    {:extra-paths ["test" "dev" "examples"]
-                    :extra-deps  {aleph/aleph                              {:mvn/version "0.9.10"}
+                    :extra-deps  {aleph/aleph                              {:mvn/version "0.9.11"}
                                   com.outskirtslabs/protocol53             {:git/url   "https://github.com/outskirtslabs/protocol53.git"
-                                                                            :git/sha   "4a0ad834256d7e1e1a6a95936ea5e7ca14f13988"
+                                                                            :git/sha   "51217adaef5aef898715a580313b8f97cde2c7bb"
                                                                             :deps/root "api"}
                                   lambdaisland/kaocha                      {:mvn/version "1.91.1392"}
                                   dev.weavejester/hashp                    {:mvn/version "0.5.1"}
-                                  org.slf4j/slf4j-nop                      {:mvn/version "2.0.17"}
+                                  org.slf4j/slf4j-nop                      {:mvn/version "2.0.20"}
                                   com.github.seancorfield/expectations     {:mvn/version "2.2.214"}
-                                  com.cnuernber/charred                    {:mvn/version "1.037"}
-                                  ring/ring-jetty-adapter                  {:mvn/version "1.15.3"}
+                                  com.cnuernber/charred                    {:mvn/version "1.043"}
+                                  ring/ring-jetty-adapter                  {:mvn/version "1.15.6"}
                                   io.github.tonsky/clj-reload              {:mvn/version "1.0.0"}
                                   babashka/process                         {:mvn/version "0.6.25"}
-                                  babashka/fs                              {:mvn/version "0.5.27"}
-                                  org.bouncycastle/bcpkix-jdk18on          {:mvn/version "1.83"}
-                                  com.clojure-goes-fast/clj-async-profiler {:mvn/version "1.7.0"}}}
+                                  babashka/fs                              {:mvn/version "0.5.34"}
+                                  org.bouncycastle/bcpkix-jdk18on          {:mvn/version "1.87"}
+                                  com.clojure-goes-fast/clj-async-profiler {:mvn/version "1.9.0"}}}
            :build  {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.14"}
                                  slipset/deps-deploy           {:mvn/version "0.2.5"}}
                     :ns-default build}

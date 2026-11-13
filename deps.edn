@@ -1,7 +1,6 @@
 {:paths   ["src"]
- :deps    {com.taoensso/trove {:mvn/version "1.1.0"}
-           org.babashka/json  {:mvn/version "0.1.6"}}
- :aliases {:kaocha {:extra-deps {cheshire/cheshire {:mvn/version "6.1.0"}
+ :deps    {com.taoensso/trove {:mvn/version "1.2.0"}
+           org.babashka/json  {:mvn/version "0.1.7"}}
                                  mvxcvi/alphabase  {:mvn/version "3.0.185"}}
                     :main-opts  ["-m" "kaocha.runner"]}
            :dev    {:extra-paths ["test" "dev" "examples"]

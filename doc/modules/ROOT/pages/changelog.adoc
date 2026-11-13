@@ -6,6 +6,8 @@ This project uses https://www.taoensso.com/break-versioning[*Break Versioning*].
 
 == UNRELEASED
 
+* Bumped the two prod dependencies `com.taoensso/trove` and `org.babashka/json`
+
 === Added
 
 * Add optional Aleph and Netty integrations for automatic HTTPS with HTTP-01 and TLS-ALPN-01 validation, dynamic SNI certificate selection, and certificate renewal without restarting listeners.

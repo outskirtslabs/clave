@@ -4,7 +4,7 @@
    [charred.api :as json]
    [clojure.java.shell :as shell]
    [clojure.string :as str]
-   [clojure.test :refer [deftest is testing]]
+   [clojure.test :refer [are deftest is testing]]
    [ol.clave.certificate.impl.csr :as csr]
    [ol.clave.certificate.impl.keygen :as kg]
    [ol.clave.crypto.impl.der :as der])
@@ -318,13 +318,17 @@
 
 (deftest test-san-validation
   (testing "Valid DNS SANs"
-    (is (csr/create-csr (kg/generate :rsa2048) ["example.com"]))
-    (is (csr/create-csr (kg/generate :rsa2048) ["*.example.com"]))
-    (is (csr/create-csr (kg/generate :rsa2048) ["sub.example.com"])))
+    (are [san] (= [{:type :dns :value san}]
+                  (get-in (csr/create-csr (kg/generate :rsa2048) [san]) [:details :sans]))
+      "example.com"
+      "*.example.com"
+      "sub.example.com"))
 
   (testing "Valid mixed DNS and IP SANs"
-    (is (csr/create-csr (kg/generate :rsa2048)
-                        ["example.com" "192.0.2.1"])))
+    (is (= [[:dns "example.com"] [:ip "192.0.2.1"]]
+           (->> (get-in (csr/create-csr (kg/generate :rsa2048) ["example.com" "192.0.2.1"])
+                        [:details :sans])
+                (map (juxt :type :value))))))
 
   (testing "Invalid DNS SANs - multiple wildcards"
     (is (thrown-with-msg?
@@ -360,8 +364,10 @@
 
 (deftest test-wildcard-validation
   (testing "Valid single-label wildcards"
-    (is (csr/create-csr (kg/generate :rsa2048) ["*.example.com"]))
-    (is (csr/create-csr (kg/generate :rsa2048) ["*.api.example.com"])))
+    (are [san] (= [{:type :dns :value san}]
+                  (get-in (csr/create-csr (kg/generate :rsa2048) [san]) [:details :sans]))
+      "*.example.com"
+      "*.api.example.com"))
 
   (testing "Invalid multi-label wildcards"
     (is (thrown? Exception (csr/create-csr (kg/generate :rsa2048) ["*.*.example.com"])))
@@ -733,7 +739,7 @@
             result (csr/create-csr kp ["example.com" "EXAMPLE.COM" "Example.Com" "www.example.com"])
             bc-csr (bc-parse-csr (:csr-der result))
             bc-sans (bc-get-sans bc-csr)
-            details-sans (:sans (:details result))]
+            details-sans (get-in result [:details :sans])]
 
         (is (= 2 (count details-sans)) "Details should show 2 unique SANs")
         (is (= 2 (count bc-sans)) "Actual CSR should have 2 SANs (deduped)")
@@ -746,7 +752,7 @@
             bc-csr (bc-parse-csr (:csr-der result))
             bc-sans (bc-get-sans bc-csr)]
 
-        (is (= 1 (count (:sans (:details result)))))
+        (is (= 1 (count (get-in result [:details :sans]))))
         (is (= 1 (count bc-sans)) "Should deduplicate to 1 SAN")))
 
     (testing "IP addresses are deduplicated"
@@ -755,7 +761,7 @@
             bc-csr (bc-parse-csr (:csr-der result))
             bc-sans (bc-get-sans bc-csr)]
 
-        (is (= 2 (count (:sans (:details result)))))
+        (is (= 2 (count (get-in result [:details :sans]))))
         (is (= 2 (count bc-sans)) "Should have 2 unique SANs")))
 
     (testing "Unicode domains deduplicate after IDNA encoding"
@@ -764,7 +770,7 @@
             bc-csr (bc-parse-csr (:csr-der result))
             bc-sans (bc-get-sans bc-csr)]
 
-        (is (= 1 (count (:sans (:details result)))))
+        (is (= 1 (count (get-in result [:details :sans]))))
         (is (= 1 (count bc-sans)) "Should deduplicate to 1 punycode SAN")
         (is (= "xn--mnchen-3ya.example" (:value (first bc-sans))))))))
 
